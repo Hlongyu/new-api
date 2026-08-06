@@ -14,15 +14,23 @@ export default defineConfig(({ envMode }) => {
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
     'http://localhost:3000'
+  // The leaderboard runs as its own service alongside New API and is mounted
+  // under /leaderboard in production, so it needs a separate proxy target.
+  const leaderboardUrl =
+    process.env.VITE_LEADERBOARD_URL ||
+    env.rawPublicVars.VITE_LEADERBOARD_URL ||
+    'http://localhost:8787'
 
   const isProd = envMode === 'production'
-  const devProxy = Object.fromEntries(
-    (['/api', '/mj', '/pg'] as const).map((key) => [
-      key,
-      { target: serverUrl, changeOrigin: true },
-    ])
-  ) as Record<string, { target: string; changeOrigin: boolean }>
-
+  const devProxy = {
+    ...(Object.fromEntries(
+      (['/api', '/mj', '/pg'] as const).map((key) => [
+        key,
+        { target: serverUrl, changeOrigin: true },
+      ])
+    ) as Record<string, { target: string; changeOrigin: boolean }>),
+    '/leaderboard': { target: leaderboardUrl, changeOrigin: true },
+  }
   return {
     plugins: [pluginReact(), pluginTailwindcss({ optimize: false })],
     // Rsbuild 2: replaces deprecated `performance.chunkSplit` (RSPack 2 aligned)

@@ -16,12 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { useSearch } from '@tanstack/react-router'
 import { useMemo, useCallback, useState } from 'react'
+
+import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 
 import {
   FILTER_ALL,
   SORT_OPTIONS,
+  PERF_FILTERS,
+  PERF_SUMMARY_WINDOW_HOURS,
   QUOTA_TYPES,
   ENDPOINT_TYPES,
   DEFAULT_TOKEN_UNIT,
@@ -39,6 +44,7 @@ type FilterState = {
   quotaType?: string
   endpointType?: string
   tag?: string
+  perf?: string
   tokenUnit?: TokenUnit
   view?: ViewMode
   rechargePrice?: boolean
@@ -61,6 +67,7 @@ export function useFilters(models: PricingModel[]) {
     quotaType: search.quotaType,
     endpointType: search.endpointType,
     tag: search.tag,
+    perf: search.perf,
     tokenUnit: search.tokenUnit,
     view: search.view,
     rechargePrice: search.rechargePrice,
@@ -77,6 +84,31 @@ export function useFilters(models: PricingModel[]) {
     filterState.tokenUnit === 'K' ? 'K' : DEFAULT_TOKEN_UNIT
   const viewMode = normalizeViewMode(filterState.view)
   const showRechargePrice = filterState.rechargePrice === true
+
+  // Shares its query key with the model card grid, so enabling this filter
+  // costs no extra request. `retry: false` mirrors the grid: the endpoint is
+  // gated by the pricing nav module and may legitimately be unavailable.
+  const perfQuery = useQuery({
+    queryKey: ['perf-metrics-summary', PERF_SUMMARY_WINDOW_HOURS],
+    queryFn: () => getPerfMetricsSummary(PERF_SUMMARY_WINDOW_HOURS),
+    staleTime: 60 * 1000,
+    retry: false,
+  })
+
+  const perfModelNames = useMemo(
+    () =>
+      new Set(
+        (perfQuery.data?.data?.models ?? []).map((model) => model.model_name)
+      ),
+    [perfQuery.data]
+  )
+
+  // While the metrics are loading, or when the endpoint is unavailable, the
+  // filter would silently empty the whole model square. Hide it instead.
+  const perfDataAvailable = perfQuery.isSuccess && perfModelNames.size > 0
+  const perfFilter = perfDataAvailable
+    ? filterState.perf || PERF_FILTERS.ALL
+    : PERF_FILTERS.ALL
 
   const updateFilters = useCallback((updates: Record<string, unknown>) => {
     setFilterState((prev) => {
@@ -123,6 +155,11 @@ export function useFilters(models: PricingModel[]) {
     (v: string) => updateFilters({ tag: v === FILTER_ALL ? undefined : v }),
     [updateFilters]
   )
+  const setPerfFilter = useCallback(
+    (v: string) =>
+      updateFilters({ perf: v === PERF_FILTERS.ALL ? undefined : v }),
+    [updateFilters]
+  )
   const setTokenUnit = useCallback(
     (v: TokenUnit) =>
       updateFilters({ tokenUnit: v === DEFAULT_TOKEN_UNIT ? undefined : v }),
@@ -153,6 +190,8 @@ export function useFilters(models: PricingModel[]) {
       quotaType: quotaTypeFilter,
       endpointType: endpointTypeFilter,
       tag: tagFilter,
+      perf: perfFilter,
+      perfModelNames,
       sortBy,
     })
   }, [
@@ -163,6 +202,8 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    perfFilter,
+    perfModelNames,
     sortBy,
   ])
 
@@ -172,8 +213,16 @@ export function useFilters(models: PricingModel[]) {
       groupFilter !== FILTER_ALL ||
       quotaTypeFilter !== QUOTA_TYPES.ALL ||
       endpointTypeFilter !== ENDPOINT_TYPES.ALL ||
-      tagFilter !== FILTER_ALL,
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      tagFilter !== FILTER_ALL ||
+      perfFilter !== PERF_FILTERS.ALL,
+    [
+      vendorFilter,
+      groupFilter,
+      quotaTypeFilter,
+      endpointTypeFilter,
+      tagFilter,
+      perfFilter,
+    ]
   )
 
   const activeFilterCount = useMemo(
@@ -182,8 +231,16 @@ export function useFilters(models: PricingModel[]) {
       (groupFilter !== FILTER_ALL ? 1 : 0) +
       (quotaTypeFilter !== QUOTA_TYPES.ALL ? 1 : 0) +
       (endpointTypeFilter !== ENDPOINT_TYPES.ALL ? 1 : 0) +
-      (tagFilter !== FILTER_ALL ? 1 : 0),
-    [vendorFilter, groupFilter, quotaTypeFilter, endpointTypeFilter, tagFilter]
+      (tagFilter !== FILTER_ALL ? 1 : 0) +
+      (perfFilter !== PERF_FILTERS.ALL ? 1 : 0),
+    [
+      vendorFilter,
+      groupFilter,
+      quotaTypeFilter,
+      endpointTypeFilter,
+      tagFilter,
+      perfFilter,
+    ]
   )
 
   const clearFilters = useCallback(() => {
@@ -193,6 +250,7 @@ export function useFilters(models: PricingModel[]) {
       quotaType: undefined,
       endpointType: undefined,
       tag: undefined,
+      perf: undefined,
     })
   }, [updateFilters])
 
@@ -208,6 +266,9 @@ export function useFilters(models: PricingModel[]) {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    perfFilter,
+    perfModelNames,
+    perfDataAvailable,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -218,6 +279,7 @@ export function useFilters(models: PricingModel[]) {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
+    setPerfFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,

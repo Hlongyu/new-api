@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   SORT_OPTIONS,
   FILTER_ALL,
+  PERF_FILTERS,
   QUOTA_TYPES,
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
@@ -99,6 +100,18 @@ export function filterByEndpointType(
 }
 
 /**
+ * Filter models down to the ones that reported performance metrics
+ */
+export function filterByPerfData(
+  models: PricingModel[],
+  perfFilter: string,
+  perfModelNames: Set<string>
+): PricingModel[] {
+  if (perfFilter !== PERF_FILTERS.WITH_DATA) return models
+  return models.filter((m) => perfModelNames.has(m.model_name))
+}
+
+/**
  * Get model price for sorting
  */
 function getModelPrice(model: PricingModel): number {
@@ -143,6 +156,8 @@ export function filterAndSortModels(
     quotaType: string
     endpointType: string
     tag: string
+    perf: string
+    perfModelNames: Set<string>
     sortBy: string
   }
 ): PricingModel[] {
@@ -152,6 +167,7 @@ export function filterAndSortModels(
   result = filterByQuotaType(result, filters.quotaType)
   result = filterByEndpointType(result, filters.endpointType)
   result = filterByTag(result, filters.tag)
+  result = filterByPerfData(result, filters.perf, filters.perfModelNames)
   result = sortModels(result, filters.sortBy)
 
   return result

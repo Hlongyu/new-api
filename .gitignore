@@ -41,3 +41,7 @@ service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
 go.work
 go.work.sum
+
+# Local compose overrides. Carries dev-only settings such as
+# SESSION_COOKIE_SECURE=false, which must never reach a deployed host.
+docker-compose.override.yml

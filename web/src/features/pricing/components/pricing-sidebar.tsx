@@ -33,8 +33,10 @@ import { cn } from '@/lib/utils'
 import {
   ENDPOINT_TYPES,
   FILTER_ALL,
+  PERF_FILTERS,
   QUOTA_TYPES,
   getEndpointTypeLabels,
+  getPerfFilterLabels,
   getQuotaTypeLabels,
 } from '../constants'
 import { parseTags } from '../lib/filters'
@@ -61,11 +63,15 @@ export interface PricingSidebarProps {
   vendorFilter: string
   groupFilter: string
   tagFilter: string
+  perfFilter: string
+  perfModelNames: Set<string>
+  perfDataAvailable: boolean
   onQuotaTypeChange: (value: string) => void
   onEndpointTypeChange: (value: string) => void
   onVendorChange: (value: string) => void
   onGroupChange: (value: string) => void
   onTagChange: (value: string) => void
+  onPerfChange: (value: string) => void
   vendors: PricingVendor[]
   groups: string[]
   groupRatios?: Record<string, number>
@@ -160,6 +166,22 @@ export function PricingSidebar(props: PricingSidebarProps) {
   const { t } = useTranslation()
   const quotaTypeLabels = getQuotaTypeLabels(t)
   const endpointTypeLabels = getEndpointTypeLabels(t)
+  const perfFilterLabels = getPerfFilterLabels(t)
+
+  const perfOptions: FilterOption[] = [
+    {
+      value: PERF_FILTERS.ALL,
+      label: perfFilterLabels[PERF_FILTERS.ALL],
+      count: props.models.length,
+    },
+    {
+      value: PERF_FILTERS.WITH_DATA,
+      label: perfFilterLabels[PERF_FILTERS.WITH_DATA],
+      count: countBy(props.models, (model) =>
+        props.perfModelNames.has(model.model_name)
+      ),
+    },
+  ]
 
   const vendorOptions: FilterOption[] = [
     {
@@ -304,6 +326,14 @@ export function PricingSidebar(props: PricingSidebarProps) {
           options={endpointOptions}
           onChange={props.onEndpointTypeChange}
         />
+        {props.perfDataAvailable && (
+          <FilterSection
+            title={t('Performance Data')}
+            value={props.perfFilter}
+            options={perfOptions}
+            onChange={props.onPerfChange}
+          />
+        )}
       </div>
     </aside>
   )

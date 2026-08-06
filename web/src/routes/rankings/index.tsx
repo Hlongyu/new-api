@@ -19,15 +19,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
-import { Rankings } from '@/features/rankings'
+import { Leaderboard } from '@/features/leaderboard'
 import { getFreshModuleAccess } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
+// `.catch(undefined)` keeps links shared before the board swap working: the
+// old period values simply fall back to the default rather than 404-ing.
 const rankingsSearchSchema = z.object({
-  period: z
-    .enum(['today', 'week', 'month', 'year'])
-    .optional()
-    .catch(undefined),
+  board: z.enum(['usage', 'rank']).optional().catch(undefined),
+  period: z.enum(['day', 'week', 'month', 'all']).optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/rankings/')({
@@ -47,5 +47,5 @@ export const Route = createFileRoute('/rankings/')({
       }
     }
   },
-  component: Rankings,
+  component: Leaderboard,
 })

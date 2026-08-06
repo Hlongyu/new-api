@@ -97,6 +97,27 @@ export function getEndpointTypeLabels(
   }
 }
 
+/** Performance data filter options */
+export const PERF_FILTERS = {
+  ALL: 'all',
+  WITH_DATA: 'with-data',
+} as const
+
+export type PerfFilterOption = (typeof PERF_FILTERS)[keyof typeof PERF_FILTERS]
+
+/** Performance data filter labels */
+export function getPerfFilterLabels(
+  t: TFunction
+): Record<PerfFilterOption, string> {
+  return {
+    [PERF_FILTERS.ALL]: t('All Models'),
+    [PERF_FILTERS.WITH_DATA]: t('With performance data'),
+  }
+}
+
+/** Window in hours used by every model square performance query */
+export const PERF_SUMMARY_WINDOW_HOURS = 24
+
 /** Filter section keys */
 export const FILTER_SECTIONS = {
   PRICING_TYPE: 'pricingType',
@@ -104,6 +125,7 @@ export const FILTER_SECTIONS = {
   VENDOR: 'vendor',
   GROUP: 'group',
   TAG: 'tag',
+  PERF: 'perf',
 } as const
 
 /** Maximum number of tags to display in model row */

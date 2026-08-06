@@ -62,6 +62,9 @@ export function Pricing() {
     quotaTypeFilter,
     endpointTypeFilter,
     tagFilter,
+    perfFilter,
+    perfModelNames,
+    perfDataAvailable,
     tokenUnit,
     viewMode,
     showRechargePrice,
@@ -72,6 +75,7 @@ export function Pricing() {
     setQuotaTypeFilter,
     setEndpointTypeFilter,
     setTagFilter,
+    setPerfFilter,
     setTokenUnit,
     setViewMode,
     setShowRechargePrice,
@@ -209,11 +213,15 @@ export function Pricing() {
               vendorFilter={vendorFilter}
               groupFilter={groupFilter}
               tagFilter={tagFilter}
+              perfFilter={perfFilter}
+              perfModelNames={perfModelNames}
+              perfDataAvailable={perfDataAvailable}
               onQuotaTypeChange={setQuotaTypeFilter}
               onEndpointTypeChange={setEndpointTypeFilter}
               onVendorChange={setVendorFilter}
               onGroupChange={setGroupFilter}
               onTagChange={setTagFilter}
+              onPerfChange={setPerfFilter}
               vendors={vendors || []}
               groups={availableGroups}
               groupRatios={groupRatio}
@@ -241,11 +249,15 @@ export function Pricing() {
                 vendorFilter={vendorFilter}
                 groupFilter={groupFilter}
                 tagFilter={tagFilter}
+                perfFilter={perfFilter}
+                perfModelNames={perfModelNames}
+                perfDataAvailable={perfDataAvailable}
                 onQuotaTypeChange={setQuotaTypeFilter}
                 onEndpointTypeChange={setEndpointTypeFilter}
                 onVendorChange={setVendorFilter}
                 onGroupChange={setGroupFilter}
                 onTagChange={setTagFilter}
+                onPerfChange={setPerfFilter}
                 vendors={vendors || []}
                 groups={availableGroups}
                 groupRatios={groupRatio}
