@@ -238,6 +238,9 @@ if ! docker run --rm --network none --entrypoint node "${candidate_app_image}" \
   exit 4
 fi
 if ! docker run --rm --network none \
+  --read-only \
+  --tmpfs /tmp:rw,mode=1777 \
+  --tmpfs /var/lib/nginx:rw,mode=0755 \
   --add-host new-api:127.0.0.1 --add-host companion:127.0.0.1 \
   --entrypoint nginx "${candidate_app_image}" -t >/dev/null; then
   echo "candidate image does not contain a valid Web/Gateway configuration" >&2
