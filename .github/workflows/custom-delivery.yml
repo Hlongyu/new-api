@@ -91,6 +91,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_GIT_COMMIT=${{ steps.release.outputs.sha }}
+            APP_DEPLOYED_AT=0
           cache-from: type=gha,scope=custom-delivery-amd64
           cache-to: type=gha,mode=max,scope=custom-delivery-amd64
           provenance: mode=max

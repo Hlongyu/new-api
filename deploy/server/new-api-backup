@@ -8,6 +8,9 @@ readonly compose_file="/opt/new-api/compose.yaml"
 readonly production_env="/etc/new-api/production.env"
 readonly release_env="/var/lib/new-api/release.env"
 readonly postgres_container="postgres"
+readonly companion_container="new-api-companion"
+readonly legacy_companion_container="new-api-leaderboard-leaderboard-1"
+readonly lock_file="/run/lock/new-api-backup.lock"
 
 if [[ ! -r "${production_env}" ]]; then
   echo "production environment is not installed" >&2
@@ -19,12 +22,23 @@ source "${production_env}"
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
 
+exec 8>"${lock_file}"
+if ! flock --wait 300 8; then
+  echo "another backup is still running" >&2
+  exit 3
+fi
+
 timestamp="$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
 temporary_dir="${backup_root}/.new-api-${timestamp}.tmp"
 final_dir="${backup_root}/new-api-${timestamp}"
+companion_snapshot=""
+active_companion_container=""
 
 # shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
 cleanup_temporary_dir() {
+  if [[ -n "${active_companion_container}" && -n "${companion_snapshot}" ]]; then
+    docker exec "${active_companion_container}" rm -f -- "${companion_snapshot}" >/dev/null 2>&1 || true
+  fi
   if [[ -d "${temporary_dir}" ]]; then
     find "${temporary_dir}" -depth -delete
   fi
@@ -49,6 +63,46 @@ docker exec -i "${postgres_container}" pg_restore --list \
 sha256sum "${temporary_dir}/database.dump" \
   >"${temporary_dir}/database.dump.sha256"
 
+for container in "${companion_container}" "${legacy_companion_container}"; do
+  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
+    active_companion_container="${container}"
+    break
+  fi
+done
+if [[ -z "${active_companion_container}" ]]; then
+  echo "running companion container not found" >&2
+  exit 3
+fi
+
+companion_snapshot="/app/data/.new-api-backup-${timestamp}.db"
+docker exec -i "${active_companion_container}" node --input-type=module - "${companion_snapshot}" <<'NODE'
+import { DatabaseSync } from 'node:sqlite'
+
+const snapshotPath = process.argv[2]
+if (!/^\/app\/data\/\.new-api-backup-\d{8}-\d{6}\.db$/.test(snapshotPath)) {
+  throw new Error('invalid companion snapshot path')
+}
+const databasePath = process.env.DATABASE_PATH || '/app/data/leaderboard.db'
+const database = new DatabaseSync(databasePath)
+database.exec('PRAGMA busy_timeout = 30000')
+database.exec(`VACUUM INTO '${snapshotPath.replaceAll("'", "''")}'`)
+database.close()
+
+const snapshot = new DatabaseSync(snapshotPath)
+const result = snapshot.prepare('PRAGMA integrity_check').get()
+snapshot.close()
+if (Object.values(result)[0] !== 'ok') {
+  throw new Error('companion snapshot failed integrity_check')
+}
+NODE
+docker cp "${active_companion_container}:${companion_snapshot}" \
+  "${temporary_dir}/leaderboard.db"
+chmod 0600 "${temporary_dir}/leaderboard.db"
+docker exec "${active_companion_container}" rm -f -- "${companion_snapshot}"
+companion_snapshot=""
+sha256sum "${temporary_dir}/leaderboard.db" \
+  >"${temporary_dir}/leaderboard.db.sha256"
+
 install -m 0600 "${compose_file}" "${temporary_dir}/compose.yaml"
 install -m 0600 "${production_env}" "${temporary_dir}/production.env"
 if [[ -f "${release_env}" ]]; then
@@ -64,6 +118,9 @@ fi
     "SELECT 'database_bytes=' || pg_database_size(current_database());"
   docker inspect new-api --format 'new_api_image={{.Config.Image}}'
   docker inspect new-api --format 'new_api_image_id={{.Image}}'
+  docker inspect "${active_companion_container}" --format 'companion_container={{.Name}}'
+  docker inspect "${active_companion_container}" --format 'companion_image={{.Config.Image}}'
+  printf 'companion_database_bytes=%s\n' "$(wc -c <"${temporary_dir}/leaderboard.db")"
   docker inspect postgres --format 'postgres_image={{.Config.Image}}'
   docker inspect redis --format 'redis_image={{.Config.Image}}'
 } >"${temporary_dir}/metadata.txt"
