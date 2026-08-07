@@ -80,7 +80,7 @@ test('root 配置活动发放次数，用户单抽或十连抽并异步获得合
     basePath: '/leaderboard',
     modelStatusBasePath: '/modelstatus',
     lotterySiteBasePath: '/lottery',
-    publicUrl: '',
+    publicUrl: 'https://code.xxcd.top/leaderboard',
     baseUrl: 'https://new-api.example.com',
     rootAccessToken: 'root-token',
     rootUserId: 1,
@@ -177,7 +177,7 @@ test('root 配置活动发放次数，用户单抽或十连抽并异步获得合
     assert.equal(rootStatus.body.data.redemptionProgress.remainingUsd, 50)
     assert.equal(rootStatus.body.data.redemptionProgress.progressRatio, 0.5)
     const emptyAliceStatus = await api(baseUrl, '/api/status')
-    assert.equal(emptyAliceStatus.body.data.mainSiteUrl, 'https://new-api.example.com')
+    assert.equal(emptyAliceStatus.body.data.mainSiteUrl, 'https://code.xxcd.top')
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.grantedDraws, 0)
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.observedUsd, 0)
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.remainingUsd, 100)

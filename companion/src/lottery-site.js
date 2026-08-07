@@ -724,7 +724,9 @@ export function createLotterySite({ db, client, config, requireMutationRequest }
             db.getRedemptionProgress(Number(user.id)) || {},
             config.quotaPerUnit,
           ),
-          mainSiteUrl: config.baseUrl,
+          mainSiteUrl:
+            config.mainSiteUrl ||
+            (config.publicUrl ? new URL(config.publicUrl).origin : config.baseUrl),
           timeZone: config.timeZone,
         },
       })

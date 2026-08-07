@@ -81,6 +81,7 @@ const config = {
   modelStatusBasePath: '/modelstatus',
   lotterySiteBasePath: '/lottery',
   publicUrl: `http://127.0.0.1:${port}/lottery`,
+  mainSiteUrl: 'http://127.0.0.1:5174',
   tlsCertPath: '',
   tlsKeyPath: '',
   baseUrl: 'http://127.0.0.1:5174',
