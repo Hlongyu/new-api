@@ -97,6 +97,29 @@ export function createDatabase(databasePath) {
       FOREIGN KEY (entry_id) REFERENCES leaderboard_entries(id) ON DELETE RESTRICT
     );
 
+    CREATE TABLE IF NOT EXISTS lottery_periods (
+      rule_version INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      settled_at INTEGER NOT NULL,
+      PRIMARY KEY (rule_version, period_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS lottery_opportunities (
+      rule_version INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      draw_rank INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      entry_id INTEGER NOT NULL,
+      display_name_snapshot TEXT NOT NULL,
+      token_used INTEGER NOT NULL,
+      quota INTEGER NOT NULL,
+      request_count INTEGER NOT NULL,
+      prize_pool_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (rule_version, period_key, draw_rank),
+      FOREIGN KEY (entry_id) REFERENCES leaderboard_entries(id) ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS rename_card_balances (
       user_id INTEGER PRIMARY KEY,
       balance INTEGER NOT NULL DEFAULT 0,
@@ -181,6 +204,9 @@ export function createDatabase(databasePath) {
 
     CREATE INDEX IF NOT EXISTS idx_sponsor_completed
       ON sponsor_orders(status, completed_at);
+
+    CREATE INDEX IF NOT EXISTS idx_lottery_opportunity_user
+      ON lottery_opportunities(rule_version, user_id, period_key);
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_sponsor_user_processing
       ON sponsor_orders(user_id) WHERE status = 'processing';
@@ -365,6 +391,15 @@ export function createDatabase(databasePath) {
     DROP INDEX IF EXISTS idx_lottery_period_rank;
     CREATE UNIQUE INDEX IF NOT EXISTS idx_lottery_rule_period_rank
       ON lottery_draws(rule_version, period_key, draw_rank)
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO lottery_opportunities
+      (rule_version, period_key, draw_rank, user_id, entry_id,
+       display_name_snapshot, token_used, quota, request_count,
+       prize_pool_json, created_at)
+    SELECT rule_version, period_key, draw_rank, user_id, entry_id,
+           display_name_snapshot, 0, 0, 0, '[]', created_at
+    FROM lottery_draws
   `)
 
   const statements = {
@@ -801,6 +836,53 @@ export function createDatabase(databasePath) {
       SELECT COALESCE(SUM(quota_amount), 0) AS repaid_quota
       FROM postpaid_events WHERE status = 'completed'
     `),
+    getLotteryPeriod: db.prepare(`
+      SELECT * FROM lottery_periods
+      WHERE rule_version = ? AND period_key = ?
+    `),
+    insertLotteryPeriod: db.prepare(`
+      INSERT INTO lottery_periods (rule_version, period_key, settled_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(rule_version, period_key) DO NOTHING
+    `),
+    insertLotteryOpportunity: db.prepare(`
+      INSERT INTO lottery_opportunities
+        (rule_version, period_key, draw_rank, user_id, entry_id,
+         display_name_snapshot, token_used, quota, request_count,
+         prize_pool_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(rule_version, period_key, draw_rank) DO NOTHING
+    `),
+    getLotteryWeekUpdatedAt: db.prepare(`
+      SELECT COALESCE(MAX(updated_at), 0) AS updated_at
+      FROM usage_aggregates
+      WHERE period_type = 'week' AND period_key = ?
+    `),
+    listLotteryOpportunitiesBefore: db.prepare(`
+      SELECT o.*,
+             e.display_name AS current_display_name,
+             e.anonymous_name AS current_anonymous_name,
+             e.is_name_public AS current_is_name_public,
+             e.participate_week AS current_participate_week,
+             d.id AS draw_id,
+             d.display_name_snapshot AS draw_display_name_snapshot,
+             d.amount_usd AS draw_amount_usd,
+             d.quota_amount AS draw_quota_amount,
+             d.status AS draw_status,
+             d.error_message AS draw_error_message,
+             d.operator_user_id AS draw_operator_user_id,
+             d.created_at AS draw_created_at,
+             d.updated_at AS draw_updated_at,
+             d.completed_at AS draw_completed_at
+      FROM lottery_opportunities o
+      JOIN leaderboard_entries e ON e.id = o.entry_id
+      LEFT JOIN lottery_draws d
+        ON d.rule_version = o.rule_version
+       AND d.period_key = o.period_key
+       AND d.draw_rank = o.draw_rank
+      WHERE o.rule_version = ? AND o.period_key <= ?
+      ORDER BY o.period_key ASC, o.draw_rank ASC
+    `),
     insertLotteryDraw: db.prepare(`
       INSERT INTO lottery_draws
         (id, rule_version, period_key, draw_rank, user_id, entry_id,
@@ -835,6 +917,19 @@ export function createDatabase(databasePath) {
       UPDATE lottery_draws
       SET status = 'processing', error_message = '', updated_at = ?
       WHERE id = ? AND status = 'failed'
+    `),
+    resolveUnknownLotteryDraw: db.prepare(`
+      UPDATE lottery_draws
+      SET status = ?, error_message = ?, updated_at = ?, completed_at = ?
+      WHERE id = ? AND status = 'unknown'
+    `),
+    listUnknownLotteryDraws: db.prepare(`
+      SELECT d.*, e.source_name, e.username
+      FROM lottery_draws d
+      JOIN leaderboard_entries e ON e.id = d.entry_id
+      WHERE d.rule_version = ? AND d.status = 'unknown'
+      ORDER BY d.updated_at ASC
+      LIMIT ?
     `),
     listLotteryDraws: db.prepare(`
       SELECT d.period_key, d.draw_rank, d.amount_usd, d.status, d.created_at,
@@ -1189,6 +1284,49 @@ export function createDatabase(databasePath) {
         ).changes,
       )
     },
+    isLotteryPeriodSettled(ruleVersion, periodKey) {
+      return Boolean(statements.getLotteryPeriod.get(ruleVersion, periodKey))
+    },
+    getLotteryWeekUpdatedAt(periodKey) {
+      return Number(statements.getLotteryWeekUpdatedAt.get(periodKey).updated_at)
+    },
+    settleLotteryPeriod(period) {
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        if (statements.getLotteryPeriod.get(period.ruleVersion, period.periodKey)) {
+          db.exec('COMMIT')
+          return false
+        }
+        for (const opportunity of period.opportunities) {
+          statements.insertLotteryOpportunity.run(
+            period.ruleVersion,
+            period.periodKey,
+            opportunity.rank,
+            opportunity.userId,
+            opportunity.entryId,
+            opportunity.displayNameSnapshot,
+            opportunity.tokenUsed,
+            opportunity.quota,
+            opportunity.requestCount,
+            JSON.stringify(opportunity.prizePool),
+            period.settledAt,
+          )
+        }
+        statements.insertLotteryPeriod.run(
+          period.ruleVersion,
+          period.periodKey,
+          period.settledAt,
+        )
+        db.exec('COMMIT')
+        return true
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    },
+    listLotteryOpportunitiesBefore(ruleVersion, periodKey) {
+      return statements.listLotteryOpportunitiesBefore.all(ruleVersion, periodKey)
+    },
     createLotteryDraw(draw) {
       statements.insertLotteryDraw.run(
         draw.id,
@@ -1238,6 +1376,21 @@ export function createDatabase(databasePath) {
     },
     restartLotteryDraw(id, updatedAt) {
       return Number(statements.restartLotteryDraw.run(updatedAt, id).changes)
+    },
+    resolveUnknownLotteryDraw(id, status, errorMessage, updatedAt) {
+      const completedAt = status === 'completed' ? updatedAt : 0
+      return Number(
+        statements.resolveUnknownLotteryDraw.run(
+          status,
+          errorMessage || '',
+          updatedAt,
+          completedAt,
+          id,
+        ).changes,
+      )
+    },
+    listUnknownLotteryDraws(ruleVersion, limit = 50) {
+      return statements.listUnknownLotteryDraws.all(ruleVersion, limit)
     },
     listLotteryWeekKeysBefore(currentWeekKey) {
       return statements.listLotteryWeekKeysBefore.all(currentWeekKey).map((row) => row.period_key)

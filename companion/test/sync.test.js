@@ -5,7 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { createDatabase } from '../src/db.js'
 import { UsageSynchronizer } from '../src/sync.js'
-import { periodKey } from '../src/time.js'
+import { periodKey, previousWeekRange } from '../src/time.js'
 
 function config() {
   return {
@@ -23,6 +23,7 @@ test('root 用户列表补充名称但只同步产生过用量的用户', async 
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'leaderboard-sync-'))
   const db = createDatabase(path.join(directory, 'test.db'))
   try {
+    const flowRanges = []
     const client = {
       async getUsers() {
         return [
@@ -31,7 +32,8 @@ test('root 用户列表补充名称但只同步产生过用量的用户', async 
           { id: 123, username: 'zero', display_name: '零用量用户' },
         ]
       },
-      async getFlow() {
+      async getFlow(start, end) {
+        flowRanges.push({ start, end })
         return [
           { user_id: 7, token_id: 101, token_used: 120, quota: 400_000, count: 2 },
           { user_id: 7, token_id: 102, token_used: 80, quota: 100_000, count: 1 },
@@ -43,6 +45,14 @@ test('root 用户列表补充名称但只同步产生过用量的用户', async 
     const synchronizer = new UsageSynchronizer({ db, client, config: settings })
 
     assert.equal(await synchronizer.sync(), true)
+    const completedWeek = previousWeekRange({ timeZone: settings.timeZone })
+    assert.equal(flowRanges.length, 5)
+    assert.deepEqual(flowRanges.at(-1), {
+      start: completedWeek.start,
+      end: completedWeek.end,
+    })
+    assert.equal(db.getSetting('last_finalized_week_key'), completedWeek.key)
+    assert.ok(db.getLotteryWeekUpdatedAt(completedWeek.key) >= completedWeek.end)
     const entries = db.listEntries()
     assert.equal(entries.length, 2)
     assert.ok(entries.every((entry) => entry.is_name_public === 0))
@@ -59,6 +69,7 @@ test('root 用户列表补充名称但只同步产生过用量的用户', async 
 
     const originalAliases = new Map(entries.map((entry) => [entry.user_id, entry.anonymous_name]))
     assert.equal(await synchronizer.sync(), true)
+    assert.equal(flowRanges.length, 9)
     for (const entry of db.listEntries()) {
       assert.equal(entry.anonymous_name, originalAliases.get(entry.user_id))
     }

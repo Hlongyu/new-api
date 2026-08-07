@@ -116,6 +116,11 @@ export function SidebarModulesCard() {
           description: t('Balance and top-up management'),
         },
         {
+          key: 'lottery',
+          title: t('Weekly Top 3 Draw'),
+          description: t('Finish in the weekly top 3 to unlock a draw.'),
+        },
+        {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),

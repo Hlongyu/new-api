@@ -26,7 +26,9 @@ const lotteryRuleVersion = 2
 const displayNameMaxLength = 36
 
 function cleanText(value, { min = 1, max = 40, label = '内容' } = {}) {
-  const text = String(value ?? '').trim().replace(/\s+/g, ' ')
+  const text = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
   if (text.length < min || text.length > max) {
     const error = new Error(`${label}长度应为 ${min}-${max} 个字符`)
     error.status = 400
@@ -48,7 +50,8 @@ function positiveInteger(value, label) {
 function stripBasePath(pathname, basePath) {
   if (!basePath) return pathname
   if (pathname === basePath) return '/'
-  if (pathname.startsWith(`${basePath}/`)) return pathname.slice(basePath.length)
+  if (pathname.startsWith(`${basePath}/`))
+    return pathname.slice(basePath.length)
   return null
 }
 
@@ -95,8 +98,15 @@ function lotteryDisplayName(row) {
     : row.anonymous_name
 }
 
-function supportContext(db, config, nowTimestamp = Math.floor(Date.now() / 1000)) {
-  const startKey = zonedDayKey(config.supportActivityStartTimestamp, config.timeZone)
+function supportContext(
+  db,
+  config,
+  nowTimestamp = Math.floor(Date.now() / 1000),
+) {
+  const startKey = zonedDayKey(
+    config.supportActivityStartTimestamp,
+    config.timeZone,
+  )
   const dailyUsage = groupedByUser(db.listSupportDailyUsage(startKey))
   const sponsors = groupedByUser(db.listSupportSponsors())
   const cache = new Map()
@@ -104,7 +114,9 @@ function supportContext(db, config, nowTimestamp = Math.floor(Date.now() / 1000)
     forUser(userId) {
       const normalizedUserId = Number(userId)
       if (!cache.has(normalizedUserId)) {
-        cache.set(normalizedUserId, calculateSupportActivity({
+        cache.set(
+          normalizedUserId,
+          calculateSupportActivity({
           dailyUsage: dailyUsage.get(normalizedUserId) || [],
           sponsors: sponsors.get(normalizedUserId) || [],
           nowTimestamp,
@@ -112,7 +124,8 @@ function supportContext(db, config, nowTimestamp = Math.floor(Date.now() / 1000)
           startTimestamp: config.supportActivityStartTimestamp,
           quotaPerUnit: config.quotaPerUnit,
           activeDays: config.supportActivityActiveDays,
-        }))
+          }),
+        )
       }
       return cache.get(normalizedUserId)
     },
@@ -130,7 +143,9 @@ function rankContext(db, config, nowTimestamp = Math.floor(Date.now() / 1000)) {
     forUser(userId) {
       const normalizedUserId = Number(userId)
       if (!cache.has(normalizedUserId)) {
-        cache.set(normalizedUserId, calculateRankProgress({
+        cache.set(
+          normalizedUserId,
+          calculateRankProgress({
           dailyUsage: dailyUsage.get(normalizedUserId) || [],
           renameCards: renameCards.get(normalizedUserId) || [],
           sponsors: sponsors.get(normalizedUserId) || [],
@@ -138,7 +153,8 @@ function rankContext(db, config, nowTimestamp = Math.floor(Date.now() / 1000)) {
           timeZone: config.timeZone,
           startTimestamp,
           quotaPerUnit: config.quotaPerUnit,
-        }))
+          }),
+        )
       }
       return cache.get(normalizedUserId)
     },
@@ -152,7 +168,9 @@ const EXCLUDED_USERS_SETTING = 'excluded_user_ids'
 function excludedUserIdSet(db, config) {
   const stored = db.getSetting(EXCLUDED_USERS_SETTING, null)
   if (Array.isArray(stored)) {
-    return new Set(stored.map(Number).filter((id) => Number.isInteger(id) && id > 0))
+    return new Set(
+      stored.map(Number).filter((id) => Number.isInteger(id) && id > 0),
+    )
   }
   return new Set((config.excludedUserIds || []).map(Number))
 }
@@ -164,7 +182,8 @@ function leaderboardPayload(db, config, period) {
   })
   const excludedUserIds = excludedUserIdSet(db, config)
   const ranks = rankContext(db, config)
-  const rows = db.listLeaderboard(period, key)
+  const rows = db
+    .listLeaderboard(period, key)
     .filter((row) => Boolean(row.has_usage))
     .map((row) => {
       const excluded = excludedUserIds.has(Number(row.user_id))
@@ -230,11 +249,12 @@ function leaderboardPayload(db, config, period) {
 function rankPayload(db, config) {
   const excludedUserIds = excludedUserIdSet(db, config)
   const ranks = rankContext(db, config)
-  const rows = db.listLeaderboard('all', 'all')
+  const rows = db
+    .listLeaderboard('all', 'all')
     .map((row) => {
       const rankProgress = ranks.forUser(row.user_id)
-      const showSponsorBadge = !excludedUserIds.has(Number(row.user_id)) &&
-        Boolean(row.is_name_public)
+      const showSponsorBadge =
+        !excludedUserIds.has(Number(row.user_id)) && Boolean(row.is_name_public)
       const excluded = excludedUserIds.has(Number(row.user_id))
       return {
         id: row.id,
@@ -253,7 +273,12 @@ function rankPayload(db, config) {
         sortTotalScore: rankProgress.totalScore,
       }
     })
-    .filter((row) => !row.excluded && row.participating && (row.hasUsage || row.sortTotalScore > 0))
+    .filter(
+      (row) =>
+        !row.excluded &&
+        row.participating &&
+        (row.hasUsage || row.sortTotalScore > 0),
+    )
   rows.sort(
     (left, right) =>
       right.sortRankValue - left.sortRankValue ||
@@ -283,7 +308,9 @@ function sponsorPayload(db, config, period) {
     timeZone: config.timeZone,
     allStartTimestamp: config.allStartTimestamp,
   })
-  const entries = db.listSponsorLeaderboard(range.start, range.end).map((row, index) => ({
+  const entries = db
+    .listSponsorLeaderboard(range.start, range.end)
+    .map((row, index) => ({
     rank: index + 1,
     displayName: row.public_name,
     amountCny: Number(row.amount_cny),
@@ -370,7 +397,10 @@ function postpaidEventPayload(event, quotaPerUnit, includeUser = false) {
   }
   if (includeUser) {
     result.userId = Number(event.user_id)
-    result.displayName = event.source_name || event.username || event.public_name ||
+    result.displayName =
+      event.source_name ||
+      event.username ||
+      event.public_name ||
       `用户 #${event.user_id}`
     result.tierName = event.tier_name
   }
@@ -379,11 +409,14 @@ function postpaidEventPayload(event, quotaPerUnit, includeUser = false) {
 
 function weeklyTopEntries(db, config, weekKey, count) {
   const excludedUserIds = excludedUserIdSet(db, config)
-  const rows = db.listLeaderboard('week', weekKey)
-    .filter((row) =>
+  const rows = db
+    .listLeaderboard('week', weekKey)
+    .filter(
+      (row) =>
       Boolean(row.has_usage) &&
       !excludedUserIds.has(Number(row.user_id)) &&
-      Number(row.quota) > 0)
+        Number(row.quota) > 0,
+    )
   rows.sort(
     (left, right) =>
       right.quota - left.quota ||
@@ -407,54 +440,131 @@ function lotteryDrawPayload(draw, includeError = false) {
     updatedAt: Number(draw.updated_at),
     completedAt: Number(draw.completed_at),
   }
-  if (includeError) result.errorMessage = draw.error_message
+  if (includeError) {
+    result.id = draw.id
+    result.errorMessage = draw.error_message
+  }
   return result
 }
 
-function lotteryOpportunityPayload(opportunity, { isMe = false } = {}) {
-  const row = opportunity.row
+function lotteryOpportunityPayload(
+  opportunity,
+  { isMe = false, includeUsage = false } = {},
+) {
   const draw = opportunity.draw
-  return {
+  const result = {
     periodKey: opportunity.periodKey,
     weekStart: opportunity.range.start,
     weekEnd: opportunity.range.end,
     rank: opportunity.rank,
-    displayName: draw?.display_name_snapshot || lotteryDisplayName(row),
-    tokenUsed: Number(row.token_used),
-    quota: Number(row.quota),
-    amountUsd: Number(row.quota) / Number(opportunity.quotaPerUnit || 500_000),
-    requestCount: Number(row.request_count),
+    displayName: draw?.display_name_snapshot || opportunity.displayName,
     isMe,
     draw: draw
       ? {
-        status: draw.status,
-        amountUsd: Number(draw.amount_usd),
-        completedAt: Number(draw.completed_at),
-      }
+          status: draw.status,
+          amountUsd: Number(draw.amount_usd),
+          completedAt: Number(draw.completed_at),
+        }
       : null,
+  }
+  if (includeUsage) {
+    result.tokenUsed = opportunity.tokenUsed
+    result.quota = opportunity.quota
+    result.amountUsd =
+      opportunity.quota / Number(opportunity.quotaPerUnit || 500_000)
+    result.requestCount = opportunity.requestCount
+  }
+  return result
+}
+
+function settleLotteryOpportunities(db, config, pools, currentRange) {
+  const weekKeys = db.listLotteryWeekKeysBefore(currentRange.key)
+  for (const weekKey of weekKeys) {
+    if (db.isLotteryPeriodSettled(lotteryRuleVersion, weekKey)) continue
+    const range = weekRangeFromKey(weekKey, config.timeZone)
+    if (
+      weekKey === currentRange.key &&
+      db.getLotteryWeekUpdatedAt(weekKey) < range.end
+    ) {
+      continue
+    }
+
+    const winners = weeklyTopEntries(db, config, weekKey, pools.length)
+    db.settleLotteryPeriod({
+      ruleVersion: lotteryRuleVersion,
+      periodKey: weekKey,
+      settledAt: Math.floor(Date.now() / 1000),
+      opportunities: winners.map((row, index) => ({
+        rank: index + 1,
+        userId: Number(row.user_id),
+        entryId: Number(row.id),
+        displayNameSnapshot: lotteryDisplayName(row),
+        tokenUsed: Number(row.token_used),
+        quota: Number(row.quota),
+        requestCount: Number(row.request_count),
+        prizePool: pools[index],
+      })),
+    })
+  }
+}
+
+function lotteryDrawFromOpportunity(row) {
+  if (!row.draw_id) return null
+  return {
+    id: row.draw_id,
+    rule_version: row.rule_version,
+    period_key: row.period_key,
+    draw_rank: row.draw_rank,
+    user_id: row.user_id,
+    entry_id: row.entry_id,
+    display_name_snapshot: row.draw_display_name_snapshot,
+    amount_usd: row.draw_amount_usd,
+    quota_amount: row.draw_quota_amount,
+    status: row.draw_status,
+    error_message: row.draw_error_message,
+    operator_user_id: row.draw_operator_user_id,
+    created_at: row.draw_created_at,
+    updated_at: row.draw_updated_at,
+    completed_at: row.draw_completed_at,
   }
 }
 
 function lotteryOpportunities(db, config, pools, auth, currentRange) {
-  const weekKeys = db.listLotteryWeekKeysBefore(currentRange.key)
-  return weekKeys.flatMap((weekKey) => {
-    const range = weekRangeFromKey(weekKey, config.timeZone)
-    const winners = weeklyTopEntries(db, config, weekKey, pools.length)
-    const draws = new Map(
-      db.listLotteryDrawsByPeriod(lotteryRuleVersion, weekKey)
-        .map((draw) => [Number(draw.draw_rank), draw]),
-    )
-    return winners.map((row, index) => ({
-      periodKey: weekKey,
-      range,
-      rank: index + 1,
-      row,
-      pool: pools[index],
-      draw: draws.get(index + 1) || null,
-      isMe: Number(row.user_id) === Number(auth.user.id),
-      quotaPerUnit: config.quotaPerUnit,
-    }))
-  })
+  settleLotteryOpportunities(db, config, pools, currentRange)
+  return db
+    .listLotteryOpportunitiesBefore(lotteryRuleVersion, currentRange.key)
+    .map((row) => {
+      let pool = []
+      try {
+        const parsed = JSON.parse(row.prize_pool_json)
+        if (Array.isArray(parsed)) pool = parsed
+      } catch {
+        // A migrated completed draw no longer needs its historical prize pool.
+      }
+      if (pool.length === 0 && !row.draw_id) {
+        pool = pools[Number(row.draw_rank) - 1] || []
+      }
+      return {
+        periodKey: row.period_key,
+        range: weekRangeFromKey(row.period_key, config.timeZone),
+        rank: Number(row.draw_rank),
+        userId: Number(row.user_id),
+        entryId: Number(row.entry_id),
+        displayName: lotteryDisplayName({
+          display_name: row.current_display_name,
+          anonymous_name: row.current_anonymous_name,
+          is_name_public: row.current_is_name_public,
+          participate_week: row.current_participate_week,
+        }),
+        tokenUsed: Number(row.token_used),
+        quota: Number(row.quota),
+        requestCount: Number(row.request_count),
+        pool,
+        draw: lotteryDrawFromOpportunity(row),
+        isMe: Number(row.user_id) === Number(auth.user.id),
+        quotaPerUnit: config.quotaPerUnit,
+      }
+    })
 }
 
 function lotteryPayload(db, config, auth) {
@@ -467,81 +577,135 @@ function lotteryPayload(db, config, auth) {
   const currentWeekOpportunities = opportunities.filter(
     (opportunity) => opportunity.periodKey === range.key,
   )
-  const myOpportunities = opportunities.filter((opportunity) => opportunity.isMe)
-  const nextOpportunity = myOpportunities.find((opportunity) =>
-    !opportunity.draw || opportunity.draw.status === 'failed')
-  const currentWeekMyOpportunity = currentWeekOpportunities.find((opportunity) => opportunity.isMe)
+  const myOpportunities = opportunities.filter(
+    (opportunity) => opportunity.isMe,
+  )
+  const nextOpportunity = myOpportunities.find(
+    (opportunity) => !opportunity.draw || opportunity.draw.status === 'failed',
+  )
+  const currentWeekMyOpportunity = currentWeekOpportunities.find(
+    (opportunity) => opportunity.isMe,
+  )
   const currentWeekMyDraw = currentWeekMyOpportunity?.draw || null
+  const weeklyHistoryByPeriod = new Map()
+  for (const opportunity of opportunities) {
+    let period = weeklyHistoryByPeriod.get(opportunity.periodKey)
+    if (!period) {
+      period = {
+        periodKey: opportunity.periodKey,
+        weekStart: opportunity.range.start,
+        weekEnd: opportunity.range.end,
+        winners: [],
+      }
+      weeklyHistoryByPeriod.set(opportunity.periodKey, period)
+    }
+    period.winners.push(
+      lotteryOpportunityPayload(opportunity, {
+        isMe: opportunity.isMe,
+        includeUsage: auth.isRoot,
+      }),
+    )
+  }
+  const weeklyHistory = [...weeklyHistoryByPeriod.values()].sort(
+    (left, right) => right.weekStart - left.weekStart,
+  )
   const canDraw = Boolean(
     config.lotteryEnabled && configured && nextOpportunity,
   )
   return {
     enabled: Boolean(config.lotteryEnabled),
     configured,
+    isRoot: auth.isRoot,
     ruleVersion: lotteryRuleVersion,
     periodKey: range.key,
     weekStart: range.start,
     weekEnd: range.end,
     timeZone: config.timeZone,
-    prizesByRank: pools.map((pool) => pool.map((prize) => ({
-      amountUsd: prize.amountUsd,
-      weight: prize.weight,
-    }))),
+    prizesByRank: pools.map((pool) =>
+      pool.map((prize) => ({
+        amountUsd: prize.amountUsd,
+        weight: prize.weight,
+      })),
+    ),
     winners: currentWeekOpportunities.map((opportunity) =>
-      lotteryOpportunityPayload(opportunity, { isMe: opportunity.isMe })),
+      lotteryOpportunityPayload(opportunity, {
+        isMe: opportunity.isMe,
+        includeUsage: auth.isRoot,
+      }),
+    ),
     opportunities: myOpportunities.map((opportunity) =>
-      lotteryOpportunityPayload(opportunity, { isMe: true })),
-    pendingOpportunities: myOpportunities.filter((opportunity) =>
-      !opportunity.draw || opportunity.draw.status === 'failed').length,
+      lotteryOpportunityPayload(opportunity, {
+        isMe: true,
+        includeUsage: auth.isRoot,
+      }),
+    ),
+    pendingOpportunities: myOpportunities.filter(
+      (opportunity) =>
+        !opportunity.draw || opportunity.draw.status === 'failed',
+    ).length,
     me: currentWeekMyOpportunity
       ? {
-        periodKey: currentWeekMyOpportunity.periodKey,
-        rank: currentWeekMyOpportunity.rank,
-        prizes: currentWeekMyOpportunity.pool.map((prize) => ({
-          amountUsd: prize.amountUsd,
-          weight: prize.weight,
-        })),
-        canDraw: Boolean(
-          config.lotteryEnabled && configured &&
-          (!currentWeekMyDraw || currentWeekMyDraw.status === 'failed'),
-        ),
-        draw: currentWeekMyDraw ? lotteryDrawPayload(currentWeekMyDraw, true) : null,
-      }
+          periodKey: currentWeekMyOpportunity.periodKey,
+          rank: currentWeekMyOpportunity.rank,
+          prizes: currentWeekMyOpportunity.pool.map((prize) => ({
+            amountUsd: prize.amountUsd,
+            weight: prize.weight,
+          })),
+          canDraw: Boolean(
+            config.lotteryEnabled &&
+              configured &&
+              (!currentWeekMyDraw || currentWeekMyDraw.status === 'failed'),
+          ),
+          draw: currentWeekMyDraw
+            ? lotteryDrawPayload(currentWeekMyDraw, true)
+            : null,
+        }
       : null,
     nextDraw: nextOpportunity
       ? {
-        periodKey: nextOpportunity.periodKey,
-        weekStart: nextOpportunity.range.start,
-        weekEnd: nextOpportunity.range.end,
-        rank: nextOpportunity.rank,
-        prizes: nextOpportunity.pool.map((prize) => ({
-          amountUsd: prize.amountUsd,
-          weight: prize.weight,
-        })),
-        draw: nextOpportunity.draw ? lotteryDrawPayload(nextOpportunity.draw, true) : null,
-      }
+          periodKey: nextOpportunity.periodKey,
+          weekStart: nextOpportunity.range.start,
+          weekEnd: nextOpportunity.range.end,
+          rank: nextOpportunity.rank,
+          prizes: nextOpportunity.pool.map((prize) => ({
+            amountUsd: prize.amountUsd,
+            weight: prize.weight,
+          })),
+          draw: nextOpportunity.draw
+            ? lotteryDrawPayload(nextOpportunity.draw, true)
+            : null,
+        }
       : null,
     canDraw,
-    history: db.listLotteryDraws(lotteryRuleVersion, 12).map((row) => ({
-      periodKey: row.period_key,
-      rank: Number(row.draw_rank),
-      displayName: row.public_name,
-      amountUsd: Number(row.amount_usd),
-      status: row.status,
-      completedAt: Number(row.completed_at),
-    })),
+    weeklyHistory,
+    adminIssues: auth.isRoot
+      ? db.listUnknownLotteryDraws(lotteryRuleVersion).map((draw) => ({
+          ...lotteryDrawPayload(draw, true),
+          userId: Number(draw.user_id),
+          userName:
+            draw.source_name ||
+            draw.username ||
+            draw.display_name_snapshot ||
+            `用户 #${draw.user_id}`,
+        }))
+      : undefined,
   }
 }
 
 export function createApplication(config, options = {}) {
   const db = options.db || createDatabase(config.databasePath)
-  const lotteryDb = options.lotteryDb || createLotterySiteDatabase(config.databasePath)
-  const client = options.client || new NewApiClient({
+  const lotteryDb =
+    options.lotteryDb || createLotterySiteDatabase(config.databasePath)
+  const client =
+    options.client ||
+    new NewApiClient({
     baseUrl: config.baseUrl,
     timeoutMs: config.requestTimeoutMs,
   })
-  const synchronizer = options.synchronizer || new UsageSynchronizer({ db, client, config })
-  const postpaidService = options.postpaidService || new PostpaidService({ db, client, config })
+  const synchronizer =
+    options.synchronizer || new UsageSynchronizer({ db, client, config })
+  const postpaidService =
+    options.postpaidService || new PostpaidService({ db, client, config })
   const syncLimiter = createRateLimiter({ windowMs: 60_000, limit: 1 })
   const sponsorLimiter = createRateLimiter({ windowMs: 60_000, limit: 6 })
   const lotteryLimiter = createRateLimiter({ windowMs: 60_000, limit: 6 })
@@ -559,7 +723,11 @@ export function createApplication(config, options = {}) {
     const user = await authenticateSession(req)
     const userId = Number(user.id)
     const sourceName = String(user.display_name || user.username || '').trim()
-    const entry = db.ensureAnonymousEntry(userId, Math.floor(Date.now() / 1000), sourceName)
+    const entry = db.ensureAnonymousEntry(
+      userId,
+      Math.floor(Date.now() / 1000),
+      sourceName,
+    )
     return {
       user,
       entry,
@@ -589,7 +757,9 @@ export function createApplication(config, options = {}) {
     }
   }
 
-  const lotterySite = options.lotterySite || createLotterySite({
+  const lotterySite =
+    options.lotterySite ||
+    createLotterySite({
     db: lotteryDb,
     client,
     config,
@@ -606,40 +776,57 @@ export function createApplication(config, options = {}) {
     const freeRenameUsed = Boolean(
       db.getWeeklyFreeRenameEvent(Number(auth.user.id), renamePeriodKey),
     )
-    const supportActivity = supportContext(db, config).forUser(Number(auth.user.id))
+    const supportActivity = supportContext(db, config).forUser(
+      Number(auth.user.id),
+    )
     const rankProgress = rankContext(db, config).forUser(Number(auth.user.id))
-    const openPostpaidGrants = db.listOpenPostpaidGrantsForUser(Number(auth.user.id))
+    const openPostpaidGrants = db.listOpenPostpaidGrantsForUser(
+      Number(auth.user.id),
+    )
     const postpaidLimit = postpaidCreditForTier(
       rankProgress.tierKey,
       rankProgress.division,
     )
-    const postpaidOutstandingQuota = db.getPostpaidExposure(Number(auth.user.id))
+    const postpaidOutstandingQuota = db.getPostpaidExposure(
+      Number(auth.user.id),
+    )
     const postpaidOutstanding = postpaidOutstandingQuota / config.quotaPerUnit
-    const postpaidAvailable = Math.max(0, Math.floor(
+    const postpaidAvailable = Math.max(
+      0,
+      Math.floor(
       (postpaidLimit * config.quotaPerUnit - postpaidOutstandingQuota) /
         config.quotaPerUnit,
-    ))
+      ),
+    )
     const postpaidApplicationPending = openPostpaidGrants.some((grant) =>
-      ['processing', 'unknown'].includes(grant.status))
+      ['processing', 'unknown'].includes(grant.status),
+    )
     const nextPostpaidDueAt = openPostpaidGrants
       .filter((grant) => ['active', 'overdue'].includes(grant.status))
       .reduce((earliest, grant) => {
         const dueAt = Number(grant.due_at) || 0
         return dueAt > 0 && (!earliest || dueAt < earliest) ? dueAt : earliest
       }, 0)
-    const sponsorBadge = sponsorBadgeForAmount(supportActivity.sponsorAmountCny, {
+    const sponsorBadge = sponsorBadgeForAmount(
+      supportActivity.sponsorAmountCny,
+      {
       includePoints: true,
-    })
+      },
+    )
     return {
       id: Number(auth.user.id),
       username: String(auth.user.username || ''),
-      identityName: String(auth.user.display_name || auth.user.username || `用户 #${auth.user.id}`),
+      identityName: String(
+        auth.user.display_name || auth.user.username || `用户 #${auth.user.id}`,
+      ),
       quota: Number(auth.user.quota || 0),
       balanceUsd: Number(auth.user.quota || 0) / config.quotaPerUnit,
       isRoot: auth.isRoot,
       entry: {
         displayName: entry.display_name,
-        currentName: entry.is_name_public ? entry.display_name : entry.anonymous_name,
+        currentName: entry.is_name_public
+          ? entry.display_name
+          : entry.anonymous_name,
         anonymousName: entry.anonymous_name,
         isNamePublic: Boolean(entry.is_name_public),
         participating: Boolean(entry.participating),
@@ -676,20 +863,28 @@ export function createApplication(config, options = {}) {
         outstandingAmount: postpaidOutstanding,
         nextDueAt: nextPostpaidDueAt,
         applicationPending: postpaidApplicationPending,
-        canApply: isRootConfigured(config) && postpaidAvailable > 0 &&
+        canApply:
+          isRootConfigured(config) &&
+          postpaidAvailable > 0 &&
           !postpaidApplicationPending,
         activeGrant: postpaidGrantPayload(
           openPostpaidGrants.find((grant) =>
-            ['active', 'overdue'].includes(grant.status)) || openPostpaidGrants[0],
+            ['active', 'overdue'].includes(grant.status),
+          ) || openPostpaidGrants[0],
           config.quotaPerUnit,
           true,
         ),
         openGrants: openPostpaidGrants.map((grant) =>
-          postpaidGrantPayload(grant, config.quotaPerUnit, true)),
-        grants: db.listUserPostpaidGrants(Number(auth.user.id), 12).map((grant) =>
-          postpaidGrantPayload(grant, config.quotaPerUnit, true)),
-        events: db.listUserPostpaidEvents(Number(auth.user.id), 30).map((event) =>
-          postpaidEventPayload(event, config.quotaPerUnit)),
+          postpaidGrantPayload(grant, config.quotaPerUnit, true),
+        ),
+        grants: db
+          .listUserPostpaidGrants(Number(auth.user.id), 12)
+          .map((grant) =>
+            postpaidGrantPayload(grant, config.quotaPerUnit, true),
+          ),
+        events: db
+          .listUserPostpaidEvents(Number(auth.user.id), 30)
+          .map((event) => postpaidEventPayload(event, config.quotaPerUnit)),
       },
       sponsorActivity: {
         amountCny: supportActivity.sponsorAmountCny,
@@ -701,13 +896,15 @@ export function createApplication(config, options = {}) {
         lastCompletedAt: supportActivity.lastActiveAt || 0,
         activeDays: config.supportActivityActiveDays,
       },
-      sponsorships: db.listSponsorHistory(Number(auth.user.id)).map((order) =>
-        sponsorOrderPayload(order, true)),
+      sponsorships: db
+        .listSponsorHistory(Number(auth.user.id))
+        .map((order) => sponsorOrderPayload(order, true)),
     }
   }
 
   async function handleApi(req, res, url, auth) {
-    if (req.method !== 'GET' && req.method !== 'HEAD') requireMutationRequest(req)
+    if (req.method !== 'GET' && req.method !== 'HEAD')
+      requireMutationRequest(req)
 
     if (req.method === 'GET' && url.pathname === '/api/app/status') {
       const state = synchronizer.getState()
@@ -758,7 +955,9 @@ export function createApplication(config, options = {}) {
             // then a card. No account is exempt, root included. Historical
             // events may still carry cost_type 'unlimited'.
             let costType = 'free'
-            if (db.getWeeklyFreeRenameEvent(Number(auth.user.id), renamePeriodKey)) {
+            if (
+              db.getWeeklyFreeRenameEvent(Number(auth.user.id), renamePeriodKey)
+            ) {
               if (db.consumeRenameCard(Number(auth.user.id), now) === 0) {
                 const error = new Error('本周免费改名已用完，请购买改名卡')
                 error.status = 402
@@ -793,24 +992,37 @@ export function createApplication(config, options = {}) {
             showRankBadge: current.showRankBadge,
           })
         }
-        const visibility = body.visibility && typeof body.visibility === 'object'
+        const visibility =
+          body.visibility && typeof body.visibility === 'object'
           ? body.visibility
           : null
         if (visibility) {
           const current = visibilitySettingsFromEntry(entry)
           db.updateVisibilitySettings(entry.id, {
-            participateDay: typeof visibility.participateDay === 'boolean'
-              ? visibility.participateDay : current.participateDay,
-            participateWeek: typeof visibility.participateWeek === 'boolean'
-              ? visibility.participateWeek : current.participateWeek,
-            participateMonth: typeof visibility.participateMonth === 'boolean'
-              ? visibility.participateMonth : current.participateMonth,
-            participateAll: typeof visibility.participateAll === 'boolean'
-              ? visibility.participateAll : current.participateAll,
-            participateRank: typeof visibility.participateRank === 'boolean'
-              ? visibility.participateRank : current.participateRank,
-            showRankBadge: typeof visibility.showRankBadge === 'boolean'
-              ? visibility.showRankBadge : current.showRankBadge,
+            participateDay:
+              typeof visibility.participateDay === 'boolean'
+                ? visibility.participateDay
+                : current.participateDay,
+            participateWeek:
+              typeof visibility.participateWeek === 'boolean'
+                ? visibility.participateWeek
+                : current.participateWeek,
+            participateMonth:
+              typeof visibility.participateMonth === 'boolean'
+                ? visibility.participateMonth
+                : current.participateMonth,
+            participateAll:
+              typeof visibility.participateAll === 'boolean'
+                ? visibility.participateAll
+                : current.participateAll,
+            participateRank:
+              typeof visibility.participateRank === 'boolean'
+                ? visibility.participateRank
+                : current.participateRank,
+            showRankBadge:
+              typeof visibility.showRankBadge === 'boolean'
+                ? visibility.showRankBadge
+                : current.showRankBadge,
           })
         }
       })
@@ -822,7 +1034,10 @@ export function createApplication(config, options = {}) {
 
     if (req.method === 'POST' && url.pathname === '/api/postpaid/apply') {
       if (!postpaidLimiter(`${auth.user.id}:${clientIp(req)}`)) {
-        return json(res, 429, { success: false, message: '操作过于频繁，请稍后再试' })
+        return json(res, 429, {
+          success: false,
+          message: '操作过于频繁，请稍后再试',
+        })
       }
       const body = await readJson(req)
       const requestKey = cleanText(body.requestKey, {
@@ -857,7 +1072,10 @@ export function createApplication(config, options = {}) {
 
     if (req.method === 'POST' && url.pathname === '/api/rename-cards') {
       if (!sponsorLimiter(`${auth.user.id}:rename:${clientIp(req)}`)) {
-        return json(res, 429, { success: false, message: '操作过于频繁，请稍后再试' })
+        return json(res, 429, {
+          success: false,
+          message: '操作过于频繁，请稍后再试',
+        })
       }
       if (!config.rootAccessToken || !config.rootUserId) {
         return json(res, 503, { success: false, message: '自动扣费尚未配置' })
@@ -870,11 +1088,17 @@ export function createApplication(config, options = {}) {
       })
       const quantity = positiveInteger(body.quantity, '改名卡数量')
       if (quantity > 100) {
-        return json(res, 400, { success: false, message: '单次最多购买 100 张改名卡' })
+        return json(res, 400, {
+          success: false,
+          message: '单次最多购买 100 张改名卡',
+        })
       }
       const existing = db.getRenameCardOrderByRequestKey(requestKey)
       if (existing) {
-        return json(res, 200, { success: true, data: renameCardOrderPayload(existing, true) })
+        return json(res, 200, {
+          success: true,
+          data: renameCardOrderPayload(existing, true),
+        })
       }
       const entry = db.getEntryByUserId(Number(auth.user.id))
       const amountCny = quantity
@@ -901,8 +1125,15 @@ export function createApplication(config, options = {}) {
           createdAt: Math.floor(Date.now() / 1000),
         })
       } catch (error) {
-        if (/idx_rename_card_user_processing|UNIQUE constraint failed/i.test(error.message)) {
-          return json(res, 409, { success: false, message: '已有改名卡订单正在处理' })
+        if (
+          /idx_rename_card_user_processing|UNIQUE constraint failed/i.test(
+            error.message,
+          )
+        ) {
+          return json(res, 409, {
+            success: false,
+            message: '已有改名卡订单正在处理',
+          })
         }
         throw error
       }
@@ -966,7 +1197,10 @@ export function createApplication(config, options = {}) {
         return json(res, 429, { success: false, message: '刷新过于频繁' })
       }
       if (!synchronizer.getState().configured) {
-        return json(res, 503, { success: false, message: 'Root 同步账户尚未配置' })
+        return json(res, 503, {
+          success: false,
+          message: 'Root 同步账户尚未配置',
+        })
       }
       await synchronizer.sync()
       return json(res, 200, { success: true })
@@ -985,7 +1219,10 @@ export function createApplication(config, options = {}) {
 
     if (req.method === 'POST' && url.pathname === '/api/sponsors') {
       if (!sponsorLimiter(`${auth.user.id}:${clientIp(req)}`)) {
-        return json(res, 429, { success: false, message: '操作过于频繁，请稍后再试' })
+        return json(res, 429, {
+          success: false,
+          message: '操作过于频繁，请稍后再试',
+        })
       }
       if (!config.rootAccessToken || !config.rootUserId) {
         return json(res, 503, { success: false, message: '赞助扣费尚未配置' })
@@ -1000,17 +1237,27 @@ export function createApplication(config, options = {}) {
         return json(res, 400, { success: false, message: '请求编号无效' })
       }
       const amountCny = positiveInteger(body.amountCny, '赞助金额')
-      if (amountCny < config.sponsorMinAmount || amountCny > config.sponsorMaxAmount) {
+      if (
+        amountCny < config.sponsorMinAmount ||
+        amountCny > config.sponsorMaxAmount
+      ) {
         return json(res, 400, {
           success: false,
           message: `赞助金额应为 ${config.sponsorMinAmount}-${config.sponsorMaxAmount} 元`,
         })
       }
-      const message = cleanText(body.message, { min: 0, max: 80, label: '留言' })
+      const message = cleanText(body.message, {
+        min: 0,
+        max: 80,
+        label: '留言',
+      })
       const existing = db.getSponsorOrderByRequestKey(requestKey)
       if (existing) {
         if (Number(existing.user_id) !== Number(auth.user.id)) {
-          return json(res, 409, { success: false, message: '请求编号已被使用' })
+          return json(res, 409, {
+            success: false,
+            message: '请求编号已被使用',
+          })
         }
         return json(res, existing.status === 'completed' ? 200 : 202, {
           success: true,
@@ -1043,8 +1290,15 @@ export function createApplication(config, options = {}) {
           createdAt: Math.floor(Date.now() / 1000),
         })
       } catch (error) {
-        if (/idx_sponsor_user_processing|UNIQUE constraint failed/i.test(error.message)) {
-          return json(res, 409, { success: false, message: '已有赞助正在处理' })
+        if (
+          /idx_sponsor_user_processing|UNIQUE constraint failed/i.test(
+            error.message,
+          )
+        ) {
+          return json(res, 409, {
+            success: false,
+            message: '已有赞助正在处理',
+          })
         }
         throw error
       }
@@ -1091,7 +1345,10 @@ export function createApplication(config, options = {}) {
 
     if (req.method === 'POST' && url.pathname === '/api/lottery/draw') {
       if (!lotteryLimiter(`${auth.user.id}:${clientIp(req)}`)) {
-        return json(res, 429, { success: false, message: '操作过于频繁，请稍后再试' })
+        return json(res, 429, {
+          success: false,
+          message: '操作过于频繁，请稍后再试',
+        })
       }
       if (!config.lotteryEnabled) {
         return json(res, 403, { success: false, message: '抽奖活动未开启' })
@@ -1102,34 +1359,57 @@ export function createApplication(config, options = {}) {
       }
       const range = previousWeekRange({ timeZone: config.timeZone })
       const opportunities = lotteryOpportunities(db, config, pools, auth, range)
-      const myOpportunities = opportunities.filter((opportunity) => opportunity.isMe)
+      const myOpportunities = opportunities.filter(
+        (opportunity) => opportunity.isMe,
+      )
       if (myOpportunities.length === 0) {
         return json(res, 403, {
           success: false,
           message: `仅历史周消费榜前 ${pools.length} 名可以抽奖`,
         })
       }
-      const opportunity = myOpportunities.find((item) =>
-        !item.draw || item.draw.status === 'failed')
+      const opportunity = myOpportunities.find(
+        (item) => !item.draw || item.draw.status === 'failed',
+      )
       if (!opportunity) {
-        return json(res, 403, { success: false, message: '暂无可领取的抽奖机会' })
+        return json(res, 403, {
+          success: false,
+          message: '暂无可领取的抽奖机会',
+        })
       }
       const rank = opportunity.rank
       const now = Math.floor(Date.now() / 1000)
-      let draw = opportunity.draw ||
-        db.getLotteryDrawByPeriodRank(lotteryRuleVersion, opportunity.periodKey, rank)
+      let draw =
+        opportunity.draw ||
+        db.getLotteryDrawByPeriodRank(
+          lotteryRuleVersion,
+          opportunity.periodKey,
+          rank,
+        )
       if (draw && draw.status === 'completed') {
-        return json(res, 200, { success: true, data: lotteryDrawPayload(draw, true) })
+        return json(res, 200, {
+          success: true,
+          data: lotteryDrawPayload(draw, true),
+        })
       }
       if (draw && draw.status === 'unknown') {
-        return json(res, 202, { success: true, data: lotteryDrawPayload(draw, true) })
+        return json(res, 202, {
+          success: true,
+          data: lotteryDrawPayload(draw, true),
+        })
       }
       if (draw && draw.status === 'processing') {
-        return json(res, 409, { success: false, message: '抽奖正在处理，请稍后刷新' })
+        return json(res, 409, {
+          success: false,
+          message: '抽奖正在处理，请稍后刷新',
+        })
       }
       if (draw && draw.status === 'failed') {
         if (db.restartLotteryDraw(draw.id, now) === 0) {
-          return json(res, 409, { success: false, message: '抽奖正在处理，请稍后刷新' })
+          return json(res, 409, {
+            success: false,
+            message: '抽奖正在处理，请稍后刷新',
+          })
         }
         draw = db.getLotteryDraw(draw.id)
       }
@@ -1141,15 +1421,18 @@ export function createApplication(config, options = {}) {
           periodKey: opportunity.periodKey,
           rank,
           userId: Number(auth.user.id),
-          entryId: opportunity.row.id,
-          displayNameSnapshot: lotteryDisplayName(opportunity.row),
+          entryId: opportunity.entryId,
+          displayNameSnapshot: opportunity.displayName,
           amountUsd: prize.amountUsd,
           quotaAmount: Math.round(prize.amountUsd * config.quotaPerUnit),
           operatorUserId: config.rootUserId,
           createdAt: now,
         })
         if (!draw || draw.status !== 'processing') {
-          return json(res, 409, { success: false, message: '抽奖正在处理，请稍后刷新' })
+          return json(res, 409, {
+            success: false,
+            message: '抽奖正在处理，请稍后刷新',
+          })
         }
       }
 
@@ -1186,6 +1469,45 @@ export function createApplication(config, options = {}) {
       }
     }
 
+    const lotteryResolutionMatch = /^\/api\/admin\/lottery\/([^/]+)$/.exec(
+      url.pathname,
+    )
+    if (req.method === 'PATCH' && lotteryResolutionMatch) {
+      if (!auth.isRoot) {
+        return json(res, 403, { success: false, message: '无权访问' })
+      }
+      const drawId = decodeURIComponent(lotteryResolutionMatch[1])
+      const draw = db.getLotteryDraw(drawId)
+      if (!draw || Number(draw.rule_version) !== lotteryRuleVersion) {
+        return json(res, 404, { success: false, message: '抽奖记录不存在' })
+      }
+      if (draw.status !== 'unknown') {
+        return json(res, 409, {
+          success: false,
+          message: '该记录无需人工核查',
+        })
+      }
+      const body = await readJson(req)
+      if (!['completed', 'failed'].includes(body.resolution)) {
+        return json(res, 400, { success: false, message: '核查结果无效' })
+      }
+      const message =
+        body.resolution === 'completed'
+          ? 'Root 已确认额度到账'
+          : 'Root 已确认额度未到账，可重新领取'
+      const now = Math.floor(Date.now() / 1000)
+      if (
+        db.resolveUnknownLotteryDraw(draw.id, body.resolution, message, now) ===
+        0
+      ) {
+        return json(res, 409, { success: false, message: '该记录已被处理' })
+      }
+      return json(res, 200, {
+        success: true,
+        data: lotteryDrawPayload(db.getLotteryDraw(draw.id), true),
+      })
+    }
+
     if (url.pathname === '/api/admin/excluded-users') {
       if (!auth.isRoot) {
         return json(res, 403, { success: false, message: '无权访问' })
@@ -1194,7 +1516,9 @@ export function createApplication(config, options = {}) {
       if (req.method === 'GET') {
         return json(res, 200, {
           success: true,
-          data: { userIds: [...excludedUserIdSet(db, config)].sort((a, b) => a - b) },
+          data: {
+            userIds: [...excludedUserIdSet(db, config)].sort((a, b) => a - b),
+          },
         })
       }
 
@@ -1202,16 +1526,25 @@ export function createApplication(config, options = {}) {
         requireMutationRequest(req)
         const body = await readJson(req)
         if (!Array.isArray(body.userIds)) {
-          return json(res, 400, { success: false, message: '屏蔽名单格式无效' })
+          return json(res, 400, {
+            success: false,
+            message: '屏蔽名单格式无效',
+          })
         }
         if (body.userIds.length > 500) {
-          return json(res, 400, { success: false, message: '屏蔽名单最多 500 个用户' })
+          return json(res, 400, {
+            success: false,
+            message: '屏蔽名单最多 500 个用户',
+          })
         }
         const userIds = []
         for (const raw of body.userIds) {
           const id = Number(raw)
           if (!Number.isInteger(id) || id <= 0) {
-            return json(res, 400, { success: false, message: `用户 ID 无效：${raw}` })
+            return json(res, 400, {
+              success: false,
+              message: `用户 ID 无效：${raw}`,
+            })
           }
           if (!userIds.includes(id)) userIds.push(id)
         }
@@ -1291,7 +1624,10 @@ export function createApplication(config, options = {}) {
           createdAt: Number(event.created_at),
         }
       })
-      return json(res, 200, { success: true, data: { summary, orders, events } })
+      return json(res, 200, {
+        success: true,
+        data: { summary, orders, events },
+      })
     }
 
     if (req.method === 'GET' && url.pathname === '/api/admin/postpaid') {
@@ -1307,7 +1643,8 @@ export function createApplication(config, options = {}) {
           summary: {
             grantCount: Number(summary.grant_count),
             userCount: Number(summary.user_count),
-            outstandingAmount: Number(summary.outstanding_quota) / config.quotaPerUnit,
+            outstandingAmount:
+              Number(summary.outstanding_quota) / config.quotaPerUnit,
             overdueAmount: Number(summary.overdue_quota) / config.quotaPerUnit,
             grantedAmount: Number(summary.granted_quota) / config.quotaPerUnit,
             repaidAmount: Number(summary.repaid_quota) / config.quotaPerUnit,
@@ -1315,11 +1652,17 @@ export function createApplication(config, options = {}) {
           grants: db.listAdminPostpaidGrants(100).map((grant) => ({
             ...postpaidGrantPayload(grant, config.quotaPerUnit, true),
             userId: Number(grant.user_id),
-            displayName: grant.source_name || grant.username || grant.public_name ||
+            displayName:
+              grant.source_name ||
+              grant.username ||
+              grant.public_name ||
               `用户 #${grant.user_id}`,
           })),
-          events: db.listAdminPostpaidEvents(200).map((event) =>
-            postpaidEventPayload(event, config.quotaPerUnit, true)),
+          events: db
+            .listAdminPostpaidEvents(200)
+            .map((event) =>
+              postpaidEventPayload(event, config.quotaPerUnit, true),
+            ),
         },
       })
     }
@@ -1339,14 +1682,18 @@ export function createApplication(config, options = {}) {
           user: {
             id: Number(user.id),
             username: String(user.username || ''),
-            displayName: String(user.display_name || user.username || `用户 #${user.id}`),
+            displayName: String(
+              user.display_name || user.username || `用户 #${user.id}`,
+            ),
           },
         },
       })
     }
 
     if (url.pathname === '/api/summary') {
-      const data = await client.getPerfMetricsSummary(req.headers.authorization || '')
+      const data = await client.getPerfMetricsSummary(
+        req.headers.authorization || '',
+      )
       return json(res, 200, { success: true, data })
     }
 
@@ -1436,8 +1783,10 @@ export function createApplication(config, options = {}) {
       }
       json(res, 404, { success: false, message: '接口不存在' })
     } catch (error) {
-      const status = error.status || (error instanceof NewApiError ? error.status : 500)
-      const message = status >= 500 && !(error instanceof NewApiError)
+      const status =
+        error.status || (error instanceof NewApiError ? error.status : 500)
+      const message =
+        status >= 500 && !(error instanceof NewApiError)
         ? '服务暂时不可用'
         : error.message
       if (status >= 500) console.error(error)
@@ -1445,7 +1794,8 @@ export function createApplication(config, options = {}) {
     }
   }
 
-  const server = config.tlsCertPath && config.tlsKeyPath
+  const server =
+    config.tlsCertPath && config.tlsKeyPath
     ? https.createServer(
       {
         cert: fs.readFileSync(config.tlsCertPath),

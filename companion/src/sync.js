@@ -1,5 +1,5 @@
 import { isRootConfigured } from './config.js'
-import { currentPeriodRanges } from './time.js'
+import { currentPeriodRanges, previousWeekRange } from './time.js'
 
 function number(value, fallback = 0) {
   const parsed = Number(value)
@@ -34,6 +34,14 @@ export class UsageSynchronizer {
         timeZone: this.config.timeZone,
         allStartTimestamp: this.config.allStartTimestamp,
       })
+      const completedWeek = previousWeekRange({ timeZone: this.config.timeZone })
+      const needsCompletedWeekSync = this.db.getSetting(
+        'last_finalized_week_key',
+        '',
+      ) !== completedWeek.key
+      if (needsCompletedWeekSync) {
+        ranges.push({ type: 'week', ...completedWeek })
+      }
       const updatedAt = Math.floor(Date.now() / 1000)
       const users = await this.client.getUsers(
         this.config.rootUserId,
@@ -116,6 +124,9 @@ export class UsageSynchronizer {
       }
 
       const now = Math.floor(Date.now() / 1000)
+      if (needsCompletedWeekSync) {
+        this.db.setSetting('last_finalized_week_key', completedWeek.key)
+      }
       this.db.setSetting('last_sync_at', now)
       this.db.setSetting('last_sync_error', '')
       return true

@@ -31,6 +31,10 @@ test('解析按名次奖池并校验字段', () => {
     /weight/,
   )
   assert.throws(
+    () => parseLotteryPrizes('[{"amountUsd":1,"weight":1.5}]'),
+    /weight/,
+  )
+  assert.throws(
     () => parseLotteryPrizes(
       '[[{"amountUsd":1}],[{"amountUsd":1}],[{"amountUsd":1}],[{"amountUsd":1}]]',
     ),
@@ -50,5 +54,7 @@ test('按权重抽取奖项', () => {
   assert.equal(pickLotteryPrize(prizes, 0.89).amountUsd, 10)
   assert.equal(pickLotteryPrize(prizes, 0.9).amountUsd, 50)
   assert.equal(pickLotteryPrize(prizes, 0.999999).amountUsd, 50)
+  assert.ok(prizes.includes(pickLotteryPrize(prizes)))
   assert.throws(() => pickLotteryPrize([]), /奖池为空/)
+  assert.throws(() => pickLotteryPrize(prizes, 1), /测试随机数/)
 })
