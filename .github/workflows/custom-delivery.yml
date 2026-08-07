@@ -14,11 +14,11 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: ghcr.io/hlongyu/new-api
+  IMAGE_NAME: ghcr.io/hlongyu/new-api-app
 
 jobs:
   publish:
-    name: Publish immutable GHCR image
+    name: Publish immutable App image
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
@@ -87,6 +87,8 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
+          file: Dockerfile.app
+          target: app
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -94,8 +96,8 @@ jobs:
           build-args: |
             APP_GIT_COMMIT=${{ steps.release.outputs.sha }}
             APP_DEPLOYED_AT=0
-          cache-from: type=gha,scope=custom-delivery-amd64
-          cache-to: type=gha,mode=max,scope=custom-delivery-amd64
+          cache-from: type=gha,scope=custom-app-amd64
+          cache-to: type=gha,mode=max,scope=custom-app-amd64
           provenance: mode=max
           sbom: true
 
@@ -119,7 +121,7 @@ jobs:
             --arg version "$RELEASE_VERSION" \
             --arg image "$IMAGE_NAME@$IMAGE_DIGEST" \
             --arg built_at "$(date --utc --iso-8601=seconds)" \
-            '{repository: $repository, commit: $commit, version: $version, image: $image, built_at: $built_at}' \
+            '{repository: $repository, commit: $commit, version: $version, app_image: $image, built_at: $built_at}' \
             > release-manifest.json
 
       - name: Upload release manifest
@@ -136,14 +138,14 @@ jobs:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           {
-            echo '### Published image'
+            echo '### Published custom App image'
             echo
             echo "- Version: \`$RELEASE_VERSION\`"
             echo "- Image: \`$IMAGE_NAME@$IMAGE_DIGEST\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
-    name: Deploy selected custom/main image
+    name: Deploy selected custom App image
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -229,10 +231,11 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
         run: |
           set -euo pipefail
-          short_sha=${RELEASE_SHA:0:7}
           for attempt in $(seq 1 30); do
             if response=$(curl --fail --silent --show-error --max-time 10 "$PROD_HEALTH_URL"); then
-              if jq -e --arg sha "$short_sha" '.success == true and (.data.version | contains($sha))' <<< "$response" >/dev/null; then
+              if jq -e --arg sha "$RELEASE_SHA" \
+                '.success == true and .data.service == "new-api-companion" and .data.version.commit == $sha' \
+                <<< "$response" >/dev/null; then
                 exit 0
               fi
             fi

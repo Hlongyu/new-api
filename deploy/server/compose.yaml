@@ -8,12 +8,12 @@ x-logging: &default-logging
 
 services:
   new-api:
-    image: ${NEW_API_IMAGE:?NEW_API_IMAGE is required}
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
     container_name: new-api
     restart: unless-stopped
     command: ['--log-dir', '/app/logs']
     ports:
-      - name: http
+      - name: core-http
         target: 3000
         published: '3000'
         host_ip: 127.0.0.1
@@ -55,8 +55,39 @@ services:
       - backend
       - code-internal
 
+  web:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    container_name: new-api-web
+    restart: unless-stopped
+    read_only: true
+    ports:
+      - name: http
+        target: 3000
+        published: '3002'
+        host_ip: 127.0.0.1
+        protocol: tcp
+    tmpfs:
+      - /tmp:mode=1777
+    depends_on:
+      new-api:
+        condition: service_healthy
+      companion:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3000/api/status | grep -q ''"success":true'' && wget -q -O - http://127.0.0.1:3000/healthz | grep -q ''"service":"new-api-companion"''']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - backend
+
   companion:
-    image: ${NEW_API_IMAGE:?NEW_API_IMAGE is required}
+    image: ${APP_IMAGE:?APP_IMAGE is required}
     container_name: new-api-companion
     restart: unless-stopped
     entrypoint: ['node']
@@ -103,8 +134,8 @@ services:
       LOTTERY_PRIZES: ${LOTTERY_PRIZES:-}
       LOTTERY_FULFILLMENT_INTERVAL_SECONDS: ${LOTTERY_FULFILLMENT_INTERVAL_SECONDS:-15}
       LOTTERY_REDEMPTION_INTERVAL_SECONDS: ${LOTTERY_REDEMPTION_INTERVAL_SECONDS:-60}
-      APP_GIT_COMMIT: ${RELEASE_REVISION:-}
-      APP_DEPLOYED_AT: ${RELEASE_DEPLOYED_AT:-0}
+      APP_GIT_COMMIT: ${APP_RELEASE_REVISION:-}
+      APP_DEPLOYED_AT: ${APP_RELEASE_DEPLOYED_AT:-0}
     depends_on:
       new-api:
         condition: service_healthy

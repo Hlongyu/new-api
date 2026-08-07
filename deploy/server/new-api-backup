@@ -8,6 +8,8 @@ readonly compose_file="/opt/new-api/compose.yaml"
 readonly production_env="/etc/new-api/production.env"
 readonly release_env="/var/lib/new-api/release.env"
 readonly postgres_container="postgres"
+readonly core_container="new-api"
+readonly web_container="new-api-web"
 readonly companion_container="new-api-companion"
 readonly legacy_companion_container="new-api-leaderboard-leaderboard-1"
 readonly lock_file="/run/lock/new-api-backup.lock"
@@ -116,8 +118,12 @@ fi
   docker exec "${postgres_container}" psql \
     -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -Atc \
     "SELECT 'database_bytes=' || pg_database_size(current_database());"
-  docker inspect new-api --format 'new_api_image={{.Config.Image}}'
-  docker inspect new-api --format 'new_api_image_id={{.Image}}'
+  docker inspect "${core_container}" --format 'core_image={{.Config.Image}}'
+  docker inspect "${core_container}" --format 'core_image_id={{.Image}}'
+  if docker inspect "${web_container}" >/dev/null 2>&1; then
+    docker inspect "${web_container}" --format 'app_image={{.Config.Image}}'
+    docker inspect "${web_container}" --format 'app_image_id={{.Image}}'
+  fi
   docker inspect "${active_companion_container}" --format 'companion_container={{.Name}}'
   docker inspect "${active_companion_container}" --format 'companion_image={{.Config.Image}}'
   printf 'companion_database_bytes=%s\n' "$(wc -c <"${temporary_dir}/leaderboard.db")"
