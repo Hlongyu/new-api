@@ -68,7 +68,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates \
     && groupadd --gid 1000 node \
-    && useradd --uid 1000 --gid node --shell /usr/sbin/nologin --create-home node
+    && useradd --uid 1000 --gid node --shell /usr/sbin/nologin --create-home node \
+    && install -d -o 1000 -g 1000 /app/data
 
 COPY --from=builder2 /build/new-api /
 COPY --from=companion-builder /usr/local/bin/node /usr/local/bin/node
