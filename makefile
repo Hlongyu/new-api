@@ -1,4 +1,5 @@
 WEB_DIR = ./web
+COMPANION_DIR = ./companion
 API_DIR = .
 DEV_WEB_PORT ?= 5173
 DEV_COMPOSE_FILE = docker-compose.dev.yml
@@ -8,7 +9,7 @@ DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
+.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test test-companion test-all
 
 all: build-all-web start-api
 
@@ -47,6 +48,13 @@ test:
 		GOWORK=off go test $$root_packages
 	@echo "Testing relaykit Go module..."
 	@cd relaykit && GOWORK=off go test ./...
+
+test-companion:
+	@echo "Testing Companion backend with Node.js 24..."
+	@cd $(COMPANION_DIR) && npm ci --ignore-scripts
+	@cd $(COMPANION_DIR) && npm test
+
+test-all: test test-companion
 
 reset-setup:
 	@echo "Resetting local setup wizard state..."

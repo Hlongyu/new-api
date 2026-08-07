@@ -1,31 +1,11 @@
-FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS builder
+FROM oven/bun:1@sha256:0733e50325078969732ebe3b15ce4c4be5082f18c4ac1a0f0ca4839c2e4e42a7 AS frontend-builder
 
 WORKDIR /build/web
 COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
-COPY ./web ./
-COPY ./VERSION /build/VERSION
+COPY web ./
+COPY VERSION /build/VERSION
 RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build
-
-FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder2
-ENV GO111MODULE=on CGO_ENABLED=0 GOWORK=off
-
-ARG TARGETOS
-ARG TARGETARCH
-ENV GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64}
-ENV GOEXPERIMENT=greenteagc
-
-WORKDIR /build
-
-ADD go.mod go.sum ./
-# relaykit is a local submodule referenced via replace; its go.mod must be
-# present for go mod download to resolve the main module graph.
-ADD relaykit/go.mod ./relaykit/go.mod
-RUN go mod download
-
-COPY . .
-COPY --from=builder /build/web/dist ./web/dist
-RUN go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
 
 FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a AS companion-builder
 
@@ -58,23 +38,25 @@ COPY companion/src ./src
 COPY companion/test ./test
 RUN npm test
 
-FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a
+FROM debian:bookworm-slim@sha256:f06537653ac770703bc45b4b113475bd402f451e85223f0f2837acbf89ab020a AS app
 
 ARG APP_GIT_COMMIT=""
 ARG APP_DEPLOYED_AT="0"
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates tzdata libasan8 libatomic1 wget \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 nginx tzdata wget \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates \
     && groupadd --gid 1000 node \
     && useradd --uid 1000 --gid node --shell /usr/sbin/nologin --create-home node \
-    && install -d -o 1000 -g 1000 /app/data
+    && install -d -o 1000 -g 1000 /app/data \
+    && install -d -o www-data -g www-data /var/cache/nginx
 
-COPY --from=builder2 /build/new-api /
+COPY --from=frontend-builder /build/web/dist /usr/share/nginx/html
 COPY --from=companion-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=companion-builder --chown=1000:1000 /build/companion/src /opt/new-api/companion/src
 COPY --from=companion-builder --chown=1000:1000 /build/companion/package.json /opt/new-api/companion/package.json
+COPY deploy/server/app-nginx.conf /etc/nginx/nginx.conf
 COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
 COPY --from=companion-builder /usr/local/LICENSE /licenses/NODE-LICENSE
 
@@ -82,5 +64,5 @@ ENV APP_GIT_COMMIT=${APP_GIT_COMMIT} \
     APP_DEPLOYED_AT=${APP_DEPLOYED_AT}
 
 EXPOSE 3000 8787
-WORKDIR /data
-ENTRYPOINT ["/new-api"]
+WORKDIR /app
+CMD ["nginx", "-g", "daemon off;"]

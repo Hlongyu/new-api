@@ -1,5 +1,5 @@
 [Unit]
-Description=Back up the new-api PostgreSQL database and production configuration
+Description=Back up new-api PostgreSQL, Companion SQLite, and production configuration
 Requires=docker.service
 After=docker.service
 
