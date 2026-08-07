@@ -110,7 +110,7 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
-            title: t('Weekly Top 3 Draw'),
+            title: '抽奖',
             url: '/weekly-lottery',
             icon: Gift,
           },

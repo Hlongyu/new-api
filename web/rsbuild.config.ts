@@ -20,6 +20,14 @@ export default defineConfig(({ envMode }) => {
     process.env.VITE_LEADERBOARD_URL ||
     env.rawPublicVars.VITE_LEADERBOARD_URL ||
     'http://localhost:8787'
+  const lotteryUrl =
+    process.env.VITE_LOTTERY_URL ||
+    env.rawPublicVars.VITE_LOTTERY_URL ||
+    leaderboardUrl
+  const lotteryPreviewUserId =
+    process.env.VITE_LOTTERY_PREVIEW_USER_ID ||
+    env.rawPublicVars.VITE_LOTTERY_PREVIEW_USER_ID ||
+    ''
 
   const isProd = envMode === 'production'
   const devProxy = {
@@ -30,6 +38,11 @@ export default defineConfig(({ envMode }) => {
       ])
     ) as Record<string, { target: string; changeOrigin: boolean }>),
     '/leaderboard': { target: leaderboardUrl, changeOrigin: true },
+    '/lottery': {
+      target: lotteryUrl,
+      changeOrigin: true,
+      headers: { Origin: new URL(lotteryUrl).origin },
+    },
   }
   return {
     plugins: [pluginReact(), pluginTailwindcss({ optimize: false })],
@@ -61,6 +74,10 @@ export default defineConfig(({ envMode }) => {
       },
     },
     source: {
+      define: {
+        'import.meta.env.VITE_LOTTERY_PREVIEW_USER_ID':
+          JSON.stringify(lotteryPreviewUserId),
+      },
       entry: {
         index: './src/main.tsx',
       },

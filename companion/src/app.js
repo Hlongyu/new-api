@@ -1,10 +1,18 @@
 import fs from 'node:fs'
 import http from 'node:http'
 import https from 'node:https'
+import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { createDatabase } from './db.js'
 import { isRootConfigured } from './config.js'
-import { clientIp, createRateLimiter, json, readJson } from './http.js'
+import {
+  clientIp,
+  createRateLimiter,
+  json,
+  readJson,
+  serveStatic,
+} from './http.js'
 import { createLotterySiteDatabase } from './lottery-site-db.js'
 import { createLotterySite } from './lottery-site.js'
 import { NewApiClient, NewApiError } from './new-api-client.js'
@@ -24,6 +32,12 @@ import {
 
 const lotteryRuleVersion = 2
 const displayNameMaxLength = 36
+const lotterySitePublicDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'public',
+  'lottery',
+)
 
 function cleanText(value, { min = 1, max = 40, label = '内容' } = {}) {
   const text = String(value ?? '')
@@ -1768,6 +1782,19 @@ export function createApplication(config, options = {}) {
     url.pathname = site.localPath
 
     try {
+      if (
+        site.name === 'lottery' &&
+        externalUrl.pathname === site.basePath &&
+        site.basePath
+      ) {
+        res.writeHead(302, {
+          Location: `${site.basePath}/`,
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        })
+        res.end()
+        return
+      }
       if (url.pathname.startsWith('/api/')) {
         if (site.name === 'models') {
           const user = await authenticateSession(req)
@@ -1779,6 +1806,13 @@ export function createApplication(config, options = {}) {
           const auth = await authenticate(req)
           await handleApi(req, res, url, auth)
         }
+        return
+      }
+      if (
+        site.name === 'lottery' &&
+        req.method === 'GET' &&
+        serveStatic(lotterySitePublicDir, url.pathname, res)
+      ) {
         return
       }
       json(res, 404, { success: false, message: '接口不存在' })

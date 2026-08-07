@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "preview:lottery": "node src/lottery-preview-server.js",
     "test": "node --test"
   },
   "engines": {

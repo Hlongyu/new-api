@@ -24,7 +24,7 @@ async function api(baseUrl, pathname, {
   return { status: response.status, body: payload }
 }
 
-test('root 配置活动发放次数，用户模拟或真实抽奖并异步获得合并订阅', async () => {
+test('root 配置活动发放次数，用户单抽或十连抽并异步获得合并订阅', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lottery-site-app-'))
   const users = [
     { id: 1, username: 'root', display_name: 'Root', role: 100, status: 1 },
@@ -109,6 +109,58 @@ test('root 配置活动发放次数，用户模拟或真实抽奖并异步获得
   const now = Math.floor(Date.now() / 1000)
 
   try {
+    const redirect = await fetch(`${baseUrl}/lottery`, { redirect: 'manual' })
+    assert.equal(redirect.status, 302)
+    assert.equal(redirect.headers.get('location'), '/lottery/')
+
+    const lotteryPage = await fetch(`${baseUrl}/lottery/`)
+    const pageHtml = await lotteryPage.text()
+    assert.equal(lotteryPage.status, 200)
+    assert.match(lotteryPage.headers.get('content-type'), /^text\/html/)
+    assert.doesNotMatch(pageHtml, /class="lottery-navigation"/)
+    assert.match(pageHtml, /href="\/dashboard" id="brandLink"/)
+    assert.match(pageHtml, /class="currency-balance top-currency-balance"/)
+    assert.match(pageHtml, /aria-label="进度与概率"/)
+    assert.match(pageHtml, /id="themeButton"/)
+    assert.match(pageHtml, /id="themeMenu"/)
+    assert.match(pageHtml, /aria-label="风格切换，当前为明亮"/)
+    assert.match(pageHtml, /<strong>明亮<\/strong>/)
+    assert.match(pageHtml, /<strong>暗黑<\/strong>/)
+    assert.doesNotMatch(pageHtml, /二次元/)
+    assert.doesNotMatch(pageHtml, /id="themeSelect"/)
+    assert.match(pageHtml, /<html lang="zh-CN" data-theme="starlight">/)
+    assert.match(pageHtml, /<title>星辉祈愿<\/title>/)
+    assert.match(pageHtml, /data-theme-option="starlight" aria-checked="true"/)
+    assert.doesNotMatch(pageHtml, /id="userName"/)
+    assert.doesNotMatch(pageHtml, /id="campaignName"/)
+    assert.doesNotMatch(pageHtml, /id="phaseLabel"/)
+    assert.doesNotMatch(pageHtml, /id="countdown"/)
+    assert.doesNotMatch(pageHtml, /id="ruleTime"/)
+    assert.doesNotMatch(pageHtml, /赤月回响/)
+    assert.doesNotMatch(pageHtml, /id="poolSelect"/)
+    assert.doesNotMatch(pageHtml, /id="adminLink"/)
+    assert.doesNotMatch(pageHtml, /data-mode=/)
+    assert.doesNotMatch(pageHtml, /data-count="5"/)
+    assert.doesNotMatch(pageHtml, /id="quickMode"/)
+    assert.doesNotMatch(pageHtml, />快速</)
+    assert.match(pageHtml, /id="singleDrawButton"/)
+    assert.match(pageHtml, /id="tenDrawButton"/)
+    assert.doesNotMatch(pageHtml, /id="settlementState"/)
+    assert.doesNotMatch(pageHtml, /发放中/)
+    assert.match(pageHtml, /class="currency-icon" aria-hidden="true"><\/i><b>×1<\/b>/)
+    assert.match(pageHtml, /class="currency-icon" aria-hidden="true"><\/i><b>×10<\/b>/)
+
+    const threeModule = await fetch(`${baseUrl}/lottery/vendor/three.module.js`)
+    assert.equal(threeModule.status, 200)
+    assert.match(threeModule.headers.get('content-type'), /^text\/javascript/)
+
+    const threeCore = await fetch(`${baseUrl}/lottery/vendor/three.core.min.js`)
+    assert.equal(threeCore.status, 200)
+    assert.match(threeCore.headers.get('content-type'), /^text\/javascript/)
+
+    const removedAdmin = await fetch(`${baseUrl}/lottery/admin/`)
+    assert.equal(removedAdmin.status, 404)
+
     const permanent = application.lotteryDb.getDefaultCampaign()
     assert.equal(permanent.name, '赤月回响')
     assert.equal(Number(permanent.is_permanent), 1)
@@ -125,6 +177,7 @@ test('root 配置活动发放次数，用户模拟或真实抽奖并异步获得
     assert.equal(rootStatus.body.data.redemptionProgress.remainingUsd, 50)
     assert.equal(rootStatus.body.data.redemptionProgress.progressRatio, 0.5)
     const emptyAliceStatus = await api(baseUrl, '/api/status')
+    assert.equal(emptyAliceStatus.body.data.mainSiteUrl, 'https://new-api.example.com')
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.grantedDraws, 0)
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.observedUsd, 0)
     assert.equal(emptyAliceStatus.body.data.redemptionProgress.remainingUsd, 100)
@@ -155,11 +208,6 @@ test('root 配置活动发放次数，用户模拟或真实抽奖并异步获得
     assert.equal(dashboard.body.data.redemption.userCount, 2)
     assert.equal(dashboard.body.data.redemption.observedUsd, 460)
     assert.equal(dashboard.body.data.redemption.grantedDraws, 4)
-
-    const page = await fetch(`${baseUrl}/lottery/`)
-    assert.equal(page.status, 404)
-    assert.equal((await page.json()).message, '接口不存在')
-    assert.match(page.headers.get('content-type'), /application\/json/)
 
     const created = await api(baseUrl, '/api/admin/campaigns', {
       method: 'POST', cookie: 'session=root', userId: 1,
@@ -201,27 +249,33 @@ test('root 配置活动发放次数，用户模拟或真实抽奖并异步获得
     assert.equal(application.lotteryDb.getBalance(campaignId, 1), 0)
     assert.equal(application.lotteryDb.getBalance(campaignId, 43), 0)
 
-    const simulated = await api(baseUrl, '/api/simulate', {
+    const removedSimulation = await api(baseUrl, '/api/simulate', {
       method: 'POST', body: { count: 10, campaignId },
     })
-    assert.equal(simulated.status, 200)
-    assert.equal(simulated.body.data.items.length, 10)
+    assert.equal(removedSimulation.status, 404)
     assert.equal(application.lotteryDb.getBalance(campaignId, 42), 10)
     assert.equal(application.lotteryDb.listUserDraws(42).length, 0)
 
+    const invalidFiveDraw = await api(baseUrl, '/api/draw', {
+      method: 'POST', body: { count: 5, campaignId, requestKey: 'draw_five_integration' },
+    })
+    assert.equal(invalidFiveDraw.status, 400)
+    assert.equal(invalidFiveDraw.body.message, '仅支持单抽或十连抽')
+    assert.equal(application.lotteryDb.getBalance(campaignId, 42), 10)
+
     const drawn = await api(baseUrl, '/api/draw', {
-      method: 'POST', body: { count: 5, campaignId, requestKey: 'draw_request_integration' },
+      method: 'POST', body: { count: 10, campaignId, requestKey: 'draw_request_integration' },
     })
     assert.equal(drawn.status, 201)
-    assert.equal(drawn.body.data.items.length, 5)
-    assert.equal(application.lotteryDb.getBalance(campaignId, 42), 5)
+    assert.equal(drawn.body.data.items.length, 10)
+    assert.equal(application.lotteryDb.getBalance(campaignId, 42), 0)
 
     const duplicate = await api(baseUrl, '/api/draw', {
-      method: 'POST', body: { count: 5, campaignId, requestKey: 'draw_request_integration' },
+      method: 'POST', body: { count: 10, campaignId, requestKey: 'draw_request_integration' },
     })
     assert.equal(duplicate.status, 200)
     assert.equal(duplicate.body.data.id, drawn.body.data.id)
-    assert.equal(application.lotteryDb.getBalance(campaignId, 42), 5)
+    assert.equal(application.lotteryDb.getBalance(campaignId, 42), 0)
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await application.lotterySite.processFulfillments()

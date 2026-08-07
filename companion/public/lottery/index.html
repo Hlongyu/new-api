@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="starlight">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#162541">
+  <title>星辉祈愿</title>
+  <link rel="stylesheet" href="./styles.css?v=30">
+</head>
+<body>
+  <canvas id="scene" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="wish-stage" id="wishStage" hidden>
+    <button class="wish-tap" id="wishTap" type="button" hidden aria-label="继续"></button>
+    <div class="wish-card" id="wishCard" hidden aria-hidden="true">
+      <p class="wish-ordinal" id="wishOrdinal"></p>
+      <p class="wish-rarity" id="wishRarity"></p>
+      <h2 class="wish-amount" id="wishAmount"></h2>
+      <p class="wish-stars" id="wishStars"></p>
+    </div>
+    <div class="wish-summary" id="wishSummary" hidden aria-hidden="true">
+      <p class="wish-summary-head" id="wishSummaryHead"></p>
+      <ol class="wish-grid" id="wishGrid"></ol>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <a class="brand" href="/dashboard" id="brandLink" aria-label="返回 New API 控制台">
+      <span class="brand-mark" id="brandMark">&#10022;</span>
+      <span>
+        <strong id="brandName">星辉祈愿</strong>
+        <small id="brandSubtitle">七日星约</small>
+      </span>
+    </a>
+    <div class="top-actions">
+      <div class="currency-balance top-currency-balance" title="祈愿晶石余额" aria-label="祈愿晶石余额">
+        <div>
+          <i class="currency-icon currency-icon-large" aria-hidden="true"></i>
+          <strong id="balance">--</strong>
+        </div>
+      </div>
+      <button class="icon-action" id="rulesButton" type="button" title="进度与概率"
+        aria-label="进度与概率" aria-haspopup="dialog">?</button>
+      <button class="icon-action" id="historyButton" type="button" title="奖励记录" aria-label="奖励记录">&#9201;</button>
+      <div class="theme-switcher" id="themeSwitcher">
+        <button class="theme-trigger" id="themeButton" type="button"
+          title="风格切换" aria-label="风格切换，当前为明亮"
+          aria-haspopup="menu" aria-expanded="false" aria-controls="themeMenu">
+          <span class="theme-trigger-icon" aria-hidden="true">&#9680;</span>
+        </button>
+        <div class="theme-menu" id="themeMenu" role="menu" aria-label="选择界面风格" hidden>
+          <button type="button" role="menuitemradio" data-theme-option="starlight" aria-checked="true">
+            <span class="theme-swatch theme-swatch-starlight" aria-hidden="true"></span>
+            <strong>明亮</strong>
+            <b aria-hidden="true">&#10003;</b>
+          </button>
+          <button type="button" role="menuitemradio" data-theme-option="gothic" aria-checked="false">
+            <span class="theme-swatch theme-swatch-gothic" aria-hidden="true"></span>
+            <strong>暗黑</strong>
+            <b aria-hidden="true">&#10003;</b>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="vault" id="vault">
+    <section class="ritual" aria-label="抽奖结果">
+      <div class="result-field" id="resultField" aria-live="polite"></div>
+      <div class="settlement" id="settlement" hidden>
+        <span id="settlementLabel">本次获得</span>
+        <strong id="settlementAmount">$0</strong>
+      </div>
+    </section>
+
+    <section class="control-deck" id="controlDeck" aria-label="抽奖控制">
+      <button class="wish-action wish-action-single" id="singleDrawButton" type="button" disabled>
+        <span id="singleDrawButtonText">单次祈愿</span>
+        <small><i class="currency-icon" aria-hidden="true"></i><b>×1</b></small>
+      </button>
+
+      <button class="wish-action wish-action-ten" id="tenDrawButton" type="button" disabled>
+        <span id="tenDrawButtonText">十连祈愿</span>
+        <small><i class="currency-icon" aria-hidden="true"></i><b>×10</b></small>
+      </button>
+
+    </section>
+  </main>
+
+  <dialog id="historyDialog" class="drawer">
+    <form method="dialog" class="dialog-head">
+      <div>
+        <span>LOT LOG</span>
+        <h2>奖励记录</h2>
+      </div>
+      <button class="icon-action" value="close" aria-label="关闭">&#215;</button>
+    </form>
+    <div class="history-list" id="historyList"></div>
+  </dialog>
+
+  <dialog id="rulesDialog" class="drawer rules-drawer" aria-labelledby="rulesDialogTitle">
+    <form method="dialog" class="dialog-head">
+      <div>
+        <span>WISH INFO</span>
+        <h2 id="rulesDialogTitle">进度与概率</h2>
+      </div>
+      <button class="icon-action" value="close" aria-label="关闭">&#215;</button>
+    </form>
+    <section class="rules-progress-section" id="redemptionProgressSection" hidden>
+      <h3 class="drawer-section-title">当前进度</h3>
+      <div class="redemption-progress" id="redemptionProgress">
+        <div class="redemption-summary">
+          <span>兑换额度赠送</span>
+          <strong><b id="redemptionDraws">0</b> 次抽奖</strong>
+        </div>
+        <div class="redemption-meter">
+          <div>
+            <span id="redemptionValue">本轮 $0 / $100</span>
+            <b id="redemptionNeeded">还差 $100</b>
+          </div>
+          <span class="redemption-track" aria-hidden="true"><i id="redemptionBar"></i></span>
+        </div>
+      </div>
+    </section>
+    <dl class="rule-summary">
+      <div><dt>奖励期限</dt><dd>领取后 7 天</dd></div>
+      <div><dt>单抽期望</dt><dd id="ruleExpected">--</dd></div>
+    </dl>
+    <h3 class="drawer-section-title">奖项概率</h3>
+    <div class="odds-list" id="oddsList"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js?v=35"></script>
+</body>
+</html>
