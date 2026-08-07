@@ -45,11 +45,22 @@ The image contains both runtimes but each container has one responsibility:
 headless Node.js API on port 8787. The containers always use the same immutable
 image digest.
 
+The public reverse proxy is part of the delivery contract. The browser loads the
+frontend from the Go service, but the frontend calls Companion through the same
+origin at `/leaderboard/api`, `/modelstatus/api`, and `/lottery/api`. Route those
+API prefixes to `127.0.0.1:8787` and all other paths to `127.0.0.1:3000`; do not
+expose port 8787 directly. Without this routing, the Go frontend fallback returns
+HTML for Companion API requests and the UI reports that leaderboard data is
+unavailable. Use `deploy/server/reverse-proxy.nginx.conf.example` as the Nginx
+location fragment and set `COMPANION_PUBLIC_URL` to the public leaderboard
+origin, including the `/leaderboard` path.
+
 Install the repository-owned files as root:
 
 ```text
 deploy/server/compose.yaml                 -> /opt/new-api/compose.yaml
 deploy/server/production.env.example       -> /etc/new-api/production.env (then set secrets)
+deploy/server/reverse-proxy.nginx.conf.example -> reverse proxy configuration
 deploy/server/new-api-deploy               -> /usr/local/sbin/new-api-deploy
 deploy/server/new-api-deploy.sudoers       -> /etc/sudoers.d/new-api-deploy
 deploy/server/new-api-backup               -> /usr/local/sbin/new-api-backup
