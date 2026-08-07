@@ -401,6 +401,39 @@ export function createDatabase(databasePath) {
            display_name_snapshot, 0, 0, 0, '[]', created_at
     FROM lottery_draws
   `)
+  db.exec(`
+    UPDATE lottery_opportunities AS opportunity
+    SET token_used = (
+          SELECT aggregate.token_used
+          FROM usage_aggregates AS aggregate
+          WHERE aggregate.entry_id = opportunity.entry_id
+            AND aggregate.period_type = 'week'
+            AND aggregate.period_key = opportunity.period_key
+        ),
+        quota = (
+          SELECT aggregate.quota
+          FROM usage_aggregates AS aggregate
+          WHERE aggregate.entry_id = opportunity.entry_id
+            AND aggregate.period_type = 'week'
+            AND aggregate.period_key = opportunity.period_key
+        ),
+        request_count = (
+          SELECT aggregate.request_count
+          FROM usage_aggregates AS aggregate
+          WHERE aggregate.entry_id = opportunity.entry_id
+            AND aggregate.period_type = 'week'
+            AND aggregate.period_key = opportunity.period_key
+        )
+    WHERE opportunity.quota <= 0
+      AND EXISTS (
+        SELECT 1
+        FROM usage_aggregates AS aggregate
+        WHERE aggregate.entry_id = opportunity.entry_id
+          AND aggregate.period_type = 'week'
+          AND aggregate.period_key = opportunity.period_key
+          AND aggregate.quota > 0
+      )
+  `)
 
   const statements = {
     insertEntry: db.prepare(`

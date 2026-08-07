@@ -586,6 +586,7 @@ test('每周消费金额榜前三可按名次奖池抽奖，历史机会可累�
 
     const weekKey = previousWeekRange({ timeZone: config.timeZone }).key
     const previousWeekKey = '2026-07-13'
+    const unknownUsageWeekKey = '2026-07-06'
     const updatedAt = Math.floor(Date.now() / 1000)
     for (const [userId, tokenUsed, quota] of [
       [42, 1000, 300],
@@ -618,6 +619,40 @@ test('每周消费金额榜前三可按名次奖池抽奖，历史机会可累�
       requestCount: 1,
       updatedAt,
     })
+    application.db.settleLotteryPeriod({
+      ruleVersion: 2,
+      periodKey: unknownUsageWeekKey,
+      settledAt: updatedAt,
+      opportunities: [{
+        rank: 1,
+        userId: 42,
+        entryId: aliceEntry.id,
+        displayNameSnapshot: '旧记录榜首',
+        tokenUsed: 0,
+        quota: 0,
+        requestCount: 0,
+        prizePool: config.lotteryPrizes[0],
+      }],
+    })
+    const unknownUsageDraw = application.db.createLotteryDraw({
+      id: 'legacy-completed-draw',
+      ruleVersion: 2,
+      periodKey: unknownUsageWeekKey,
+      rank: 1,
+      userId: 42,
+      entryId: aliceEntry.id,
+      displayNameSnapshot: '旧记录榜首',
+      amountUsd: 10,
+      quotaAmount: 5_000_000,
+      operatorUserId: 1,
+      createdAt: updatedAt,
+    })
+    application.db.finishLotteryDraw(
+      unknownUsageDraw.id,
+      'completed',
+      '',
+      updatedAt,
+    )
 
     const bobView = await request(baseUrl, '/leaderboard/api/lottery', {
       cookie: 'session=bob',
@@ -638,7 +673,7 @@ test('每周消费金额榜前三可按名次奖池抽奖，历史机会可累�
     assert.equal('quota' in bobView.body.data.winners[0], false)
     assert.equal('amountUsd' in bobView.body.data.winners[0], false)
     assert.equal('requestCount' in bobView.body.data.winners[0], false)
-    assert.equal(bobView.body.data.weeklyHistory.length, 2)
+    assert.equal(bobView.body.data.weeklyHistory.length, 3)
     assert.equal(bobView.body.data.weeklyHistory[0].periodKey, weekKey)
     assert.equal(bobView.body.data.weeklyHistory[0].winners.length, 2)
     assert.equal(bobView.body.data.weeklyHistory[1].periodKey, previousWeekKey)
@@ -695,6 +730,14 @@ test('每周消费金额榜前三可按名次奖池抽奖，历史机会可累�
     assert.equal(
       rootView.body.data.weeklyHistory[0].winners[0].amountUsd,
       0.0006,
+    )
+    assert.equal(
+      'amountUsd' in rootView.body.data.weeklyHistory[2].winners[0],
+      false,
+    )
+    assert.equal(
+      rootView.body.data.weeklyHistory[2].winners[0].draw.amountUsd,
+      10,
     )
     assert.equal(rootView.body.data.adminIssues.length, 1)
     assert.equal(rootView.body.data.adminIssues[0].id, carolDraw.body.data.id)
@@ -805,7 +848,7 @@ test('每周消费金额榜前三可按名次奖池抽奖，历史机会可累�
     assert.equal(drawnView.body.data.winners[0].draw.amountUsd, 5)
     assert.equal(drawnView.body.data.winners[0].displayName, 'Alice Draw')
     assert.equal(drawnView.body.data.winners[1].draw.amountUsd, 2)
-    assert.equal(drawnView.body.data.weeklyHistory.length, 2)
+    assert.equal(drawnView.body.data.weeklyHistory.length, 3)
     assert.equal(
       drawnView.body.data.weeklyHistory[0].winners[0].draw.amountUsd,
       5,

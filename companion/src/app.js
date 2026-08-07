@@ -467,7 +467,7 @@ function lotteryOpportunityPayload(
         }
       : null,
   }
-  if (includeUsage) {
+  if (includeUsage && opportunity.quota > 0) {
     result.tokenUsed = opportunity.tokenUsed
     result.quota = opportunity.quota
     result.amountUsd =

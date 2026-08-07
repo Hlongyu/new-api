@@ -185,6 +185,15 @@ test('旧版单人抽奖表迁移为按名次抽奖表并保留记录', () => {
     displayName: '公开名称',
     createdAt: 1,
   })
+  initial.upsertAggregate({
+    entryId,
+    periodType: 'week',
+    periodKey: '2026-07-13',
+    tokenUsed: 1_234,
+    quota: 6_000_000,
+    requestCount: 9,
+    updatedAt: 12,
+  })
   initial.close()
 
   const legacy = new DatabaseSync(databasePath)
@@ -229,8 +238,18 @@ test('旧版单人抽奖表迁移为按名次抽奖表并保留记录', () => {
         rank: item.draw_rank,
         userId: item.user_id,
         drawId: item.draw_id,
+        tokenUsed: item.token_used,
+        quota: item.quota,
+        requestCount: item.request_count,
       })),
-      [{ rank: 1, userId: 7, drawId: 'draw-1' }],
+      [{
+        rank: 1,
+        userId: 7,
+        drawId: 'draw-1',
+        tokenUsed: 1_234,
+        quota: 6_000_000,
+        requestCount: 9,
+      }],
     )
 
     const second = db.createLotteryDraw({
