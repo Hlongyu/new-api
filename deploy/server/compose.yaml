@@ -68,6 +68,7 @@ services:
         protocol: tcp
     tmpfs:
       - /tmp:mode=1777
+      - /var/lib/nginx:mode=0755
     depends_on:
       new-api:
         condition: service_healthy
