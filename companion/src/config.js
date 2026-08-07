@@ -60,6 +60,7 @@ export function loadConfig(env = process.env) {
     modelStatusBasePath: normalizeOptionalBasePath(env.MODEL_STATUS_BASE_PATH, '/modelstatus'),
     lotterySiteBasePath: normalizeOptionalBasePath(env.LOTTERY_SITE_BASE_PATH, '/lottery'),
     publicUrl: (env.PUBLIC_URL ?? '').trim().replace(/\/+$/, ''),
+    mainSiteUrl: (env.NEW_API_PUBLIC_URL ?? '').trim().replace(/\/+$/, ''),
     tlsCertPath: tlsCertPath ? path.resolve(tlsCertPath) : '',
     tlsKeyPath: tlsKeyPath ? path.resolve(tlsKeyPath) : '',
     baseUrl,

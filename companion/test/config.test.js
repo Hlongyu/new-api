@@ -35,6 +35,7 @@ test('解析挂载路径和赞助额度换算配置', () => {
     APP_GIT_COMMIT: '85863669e6456643c74af097f3ac73af5aa83445',
     APP_DEPLOYED_AT: '1785830400',
     PUBLIC_URL: 'https://code.xxcd.top/leaderboard/',
+    NEW_API_PUBLIC_URL: 'https://console.xxcd.top/',
     NEW_API_QUOTA_PER_UNIT: '500000',
     SPONSOR_MIN_AMOUNT: '2',
     SPONSOR_MAX_AMOUNT: '800',
@@ -51,6 +52,7 @@ test('解析挂载路径和赞助额度换算配置', () => {
   assert.equal(config.appGitCommit, '85863669e6456643c74af097f3ac73af5aa83445')
   assert.equal(config.appDeployedAt, 1_785_830_400)
   assert.equal(config.publicUrl, 'https://code.xxcd.top/leaderboard')
+  assert.equal(config.mainSiteUrl, 'https://console.xxcd.top')
   assert.equal(config.quotaPerUnit, 500_000)
   assert.equal(config.sponsorMinAmount, 2)
   assert.equal(config.sponsorMaxAmount, 800)

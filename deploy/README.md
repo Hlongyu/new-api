@@ -86,7 +86,9 @@ The public reverse proxy sends all application traffic to the Web/Gateway at
 implementation endpoints. Use
 `deploy/server/reverse-proxy.nginx.conf.example` inside the public HTTPS server
 block. Set `COMPANION_PUBLIC_URL` to the public leaderboard origin, including
-the `/leaderboard` path.
+the `/leaderboard` path. When the New API console uses a different public
+origin, set `NEW_API_PUBLIC_URL` to that origin; otherwise Companion derives it
+from `COMPANION_PUBLIC_URL`.
 
 Install the repository-owned files as root:
 
