@@ -224,6 +224,14 @@ test('旧版单人抽奖表迁移为按名次抽奖表并保留记录', () => {
     assert.equal(migrated.status, 'completed')
     assert.equal(migrated.amount_usd, 5)
     assert.equal(migrated.display_name_snapshot, '公开名称')
+    assert.deepEqual(
+      db.listLotteryOpportunitiesBefore(1, '2026-07-13').map((item) => ({
+        rank: item.draw_rank,
+        userId: item.user_id,
+        drawId: item.draw_id,
+      })),
+      [{ rank: 1, userId: 7, drawId: 'draw-1' }],
+    )
 
     const second = db.createLotteryDraw({
       id: 'draw-2',

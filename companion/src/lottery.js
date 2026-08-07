@@ -1,3 +1,5 @@
+import { randomInt } from 'node:crypto'
+
 const defaultPrizePools = [
   [
     { amountUsd: 1, weight: 40 },
@@ -33,8 +35,8 @@ function parsePool(pool, rank) {
     if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
       throw new Error('LOTTERY_PRIZES 中 amountUsd 必须为正数')
     }
-    if (!Number.isFinite(weight) || weight <= 0) {
-      throw new Error('LOTTERY_PRIZES 中 weight 必须为正数')
+    if (!Number.isSafeInteger(weight) || weight <= 0) {
+      throw new Error('LOTTERY_PRIZES 中 weight 必须为正整数')
     }
     return { amountUsd, weight }
   })
@@ -61,12 +63,21 @@ export function parseLotteryPrizes(text) {
   return pools.map((pool, index) => parsePool(pool, index + 1))
 }
 
-export function pickLotteryPrize(prizes, random = Math.random()) {
+export function pickLotteryPrize(prizes, random) {
   if (!Array.isArray(prizes) || prizes.length === 0) {
     throw new Error('奖池为空')
   }
   const totalWeight = prizes.reduce((sum, prize) => sum + prize.weight, 0)
-  let remaining = random * totalWeight
+  if (!Number.isSafeInteger(totalWeight) || totalWeight <= 0) {
+    throw new Error('奖池总权重必须为正整数')
+  }
+  if (random !== undefined &&
+      (!Number.isFinite(random) || random < 0 || random >= 1)) {
+    throw new Error('测试随机数必须在 0（含）到 1（不含）之间')
+  }
+  let remaining = random === undefined
+    ? randomInt(totalWeight)
+    : Math.floor(random * totalWeight)
   for (const prize of prizes) {
     remaining -= prize.weight
     if (remaining < 0) return prize
