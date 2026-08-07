@@ -1,0 +1,251 @@
+name: Custom Delivery
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [custom/main]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit or ref from custom/main to deploy
+        required: true
+        default: custom/main
+        type: string
+
+env:
+  IMAGE_NAME: ghcr.io/hlongyu/new-api
+
+jobs:
+  publish:
+    name: Publish immutable GHCR image
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'custom/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: custom-image-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Resolve release metadata
+        id: release
+        env:
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin custom/main:refs/remotes/origin/custom/main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/custom/main
+
+          BASE_VERSION=$(git describe --tags --match 'v[0-9]*' --abbrev=0 "$SOURCE_SHA")
+          SHORT_SHA=$(git rev-parse --short=7 "$SOURCE_SHA")
+          VERSION="${BASE_VERSION}-fork.${SHORT_SHA}"
+
+          printf '%s\n' "$VERSION" > VERSION
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=sha-${{ steps.release.outputs.sha }}
+            type=raw,value=${{ steps.release.outputs.version }}
+            type=raw,value=custom-main
+          labels: |
+            org.opencontainers.image.revision=${{ steps.release.outputs.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build and publish
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=custom-delivery-amd64
+          cache-to: type=gha,mode=max,scope=custom-delivery-amd64
+          provenance: mode=max
+          sbom: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_NAME@$IMAGE_DIGEST"
+
+      - name: Write release manifest
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$RELEASE_SHA" \
+            --arg version "$RELEASE_VERSION" \
+            --arg image "$IMAGE_NAME@$IMAGE_DIGEST" \
+            --arg built_at "$(date --utc --iso-8601=seconds)" \
+            '{repository: $repository, commit: $commit, version: $version, image: $image, built_at: $built_at}' \
+            > release-manifest.json
+
+      - name: Upload release manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ steps.release.outputs.sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish summary
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          {
+            echo '### Published image'
+            echo
+            echo "- Version: \`$RELEASE_VERSION\`"
+            echo "- Image: \`$IMAGE_NAME@$IMAGE_DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy selected custom/main image
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: production-new-api
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout requested release
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.commit }}
+          fetch-depth: 0
+
+      - name: Resolve and validate release commit
+        id: release
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin custom/main:refs/remotes/origin/custom/main
+          TARGET_SHA=$(git rev-parse 'HEAD^{commit}')
+          git merge-base --is-ancestor "$TARGET_SHA" origin/custom/main
+
+          echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
+          echo "image_tag=$IMAGE_NAME:sha-$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # v4.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Resolve immutable image digest
+        id: image
+        env:
+          IMAGE_TAG: ${{ steps.release.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          digest=$(docker buildx imagetools inspect "$IMAGE_TAG" \
+            --format '{{json .Manifest}}' | jq -r '.digest')
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Registry returned an invalid digest"
+            exit 1
+          fi
+          echo "ref=$IMAGE_NAME@$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Configure production SSH
+        env:
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          install -d -m 0700 "$HOME/.ssh"
+          printf '%s\n' "$PROD_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Deploy immutable image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_PORT: ${{ vars.PROD_PORT }}
+          PROD_USER: ${{ vars.PROD_USER }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$GHCR_TOKEN" | ssh \
+            -T \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$PROD_PORT" \
+            "$PROD_USER@$PROD_HOST" \
+            "sudo /usr/local/sbin/new-api-deploy '$IMAGE_REF' '$RELEASE_SHA' '$GITHUB_ACTOR'"
+
+      - name: Verify public endpoint
+        env:
+          PROD_HEALTH_URL: ${{ vars.PROD_HEALTH_URL }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          set -euo pipefail
+          short_sha=${RELEASE_SHA:0:7}
+          for attempt in $(seq 1 30); do
+            if response=$(curl --fail --silent --show-error --max-time 10 "$PROD_HEALTH_URL"); then
+              if jq -e --arg sha "$short_sha" '.success == true and (.data.version | contains($sha))' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+          echo '::error::Public health check did not report the deployed revision'
+          exit 1
+
+      - name: Deployment summary
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          {
+            echo '### Production deployment'
+            echo
+            echo "- Commit: \`$RELEASE_SHA\`"
+            echo "- Image: \`$IMAGE_REF\`"
+          } >> "$GITHUB_STEP_SUMMARY"

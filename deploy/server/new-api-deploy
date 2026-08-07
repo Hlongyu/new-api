@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly compose_file="/opt/new-api/compose.yaml"
+readonly production_env="/etc/new-api/production.env"
+readonly state_root="/var/lib/new-api"
+readonly release_env="${state_root}/release.env"
+readonly release_root="${state_root}/releases"
+readonly lock_file="/run/lock/new-api-deploy.lock"
+readonly image_pattern='^ghcr\.io/hlongyu/new-api@sha256:[0-9a-f]{64}$'
+readonly revision_pattern='^[0-9a-f]{40}$'
+readonly actor_pattern='^[A-Za-z0-9-]+$'
+
+candidate_image="${1:-}"
+release_revision="${2:-}"
+registry_user="${3:-}"
+
+if [[ ! "${candidate_image}" =~ ${image_pattern} ]]; then
+  echo "invalid candidate image" >&2
+  exit 2
+fi
+if [[ ! "${release_revision}" =~ ${revision_pattern} ]]; then
+  echo "invalid release revision" >&2
+  exit 2
+fi
+if [[ ! "${registry_user}" =~ ${actor_pattern} ]]; then
+  echo "invalid registry user" >&2
+  exit 2
+fi
+if [[ ! -r "${compose_file}" || ! -r "${production_env}" ]]; then
+  echo "production configuration is not installed" >&2
+  exit 2
+fi
+
+exec 9>"${lock_file}"
+if ! flock -n 9; then
+  echo "another deployment is already running" >&2
+  exit 3
+fi
+
+docker_config="$(mktemp -d /run/new-api-deploy-docker.XXXXXX)"
+candidate_env=""
+
+# shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
+cleanup() {
+  if [[ -n "${candidate_env}" && -f "${candidate_env}" ]]; then
+    rm -f -- "${candidate_env}"
+  fi
+  if [[ -d "${docker_config}" ]]; then
+    find "${docker_config}" -depth -delete
+  fi
+}
+trap cleanup EXIT
+
+if ! IFS= read -r registry_token || [[ -z "${registry_token}" ]]; then
+  echo "missing registry token" >&2
+  exit 2
+fi
+
+install -d -m 0700 "${release_root}"
+
+release_image() {
+  sed -n 's/^NEW_API_IMAGE=//p' "${release_env}"
+}
+
+compose() {
+  local image
+
+  image="$(release_image)"
+  if [[ -z "${image}" ]]; then
+    echo "release image is not configured" >&2
+    return 1
+  fi
+
+  NEW_API_IMAGE="${image}" docker compose \
+    --project-name new-api \
+    --env-file "${production_env}" \
+    -f "${compose_file}" \
+    "$@"
+}
+
+write_release_env() {
+  local image="$1"
+  local revision="$2"
+
+  candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
+  {
+    printf 'NEW_API_IMAGE=%s\n' "${image}"
+    printf 'RELEASE_REVISION=%s\n' "${revision}"
+  } >"${candidate_env}"
+  chmod 0600 "${candidate_env}"
+  mv -f -- "${candidate_env}" "${release_env}"
+  candidate_env=""
+}
+
+wait_for_health() {
+  local health=""
+  local state=""
+
+  for _ in $(seq 1 75); do
+    state="$(docker inspect new-api --format '{{.State.Status}}' 2>/dev/null || true)"
+    health="$(docker inspect new-api --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+    if [[ "${state}" == "running" && "${health}" == "healthy" ]]; then
+      if curl --fail --silent --show-error --max-time 5 \
+        http://127.0.0.1:3000/api/status >/dev/null; then
+        return 0
+      fi
+    fi
+    if [[ "${state}" == "dead" || "${state}" == "exited" ]]; then
+      break
+    fi
+    sleep 2
+  done
+
+  docker inspect new-api --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
+  return 1
+}
+
+printf '%s\n' "${registry_token}" | docker --config "${docker_config}" login \
+  ghcr.io --username "${registry_user}" --password-stdin >/dev/null
+registry_token=""
+
+docker --config "${docker_config}" pull "${candidate_image}"
+
+actual_revision="$(docker image inspect "${candidate_image}" \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+if [[ "${actual_revision}" != "${release_revision}" ]]; then
+  echo "image revision does not match requested release" >&2
+  exit 4
+fi
+
+if ! systemctl start new-api-backup.service; then
+  echo "pre-deployment database backup failed" >&2
+  exit 5
+fi
+
+if [[ ! -f "${release_env}" ]]; then
+  current_image="$(docker inspect new-api --format '{{.Config.Image}}')"
+  current_revision="$(docker image inspect "${current_image}" \
+    --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
+  write_release_env "${current_image}" "${current_revision:-unknown}"
+fi
+
+timestamp="$(date --utc +%Y%m%dT%H%M%SZ)"
+release_dir="${release_root}/${timestamp}-${release_revision}"
+install -d -m 0700 "${release_dir}"
+install -m 0600 "${release_env}" "${release_dir}/previous.env"
+
+previous_image="$(release_image)"
+if [[ -z "${previous_image}" ]] || ! docker image inspect "${previous_image}" >/dev/null 2>&1; then
+  echo "previous image is not available for rollback" >&2
+  exit 6
+fi
+
+write_release_env "${candidate_image}" "${release_revision}"
+compose config --quiet
+
+if compose up -d --no-deps --force-recreate --pull never new-api && wait_for_health; then
+  install -m 0600 "${release_env}" "${release_dir}/deployed.env"
+  {
+    printf 'deployed_at=%s\n' "$(date --utc --iso-8601=seconds)"
+    printf 'deployed_by=%s\n' "${registry_user}"
+    printf 'release_revision=%s\n' "${release_revision}"
+    printf 'image=%s\n' "${candidate_image}"
+  } >"${release_dir}/manifest.env"
+  touch "${release_dir}/SUCCESS"
+  logger -t new-api-deploy "deployed revision ${release_revision}"
+  exit 0
+fi
+
+echo "candidate failed health checks; rolling back image" >&2
+candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
+install -m 0600 "${release_dir}/previous.env" "${candidate_env}"
+mv -f -- "${candidate_env}" "${release_env}"
+candidate_env=""
+
+compose config --quiet
+compose up -d --no-deps --force-recreate --pull never new-api
+if ! wait_for_health; then
+  touch "${release_dir}/ROLLBACK_FAILED"
+  logger -p user.err -t new-api-deploy "rollback failed after revision ${release_revision}"
+  exit 8
+fi
+
+touch "${release_dir}/ROLLED_BACK"
+logger -p user.warning -t new-api-deploy "rolled back revision ${release_revision}"
+exit 7
