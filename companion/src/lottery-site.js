@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from 'node:crypto'
 import { clientIp, createRateLimiter, json, readJson } from './http.js'
 import { NewApiError } from './new-api-client.js'
 
-const drawCounts = new Set([1, 5, 10])
+const drawCounts = new Set([1, 10])
 const rarities = new Set(['common', 'rare', 'epic', 'legendary'])
 const rarityOrder = ['common', 'rare', 'epic', 'legendary']
 const subscriptionDurationDays = 7
@@ -724,6 +724,7 @@ export function createLotterySite({ db, client, config, requireMutationRequest }
             db.getRedemptionProgress(Number(user.id)) || {},
             config.quotaPerUnit,
           ),
+          mainSiteUrl: config.baseUrl,
           timeZone: config.timeZone,
         },
       })
@@ -737,38 +738,6 @@ export function createLotterySite({ db, client, config, requireMutationRequest }
         data: campaign
           ? db.listUserCampaignDraws(Number(user.id), campaign.id, 20, offset).map(drawPayload)
           : [],
-      })
-    }
-
-    if (req.method === 'POST' && url.pathname === '/api/simulate') {
-      if (!drawLimiter(`simulation:${user.id}:${clientIp(req)}`)) {
-        return json(res, 429, { success: false, message: '模拟操作过于频繁' })
-      }
-      const body = await readJson(req)
-      const campaign = currentCampaign(String(body.campaignId || ''), now)
-      if (!campaign || campaignPhase(campaign, now) !== 'active') {
-        throw apiError('活动尚未开始或已经结束', 409)
-      }
-      const count = positiveInteger(body.count, '抽奖数量', 10)
-      if (!drawCounts.has(count)) throw apiError('仅支持单抽、五抽或十抽')
-      const items = Array.from({ length: count }, (_, index) => {
-        const selected = pickPrize(campaign.prizes)
-        return {
-          ordinal: index + 1,
-          amountUsd: Number(selected.prize.amount_usd),
-          rarity: selected.prize.rarity,
-        }
-      })
-      db.incrementSimulation(campaign.id)
-      return json(res, 200, {
-        success: true,
-        data: {
-          simulation: true,
-          drawCount: count,
-          totalAmountUsd: items.reduce((sum, item) => sum + item.amountUsd, 0),
-          highestRarity: highestRarity(items),
-          items,
-        },
       })
     }
 
@@ -791,7 +760,7 @@ export function createLotterySite({ db, client, config, requireMutationRequest }
         throw apiError('活动尚未开始或已经结束', 409)
       }
       const count = positiveInteger(body.count, '抽奖数量', 10)
-      if (!drawCounts.has(count)) throw apiError('仅支持单抽、五抽或十抽')
+      if (!drawCounts.has(count)) throw apiError('仅支持单抽或十连抽')
       const items = Array.from({ length: count }, () => {
         const selected = pickPrize(campaign.prizes)
         return {

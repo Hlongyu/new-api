@@ -35,6 +35,7 @@ WORKDIR /build/companion
 COPY companion/package.json companion/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY companion/src ./src
+COPY companion/public ./public
 COPY companion/test ./test
 RUN npm test
 
@@ -55,6 +56,7 @@ RUN apt-get update \
 COPY --from=frontend-builder /build/web/dist /usr/share/nginx/html
 COPY --from=companion-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=companion-builder --chown=1000:1000 /build/companion/src /opt/new-api/companion/src
+COPY --from=companion-builder --chown=1000:1000 /build/companion/public /opt/new-api/companion/public
 COPY --from=companion-builder --chown=1000:1000 /build/companion/package.json /opt/new-api/companion/package.json
 COPY deploy/server/app-nginx.conf /etc/nginx/nginx.conf
 COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/

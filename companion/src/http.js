@@ -1,3 +1,13 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const mimeTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.png': 'image/png',
+}
+
 export function json(res, status, body) {
   const payload = JSON.stringify(body)
   res.writeHead(status, {
@@ -7,6 +17,38 @@ export function json(res, status, body) {
     'X-Content-Type-Options': 'nosniff',
   })
   res.end(payload)
+}
+
+export function serveStatic(publicDir, urlPath, res) {
+  const requested = urlPath === '/' ? '/index.html' : urlPath
+  const relative = path.posix.normalize(requested).replace(/^\/+/, '')
+  const root = path.resolve(publicDir)
+  const filePath = path.resolve(root, relative)
+  if (!filePath.startsWith(`${root}${path.sep}`)) return false
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false
+
+  const content = fs.readFileSync(filePath)
+  const extension = path.extname(filePath).toLowerCase()
+  res.writeHead(200, {
+    'Content-Type': mimeTypes[extension] || 'application/octet-stream',
+    'Content-Length': content.length,
+    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=3600',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+    'Referrer-Policy': 'no-referrer',
+  })
+  res.end(content)
+  return true
 }
 
 export async function readJson(req, maxBytes = 64 * 1024) {

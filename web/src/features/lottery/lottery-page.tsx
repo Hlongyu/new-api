@@ -19,13 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { Main } from '@/components/layout'
 
 import { LotteryCard } from './components/lottery-card'
+import { LotteryModeSwitch } from './components/lottery-mode-switch'
+
+const previewUserId = import.meta.env.VITE_LOTTERY_PREVIEW_USER_ID?.trim()
+const rechargeLotteryHref = /^\d+$/.test(previewUserId || '')
+  ? `/lottery/?preview_user_id=${encodeURIComponent(previewUserId)}`
+  : '/lottery/'
 
 export function LotteryPage() {
   return (
     <Main>
       <div className='min-h-0 flex-1 overflow-auto px-3 py-3 sm:px-4 sm:py-6'>
         <div className='mx-auto w-full max-w-4xl'>
-          <LotteryCard />
+          <div className='space-y-3'>
+            <LotteryModeSwitch rechargeHref={rechargeLotteryHref} />
+            <LotteryCard />
+          </div>
         </div>
       </div>
     </Main>
