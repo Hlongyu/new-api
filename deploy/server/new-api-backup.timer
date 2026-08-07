@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the new-api production backup every day
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=5m
+Unit=new-api-backup.service
+
+[Install]
+WantedBy=timers.target
