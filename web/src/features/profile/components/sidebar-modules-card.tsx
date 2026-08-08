@@ -121,6 +121,11 @@ export function SidebarModulesCard() {
           description: t('Finish in the weekly top 3 to unlock a draw.'),
         },
         {
+          key: 'games',
+          title: t('Mini Games'),
+          description: t('Classic desktop mini games'),
+        },
+        {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),
