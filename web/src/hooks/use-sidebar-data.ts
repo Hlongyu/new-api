@@ -23,6 +23,7 @@ import {
   FileText,
   FlaskConical,
   Gift,
+  Gamepad2,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -113,6 +114,12 @@ export function useSidebarData(): SidebarData {
             title: '抽奖',
             url: '/weekly-lottery',
             icon: Gift,
+          },
+          {
+            title: t('Mini Games'),
+            url: '/games',
+            activeUrls: ['/games/gold-miner'],
+            icon: Gamepad2,
           },
           {
             title: t('Profile'),
