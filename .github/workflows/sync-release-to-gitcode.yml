@@ -9,6 +9,7 @@ on:
     tags:
       - '*'
       - '!*-alpha*'
+      - '!custom-v*'
   workflow_dispatch:
     inputs:
       tag_name:
