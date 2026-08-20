@@ -522,11 +522,17 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	attachQuotaSaturation(ctx, relayInfo, other)
+	dashboardInputTokens := summary.PromptTokens
+	if billingUsage != nil && billingUsage.InputTokens > 0 {
+		dashboardInputTokens = billingUsage.InputTokens
+	}
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,
+		InputTokens:      dashboardInputTokens,
+		CacheReadTokens:  summary.CacheTokens,
 		ModelName:        logModel,
 		TokenName:        summary.TokenName,
 		Quota:            summary.Quota,

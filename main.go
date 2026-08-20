@@ -332,6 +332,20 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+	if common.IsMasterNode {
+		result, backfillErr := model.BackfillQuotaDataTokenMetrics()
+		if backfillErr != nil {
+			common.SysError("failed to backfill quota data token metrics: " + backfillErr.Error())
+		} else if !result.AlreadyCompleted {
+			common.SysLog(fmt.Sprintf(
+				"quota data token metrics backfill completed: candidates=%d updated=%d ambiguous=%d scanned_logs=%d",
+				result.CandidateRows,
+				result.UpdatedRows,
+				result.AmbiguousRows,
+				result.ScannedLogs,
+			))
+		}
+	}
 
 	// Initialize Redis
 	err = common.InitRedisClient()

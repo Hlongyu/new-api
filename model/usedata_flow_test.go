@@ -26,30 +26,36 @@ func TestGetFlowQuotaDataUsesQuotaDataRoleSpecificDimensions(t *testing.T) {
 	seedFlowLookupData(t)
 
 	seedFlowQuotaData(t, QuotaData{
-		UserID:    1,
-		Username:  "alice",
-		NodeName:  "node-a",
-		TokenID:   11,
-		UseGroup:  "vip",
-		ModelName: "gpt-a",
-		ChannelID: 1,
-		CreatedAt: 1000,
-		Count:     2,
-		Quota:     100,
-		TokenUsed: 40,
+		UserID:          1,
+		Username:        "alice",
+		NodeName:        "node-a",
+		TokenID:         11,
+		UseGroup:        "vip",
+		ModelName:       "gpt-a",
+		ChannelID:       1,
+		CreatedAt:       1000,
+		Count:           2,
+		Quota:           100,
+		TokenUsed:       40,
+		InputTokens:     30,
+		OutputTokens:    10,
+		CacheReadTokens: 12,
 	})
 	seedFlowQuotaData(t, QuotaData{
-		UserID:    1,
-		Username:  "alice",
-		NodeName:  "node-a",
-		TokenID:   11,
-		UseGroup:  "vip",
-		ModelName: "gpt-a",
-		ChannelID: 1,
-		CreatedAt: 1100,
-		Count:     1,
-		Quota:     50,
-		TokenUsed: 20,
+		UserID:          1,
+		Username:        "alice",
+		NodeName:        "node-a",
+		TokenID:         11,
+		UseGroup:        "vip",
+		ModelName:       "gpt-a",
+		ChannelID:       1,
+		CreatedAt:       1100,
+		Count:           1,
+		Quota:           50,
+		TokenUsed:       20,
+		InputTokens:     16,
+		OutputTokens:    4,
+		CacheReadTokens: 4,
 	})
 	seedFlowQuotaData(t, QuotaData{
 		UserID:    1,
@@ -139,28 +145,34 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	CacheQuotaDataLock.Unlock()
 
 	LogQuotaData(QuotaDataLogParams{
-		UserID:    1,
-		Username:  "alice",
-		ModelName: "gpt-a",
-		CreatedAt: 3661,
-		UseGroup:  "vip",
-		TokenID:   11,
-		ChannelID: 1,
-		NodeName:  "node-a",
-		Quota:     100,
-		TokenUsed: 40,
+		UserID:          1,
+		Username:        "alice",
+		ModelName:       "gpt-a",
+		CreatedAt:       3661,
+		UseGroup:        "vip",
+		TokenID:         11,
+		ChannelID:       1,
+		NodeName:        "node-a",
+		Quota:           100,
+		TokenUsed:       40,
+		InputTokens:     30,
+		OutputTokens:    10,
+		CacheReadTokens: 12,
 	})
 	LogQuotaData(QuotaDataLogParams{
-		UserID:    1,
-		Username:  "alice",
-		ModelName: "gpt-a",
-		CreatedAt: 3700,
-		UseGroup:  "vip",
-		TokenID:   11,
-		ChannelID: 1,
-		NodeName:  "node-a",
-		Quota:     50,
-		TokenUsed: 20,
+		UserID:          1,
+		Username:        "alice",
+		ModelName:       "gpt-a",
+		CreatedAt:       3700,
+		UseGroup:        "vip",
+		TokenID:         11,
+		ChannelID:       1,
+		NodeName:        "node-a",
+		Quota:           50,
+		TokenUsed:       20,
+		InputTokens:     16,
+		OutputTokens:    4,
+		CacheReadTokens: 4,
 	})
 	LogQuotaData(QuotaDataLogParams{
 		UserID:    1,
@@ -188,6 +200,9 @@ func TestLogQuotaDataSplitsRowsByUseGroupTokenChannelAndNode(t *testing.T) {
 	require.Equal(t, 2, rows[0].Count)
 	require.Equal(t, 150, rows[0].Quota)
 	require.Equal(t, 60, rows[0].TokenUsed)
+	require.Equal(t, 46, rows[0].InputTokens)
+	require.Equal(t, 14, rows[0].OutputTokens)
+	require.Equal(t, 16, rows[0].CacheReadTokens)
 	require.Equal(t, "default", rows[1].UseGroup)
 	require.Equal(t, 25, rows[1].Quota)
 }

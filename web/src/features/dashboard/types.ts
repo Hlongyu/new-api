@@ -33,6 +33,19 @@ export interface QuotaDataItem {
   quota?: number
 }
 
+export interface GroupQuotaDataItem {
+  use_group: string
+  count: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  quota: number
+}
+
+export interface GroupCallStats extends GroupQuotaDataItem {
+  cache_rate: number
+}
+
 export interface FlowQuotaDataItem {
   user_id?: number
   username?: string
