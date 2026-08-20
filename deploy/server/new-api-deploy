@@ -9,33 +9,37 @@ readonly state_root="/var/lib/new-api"
 readonly release_env="${state_root}/release.env"
 readonly release_root="${state_root}/releases"
 readonly lock_file="/run/lock/new-api-deploy.lock"
+readonly core_image_pattern='^ghcr\.io/hlongyu/new-api-core@sha256:[0-9a-f]{64}$'
 readonly app_image_pattern='^ghcr\.io/hlongyu/new-api-app@sha256:[0-9a-f]{64}$'
 readonly revision_pattern='^[0-9a-f]{40}$'
 readonly actor_pattern='^[A-Za-z0-9-]+$'
+readonly core_container="new-api"
 readonly web_container="new-api-web"
 readonly companion_container="new-api-companion"
-readonly previous_companion_container="new-api-companion-previous"
-readonly legacy_companion_container="new-api-leaderboard-leaderboard-1"
-readonly legacy_update_timer="new-api-leaderboard-update.timer"
 
-candidate_app_image="${1:-}"
-app_release_revision="${2:-}"
-registry_user="${3:-}"
+candidate_core_image="${1:-}"
+candidate_app_image="${2:-}"
+release_revision="${3:-}"
+registry_user="${4:-}"
 
-if [[ ! "${candidate_app_image}" =~ ${app_image_pattern} ]]; then
-  echo "invalid candidate app image" >&2
+if [[ ! "${candidate_core_image}" =~ ${core_image_pattern} ]]; then
+  echo "invalid candidate Core image" >&2
   exit 2
 fi
-if [[ ! "${app_release_revision}" =~ ${revision_pattern} ]]; then
-  echo "invalid app release revision" >&2
+if [[ ! "${candidate_app_image}" =~ ${app_image_pattern} ]]; then
+  echo "invalid candidate App image" >&2
+  exit 2
+fi
+if [[ ! "${release_revision}" =~ ${revision_pattern} ]]; then
+  echo "invalid release revision" >&2
   exit 2
 fi
 if [[ ! "${registry_user}" =~ ${actor_pattern} ]]; then
   echo "invalid registry user" >&2
   exit 2
 fi
-if [[ ! -r "${compose_file}" || ! -r "${production_env}" ]]; then
-  echo "production configuration is not installed" >&2
+if [[ ! -r "${compose_file}" || ! -r "${production_env}" || ! -r "${release_env}" ]]; then
+  echo "production configuration or current release state is not installed" >&2
   exit 2
 fi
 
@@ -66,35 +70,55 @@ fi
 
 install -d -m 0700 "${release_root}"
 
+release_value() {
+  local key="$1"
+  local file="$2"
+
+  sed -n "s/^${key}=//p" "${file}" | tail -n 1
+}
+
+core_image() {
+  local image=""
+
+  image="$(release_value CORE_IMAGE "${release_env}")"
+  if [[ -z "${image}" ]]; then
+    image="$(release_value CORE_IMAGE "${production_env}")"
+  fi
+  printf '%s\n' "${image}"
+}
+
 app_image() {
-  sed -n 's/^APP_IMAGE=//p' "${release_env}"
+  release_value APP_IMAGE "${release_env}"
 }
 
 app_revision() {
-  sed -n 's/^APP_RELEASE_REVISION=//p' "${release_env}"
+  release_value APP_RELEASE_REVISION "${release_env}"
 }
 
 app_deployed_at() {
-  local deployed_at
+  local deployed_at=""
 
-  deployed_at="$(sed -n 's/^APP_RELEASE_DEPLOYED_AT=//p' "${release_env}")"
+  deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${release_env}")"
   printf '%s\n' "${deployed_at:-0}"
 }
 
 compose() {
-  local image
-  local revision
-  local deployed_at
+  local selected_app_image=""
+  local selected_core_image=""
+  local revision=""
+  local deployed_at=""
 
-  image="$(app_image)"
+  selected_core_image="$(core_image)"
+  selected_app_image="$(app_image)"
   revision="$(app_revision)"
   deployed_at="$(app_deployed_at)"
-  if [[ -z "${image}" ]]; then
-    echo "app release image is not configured" >&2
+  if [[ -z "${selected_core_image}" || -z "${selected_app_image}" ]]; then
+    echo "release images are not configured" >&2
     return 1
   fi
 
-  APP_IMAGE="${image}" \
+  CORE_IMAGE="${selected_core_image}" \
+    APP_IMAGE="${selected_app_image}" \
     APP_RELEASE_REVISION="${revision}" \
     APP_RELEASE_DEPLOYED_AT="${deployed_at}" \
     docker compose \
@@ -105,13 +129,15 @@ compose() {
 }
 
 write_release_env() {
-  local image="$1"
-  local revision="$2"
-  local deployed_at="${3:-0}"
+  local selected_core_image="$1"
+  local selected_app_image="$2"
+  local revision="$3"
+  local deployed_at="${4:-0}"
 
   candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
   {
-    printf 'APP_IMAGE=%s\n' "${image}"
+    printf 'CORE_IMAGE=%s\n' "${selected_core_image}"
+    printf 'APP_IMAGE=%s\n' "${selected_app_image}"
     printf 'APP_RELEASE_REVISION=%s\n' "${revision}"
     printf 'APP_RELEASE_DEPLOYED_AT=%s\n' "${deployed_at}"
   } >"${candidate_env}"
@@ -120,14 +146,35 @@ write_release_env() {
   candidate_env=""
 }
 
+write_previous_env() {
+  local destination="$1"
+  local selected_core_image="$2"
+  local selected_app_image="$3"
+  local revision="$4"
+  local deployed_at="$5"
+
+  {
+    printf 'CORE_IMAGE=%s\n' "${selected_core_image}"
+    printf 'APP_IMAGE=%s\n' "${selected_app_image}"
+    printf 'APP_RELEASE_REVISION=%s\n' "${revision}"
+    printf 'APP_RELEASE_DEPLOYED_AT=%s\n' "${deployed_at}"
+  } >"${destination}"
+  chmod 0600 "${destination}"
+}
+
 wait_for_core_health() {
-  for _ in $(seq 1 30); do
+  local attempts="${1:-150}"
+
+  for _ in $(seq 1 "${attempts}"); do
     if curl --fail --silent --show-error --max-time 5 \
       http://127.0.0.1:3000/api/status >/dev/null; then
       return 0
     fi
     sleep 2
   done
+
+  docker inspect "${core_container}" \
+    --format 'core_state={{.State.Status}} core_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
   return 1
 }
 
@@ -155,16 +202,15 @@ wait_for_companion_health() {
     sleep 2
   done
 
-  docker inspect "${companion_container}" --format 'companion_state={{.State.Status}} companion_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
+  docker inspect "${companion_container}" \
+    --format 'companion_state={{.State.Status}} companion_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
   return 1
 }
 
 wait_for_app_health() {
   local web_health=""
   local web_state=""
-  local companion_health=""
   local companion_response=""
-  local companion_state=""
   local expected_revision=""
 
   expected_revision="$(app_revision)"
@@ -172,10 +218,7 @@ wait_for_app_health() {
   for _ in $(seq 1 75); do
     web_state="$(docker inspect "${web_container}" --format '{{.State.Status}}' 2>/dev/null || true)"
     web_health="$(docker inspect "${web_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-    companion_state="$(docker inspect "${companion_container}" --format '{{.State.Status}}' 2>/dev/null || true)"
-    companion_health="$(docker inspect "${companion_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-    if [[ "${web_state}" == "running" && "${web_health}" == "healthy" && \
-      "${companion_state}" == "running" && "${companion_health}" == "healthy" ]]; then
+    if [[ "${web_state}" == "running" && "${web_health}" == "healthy" ]]; then
       companion_response="$(curl --fail --silent --show-error --max-time 5 \
         http://127.0.0.1:3002/healthz || true)"
       if curl --fail --silent --show-error --max-time 5 \
@@ -184,38 +227,45 @@ wait_for_app_health() {
         return 0
       fi
     fi
-    if [[ "${web_state}" == "dead" || "${web_state}" == "exited" || \
-      "${companion_state}" == "dead" || "${companion_state}" == "exited" ]]; then
+    if [[ "${web_state}" == "dead" || "${web_state}" == "exited" ]]; then
       break
     fi
     sleep 2
   done
 
-  docker inspect "${web_container}" --format 'web_state={{.State.Status}} web_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
-  docker inspect "${companion_container}" --format 'companion_state={{.State.Status}} companion_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
+  docker inspect "${web_container}" \
+    --format 'web_state={{.State.Status}} web_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
   return 1
 }
 
-deploy_app_services() {
-  compose up -d --no-deps --force-recreate --pull never companion
-  wait_for_companion_health
-  compose up -d --no-deps --force-recreate --pull never web
+deploy_release() {
+  compose up -d --no-deps --force-recreate --pull never new-api || return
+  wait_for_core_health || return
+  compose up -d --no-deps --force-recreate --pull never companion || return
+  wait_for_companion_health || return
+  compose up -d --no-deps --force-recreate --pull never web || return
   wait_for_app_health
 }
 
-wait_for_legacy_companion() {
-  for _ in $(seq 1 30); do
-    if curl --fail --silent --show-error --max-time 5 \
-      http://127.0.0.1:8787/healthz >/dev/null; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
+current_core_image="$(core_image)"
+current_app_image="$(app_image)"
+current_revision="$(app_revision)"
+current_deployed_at="$(app_deployed_at)"
 
-if ! wait_for_core_health; then
-  echo "official Core is not healthy; refusing to deploy the custom app" >&2
+if [[ -z "${current_core_image}" || -z "${current_app_image}" ]]; then
+  echo "current Core and App images must be configured before deployment" >&2
+  exit 4
+fi
+if ! docker image inspect "${current_core_image}" >/dev/null 2>&1; then
+  echo "current Core image is not available for rollback" >&2
+  exit 4
+fi
+if ! docker image inspect "${current_app_image}" >/dev/null 2>&1; then
+  echo "current App image is not available for rollback" >&2
+  exit 4
+fi
+if ! wait_for_core_health 30; then
+  echo "current Core is not healthy; refusing to start deployment" >&2
   exit 4
 fi
 
@@ -223,18 +273,30 @@ printf '%s\n' "${registry_token}" | docker --config "${docker_config}" login \
   ghcr.io --username "${registry_user}" --password-stdin >/dev/null
 registry_token=""
 
+docker --config "${docker_config}" pull "${candidate_core_image}"
 docker --config "${docker_config}" pull "${candidate_app_image}"
 
-actual_revision="$(docker image inspect "${candidate_app_image}" \
+actual_core_revision="$(docker image inspect "${candidate_core_image}" \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
-if [[ "${actual_revision}" != "${app_release_revision}" ]]; then
-  echo "app image revision does not match requested release" >&2
+actual_app_revision="$(docker image inspect "${candidate_app_image}" \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
+if [[ "${actual_core_revision}" != "${release_revision}" ]]; then
+  echo "Core image revision does not match requested release" >&2
+  exit 4
+fi
+if [[ "${actual_app_revision}" != "${release_revision}" ]]; then
+  echo "App image revision does not match requested release" >&2
   exit 4
 fi
 
+if ! docker run --rm --network none --entrypoint /bin/sh "${candidate_core_image}" \
+  -c 'test -x /new-api'; then
+  echo "candidate Core image does not contain the new-api executable" >&2
+  exit 4
+fi
 if ! docker run --rm --network none --entrypoint node "${candidate_app_image}" \
   --check /opt/new-api/companion/src/server.js >/dev/null; then
-  echo "candidate image does not contain a valid Companion backend" >&2
+  echo "candidate App image does not contain a valid Companion backend" >&2
   exit 4
 fi
 if ! docker run --rm --network none \
@@ -243,7 +305,7 @@ if ! docker run --rm --network none \
   --tmpfs /var/lib/nginx:rw,mode=0755 \
   --add-host new-api:127.0.0.1 --add-host companion:127.0.0.1 \
   --entrypoint nginx "${candidate_app_image}" -t >/dev/null; then
-  echo "candidate image does not contain a valid Web/Gateway configuration" >&2
+  echo "candidate App image does not contain a valid Web/Gateway configuration" >&2
   exit 4
 fi
 
@@ -252,128 +314,51 @@ if ! systemctl start new-api-backup.service; then
   exit 5
 fi
 
-had_release_env=false
-if [[ -f "${release_env}" ]] && grep -q '^APP_IMAGE=' "${release_env}"; then
-  had_release_env=true
-fi
-
 timestamp="$(date --utc +%Y%m%dT%H%M%SZ)"
-release_dir="${release_root}/${timestamp}-${app_release_revision}"
+release_dir="${release_root}/${timestamp}-${release_revision}"
 install -d -m 0700 "${release_dir}"
-if [[ "${had_release_env}" == "true" ]]; then
-  previous_image="$(app_image)"
-  if [[ -z "${previous_image}" ]] || ! docker image inspect "${previous_image}" >/dev/null 2>&1; then
-    echo "previous app image is not available for rollback" >&2
-    exit 6
-  fi
-  install -m 0600 "${release_env}" "${release_dir}/previous.env"
-fi
+write_previous_env \
+  "${release_dir}/previous.env" \
+  "${current_core_image}" \
+  "${current_app_image}" \
+  "${current_revision}" \
+  "${current_deployed_at}"
 
-initial_cutover=false
-legacy_was_running=false
-previous_companion_saved=false
-previous_companion_present=false
-previous_companion_was_running=false
-if [[ "${had_release_env}" != "true" ]] || \
-  ! docker inspect "${web_container}" >/dev/null 2>&1 || \
-  ! docker inspect "${companion_container}" >/dev/null 2>&1; then
-  initial_cutover=true
-  if [[ "$(docker inspect "${legacy_companion_container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
-    legacy_was_running=true
-    if systemctl is-active --quiet "${legacy_update_timer}"; then
-      echo "disable ${legacy_update_timer} before the first decoupled app cutover" >&2
-      exit 6
-    fi
-  fi
-  if [[ "${had_release_env}" != "true" ]] && docker inspect "${companion_container}" >/dev/null 2>&1; then
-    if docker inspect "${previous_companion_container}" >/dev/null 2>&1; then
-      echo "previous Companion preservation container already exists" >&2
-      exit 6
-    fi
-    if [[ "$(docker inspect "${companion_container}" --format '{{.State.Running}}')" == "true" ]]; then
-      previous_companion_was_running=true
-    fi
-    previous_companion_present=true
-  fi
-fi
-
-write_release_env "${candidate_app_image}" "${app_release_revision}" "$(date +%s)"
+write_release_env \
+  "${candidate_core_image}" \
+  "${candidate_app_image}" \
+  "${release_revision}" \
+  "$(date +%s)"
 if ! compose config --quiet; then
-  if [[ "${had_release_env}" == "true" ]]; then
-    candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
-    install -m 0600 "${release_dir}/previous.env" "${candidate_env}"
-    mv -f -- "${candidate_env}" "${release_env}"
-    candidate_env=""
-  else
-    rm -f -- "${release_env}"
-  fi
+  install -m 0600 "${release_dir}/previous.env" "${release_env}"
   exit 6
 fi
 
-if [[ "${legacy_was_running}" == "true" ]]; then
-  docker stop --time 30 "${legacy_companion_container}"
-fi
-if [[ "${previous_companion_present}" == "true" ]]; then
-  if [[ "${previous_companion_was_running}" == "true" ]]; then
-    docker stop --time 30 "${companion_container}"
-  fi
-  docker rename "${companion_container}" "${previous_companion_container}"
-  previous_companion_saved=true
-fi
-
-if deploy_app_services; then
+if deploy_release; then
   install -m 0600 "${release_env}" "${release_dir}/deployed.env"
   {
     printf 'deployed_at=%s\n' "$(date --utc --iso-8601=seconds)"
     printf 'deployed_by=%s\n' "${registry_user}"
-    printf 'app_release_revision=%s\n' "${app_release_revision}"
+    printf 'release_revision=%s\n' "${release_revision}"
+    printf 'core_image=%s\n' "${candidate_core_image}"
     printf 'app_image=%s\n' "${candidate_app_image}"
-    printf 'core_container_unchanged=true\n'
-    printf 'initial_decoupled_cutover=%s\n' "${initial_cutover}"
   } >"${release_dir}/manifest.env"
   touch "${release_dir}/SUCCESS"
-  logger -t new-api-deploy "deployed custom app revision ${app_release_revision}; Core unchanged"
+  logger -t new-api-deploy "deployed Core and App revision ${release_revision}"
   exit 0
 fi
 
-echo "candidate app failed health checks; rolling back custom services" >&2
-if [[ "${had_release_env}" == "true" ]]; then
-  candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
-  install -m 0600 "${release_dir}/previous.env" "${candidate_env}"
-  mv -f -- "${candidate_env}" "${release_env}"
-  candidate_env=""
-  compose config --quiet
-  rollback_healthy=false
-  if deploy_app_services; then rollback_healthy=true; fi
-else
-  compose stop web companion >/dev/null 2>&1 || true
-  compose rm -f web companion >/dev/null 2>&1 || true
-  rm -f -- "${release_env}"
-  rollback_healthy=false
-  if wait_for_core_health; then
-    if [[ "${previous_companion_saved}" == "true" ]]; then
-      docker rename "${previous_companion_container}" "${companion_container}"
-      if [[ "${previous_companion_was_running}" == "true" ]]; then
-        docker start "${companion_container}" >/dev/null
-        if wait_for_legacy_companion; then rollback_healthy=true; fi
-      else
-        rollback_healthy=true
-      fi
-    elif [[ "${legacy_was_running}" == "true" ]]; then
-      docker start "${legacy_companion_container}" >/dev/null
-      if wait_for_legacy_companion; then rollback_healthy=true; fi
-    else
-      rollback_healthy=true
-    fi
-  fi
+echo "candidate release failed health checks; rolling back Core and App" >&2
+install -m 0600 "${release_dir}/previous.env" "${release_env}"
+compose config --quiet
+if deploy_release; then
+  touch "${release_dir}/ROLLED_BACK"
+  logger -p user.warning -t new-api-deploy \
+    "rolled back Core and App after failed revision ${release_revision}"
+  exit 7
 fi
 
-if [[ "${rollback_healthy}" != "true" ]]; then
-  touch "${release_dir}/ROLLBACK_FAILED"
-  logger -p user.err -t new-api-deploy "custom app rollback failed after revision ${app_release_revision}"
-  exit 8
-fi
-
-touch "${release_dir}/ROLLED_BACK"
-logger -p user.warning -t new-api-deploy "rolled back custom app revision ${app_release_revision}; Core unchanged"
-exit 7
+touch "${release_dir}/ROLLBACK_FAILED"
+logger -p user.err -t new-api-deploy \
+  "Core and App rollback failed after revision ${release_revision}"
+exit 8
