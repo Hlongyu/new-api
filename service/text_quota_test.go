@@ -204,6 +204,24 @@ func TestCalculateTextQuotaSummaryUsesClaudeBillingUsageBeforeTopLevelUsage(t *t
 	require.Equal(t, 118, summary.Quota)
 }
 
+func TestEffectiveBillingUsageIncludesSplitClaudeCacheCreationInInputTotal(t *testing.T) {
+	usage := &dto.Usage{
+		BillingUsage: dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{
+			InputTokens:          70,
+			CacheReadInputTokens: 30,
+			OutputTokens:         7,
+			CacheCreation: &dto.ClaudeCacheCreationUsage{
+				Ephemeral5mInputTokens: 12,
+				Ephemeral1hInputTokens: 8,
+			},
+		}),
+	}
+
+	effective := effectiveBillingUsage(usage)
+	require.Equal(t, 120, effective.InputTokens)
+	require.Equal(t, 20, effective.PromptTokensDetails.CachedCreationTokens)
+}
+
 func TestCalculateTextQuotaSummaryUsesGeminiBillingUsageBeforeTopLevelUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

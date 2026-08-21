@@ -247,6 +247,34 @@ deploy_release() {
   wait_for_app_health
 }
 
+validate_offline_backup() {
+  local backup_dir=""
+
+  backup_dir="$(find /var/backups/new-api -mindepth 1 -maxdepth 1 -type d \
+    -name 'new-api-*-offline' -mmin -60 -printf '%T@ %p\n' 2>/dev/null | \
+    sort -nr | head -n 1 | cut -d' ' -f2-)"
+  if [[ -z "${backup_dir}" || ! -f "${backup_dir}/COMPLETE" ]]; then
+    echo "a completed offline backup from the last hour is required" >&2
+    return 1
+  fi
+  if ! grep -Fxq 'backup_mode=offline' "${backup_dir}/metadata.txt" || \
+    ! grep -Fxq 'application_containers_stopped=true' "${backup_dir}/metadata.txt"; then
+    echo "offline backup metadata is invalid" >&2
+    return 1
+  fi
+  if ! (
+    cd "${backup_dir}"
+    sha256sum -c database.dump.sha256 >/dev/null
+    sha256sum -c leaderboard.db.sha256 >/dev/null
+    test -s database.contents
+  ); then
+    echo "offline backup validation failed" >&2
+    return 1
+  fi
+
+  printf '%s\n' "${backup_dir}"
+}
+
 current_core_image="$(core_image)"
 current_app_image="$(app_image)"
 current_revision="$(app_revision)"
@@ -264,7 +292,19 @@ if ! docker image inspect "${current_app_image}" >/dev/null 2>&1; then
   echo "current App image is not available for rollback" >&2
   exit 4
 fi
-if ! wait_for_core_health 30; then
+application_mode="running"
+running_application_containers=0
+for container in "${core_container}" "${web_container}" "${companion_container}"; do
+  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}')" == "true" ]]; then
+    running_application_containers=$((running_application_containers + 1))
+  fi
+done
+if [[ "${running_application_containers}" -eq 0 ]]; then
+  application_mode="offline"
+elif [[ "${running_application_containers}" -ne 3 ]]; then
+  echo "application containers are only partially running; refusing deployment" >&2
+  exit 4
+elif ! wait_for_core_health 30; then
   echo "current Core is not healthy; refusing to start deployment" >&2
   exit 4
 fi
@@ -309,9 +349,17 @@ if ! docker run --rm --network none \
   exit 4
 fi
 
-if ! systemctl start new-api-backup.service; then
-  echo "pre-deployment database backup failed" >&2
-  exit 5
+predeployment_backup=""
+if [[ "${application_mode}" == "offline" ]]; then
+  if ! predeployment_backup="$(validate_offline_backup)"; then
+    exit 5
+  fi
+else
+  if ! systemctl start new-api-backup.service; then
+    echo "pre-deployment database backup failed" >&2
+    exit 5
+  fi
+  predeployment_backup="online backup completed by new-api-backup.service"
 fi
 
 timestamp="$(date --utc +%Y%m%dT%H%M%SZ)"
@@ -342,6 +390,7 @@ if deploy_release; then
     printf 'release_revision=%s\n' "${release_revision}"
     printf 'core_image=%s\n' "${candidate_core_image}"
     printf 'app_image=%s\n' "${candidate_app_image}"
+    printf 'predeployment_backup=%s\n' "${predeployment_backup}"
   } >"${release_dir}/manifest.env"
   touch "${release_dir}/SUCCESS"
   logger -t new-api-deploy "deployed Core and App revision ${release_revision}"

@@ -121,6 +121,7 @@ func usageFromOpenAIBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 
 func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	claudeUsage := billingUsage.ClaudeUsage
+	cacheCreationTokens := claudeUsage.GetCacheCreationTotalTokens()
 	cacheCreation5m := claudeUsage.GetCacheCreation5mTokens()
 	if cacheCreation5m == 0 {
 		cacheCreation5m = claudeUsage.ClaudeCacheCreation5mTokens
@@ -134,7 +135,7 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 		PromptTokens:                claudeUsage.InputTokens,
 		CompletionTokens:            claudeUsage.OutputTokens,
 		TotalTokens:                 claudeUsage.InputTokens + claudeUsage.OutputTokens,
-		InputTokens:                 claudeUsage.InputTokens + claudeUsage.CacheReadInputTokens + claudeUsage.CacheCreationInputTokens,
+		InputTokens:                 claudeUsage.InputTokens + claudeUsage.CacheReadInputTokens + cacheCreationTokens,
 		OutputTokens:                claudeUsage.OutputTokens,
 		UsageSemantic:               dto.BillingUsageSemanticAnthropic,
 		UsageSource:                 dto.BillingUsageSourceClaudeMessages,
@@ -143,7 +144,7 @@ func usageFromClaudeBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 		ClaudeCacheCreation1hTokens: cacheCreation1h,
 	}
 	usage.PromptTokensDetails.CachedTokens = claudeUsage.CacheReadInputTokens
-	usage.PromptTokensDetails.CachedCreationTokens = claudeUsage.CacheCreationInputTokens
+	usage.PromptTokensDetails.CachedCreationTokens = cacheCreationTokens
 	return usage
 }
 

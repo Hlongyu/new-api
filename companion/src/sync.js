@@ -1,5 +1,11 @@
 import { isRootConfigured } from './config.js'
-import { currentPeriodRanges, previousWeekRange } from './time.js'
+import {
+  currentPeriodRanges,
+  previousWeekRange,
+  usagePeriodRangeFromKey,
+} from './time.js'
+
+const tokenUsageSemanticsV2Setting = 'token_usage_semantics_v2_rebuilt_at'
 
 function number(value, fallback = 0) {
   const parsed = Number(value)
@@ -34,13 +40,37 @@ export class UsageSynchronizer {
         timeZone: this.config.timeZone,
         allStartTimestamp: this.config.allStartTimestamp,
       })
+      const rebuildHistoricalUsage = !this.db.getSetting(
+        tokenUsageSemanticsV2Setting,
+        '',
+      )
+      const rangeKeys = new Set(
+        ranges.map((range) => `${range.type}:${range.key}`),
+      )
+      if (rebuildHistoricalUsage) {
+        for (const period of this.db.listUsageAggregatePeriods()) {
+          const rangeKey = `${period.period_type}:${period.period_key}`
+          if (rangeKeys.has(rangeKey)) continue
+          ranges.push(usagePeriodRangeFromKey(
+            period.period_type,
+            period.period_key,
+            {
+              timeZone: this.config.timeZone,
+              allStartTimestamp: this.config.allStartTimestamp,
+            },
+          ))
+          rangeKeys.add(rangeKey)
+        }
+      }
       const completedWeek = previousWeekRange({ timeZone: this.config.timeZone })
       const needsCompletedWeekSync = this.db.getSetting(
         'last_finalized_week_key',
         '',
       ) !== completedWeek.key
-      if (needsCompletedWeekSync) {
+      const completedWeekRangeKey = `week:${completedWeek.key}`
+      if (needsCompletedWeekSync && !rangeKeys.has(completedWeekRangeKey)) {
         ranges.push({ type: 'week', ...completedWeek })
+        rangeKeys.add(completedWeekRangeKey)
       }
       const updatedAt = Math.floor(Date.now() / 1000)
       const users = await this.client.getUsers(
@@ -126,6 +156,9 @@ export class UsageSynchronizer {
       const now = Math.floor(Date.now() / 1000)
       if (needsCompletedWeekSync) {
         this.db.setSetting('last_finalized_week_key', completedWeek.key)
+      }
+      if (rebuildHistoricalUsage) {
+        this.db.setSetting(tokenUsageSemanticsV2Setting, now)
       }
       this.db.setSetting('last_sync_at', now)
       this.db.setSetting('last_sync_error', '')

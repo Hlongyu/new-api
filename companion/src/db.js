@@ -510,6 +510,11 @@ export function createDatabase(databasePath) {
         request_count = excluded.request_count,
         updated_at = excluded.updated_at
     `),
+    listUsageAggregatePeriods: db.prepare(`
+      SELECT DISTINCT period_type, period_key
+      FROM usage_aggregates
+      ORDER BY period_type ASC, period_key ASC
+    `),
     listLeaderboard: db.prepare(`
       SELECT e.id, e.user_id, e.username, e.source_name, e.is_name_public,
              e.display_name, e.anonymous_name,
@@ -1064,6 +1069,9 @@ export function createDatabase(databasePath) {
         value.requestCount,
         value.updatedAt,
       )
+    },
+    listUsageAggregatePeriods() {
+      return statements.listUsageAggregatePeriods.all()
     },
     listLeaderboard(periodType, key) {
       return statements.listLeaderboard.all(periodType, key)

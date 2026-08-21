@@ -400,7 +400,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			ModelName:       params.ModelName,
 			Quota:           params.Quota,
 			CreatedAt:       createdAt,
-			TokenUsed:       params.PromptTokens + params.CompletionTokens,
+			TokenUsed:       inputTokens + params.CompletionTokens,
 			InputTokens:     inputTokens,
 			OutputTokens:    params.CompletionTokens,
 			CacheReadTokens: params.CacheReadTokens,

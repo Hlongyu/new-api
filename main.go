@@ -345,6 +345,18 @@ func InitResources() error {
 				result.ScannedLogs,
 			))
 		}
+		totalResult, totalBackfillErr := model.BackfillQuotaDataTokenTotals()
+		if totalBackfillErr != nil {
+			common.SysError("failed to backfill quota data token totals: " + totalBackfillErr.Error())
+		} else if !totalResult.AlreadyCompleted {
+			common.SysLog(fmt.Sprintf(
+				"quota data token totals backfill completed: candidates=%d updated=%d ambiguous=%d scanned_logs=%d",
+				totalResult.CandidateRows,
+				totalResult.UpdatedRows,
+				totalResult.AmbiguousRows,
+				totalResult.ScannedLogs,
+			))
+		}
 	}
 
 	// Initialize Redis

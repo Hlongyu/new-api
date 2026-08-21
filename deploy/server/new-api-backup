@@ -62,8 +62,10 @@ docker exec "${postgres_container}" \
 docker exec -i "${postgres_container}" pg_restore --list \
   <"${temporary_dir}/database.dump" \
   >"${temporary_dir}/database.contents"
-sha256sum "${temporary_dir}/database.dump" \
-  >"${temporary_dir}/database.dump.sha256"
+(
+  cd "${temporary_dir}"
+  sha256sum database.dump >database.dump.sha256
+)
 
 for container in "${companion_container}" "${legacy_companion_container}"; do
   if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
@@ -102,8 +104,10 @@ docker cp "${active_companion_container}:${companion_snapshot}" \
 chmod 0600 "${temporary_dir}/leaderboard.db"
 docker exec "${active_companion_container}" rm -f -- "${companion_snapshot}"
 companion_snapshot=""
-sha256sum "${temporary_dir}/leaderboard.db" \
-  >"${temporary_dir}/leaderboard.db.sha256"
+(
+  cd "${temporary_dir}"
+  sha256sum leaderboard.db >leaderboard.db.sha256
+)
 
 install -m 0600 "${compose_file}" "${temporary_dir}/compose.yaml"
 install -m 0600 "${production_env}" "${temporary_dir}/production.env"

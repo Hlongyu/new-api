@@ -5,6 +5,7 @@ import {
   periodKey,
   previousWeekRange,
   sponsorPeriodRange,
+  usagePeriodRangeFromKey,
 } from '../src/time.js'
 
 test('按配置时区计算今日、本周、本月和总榜范围', () => {
@@ -70,6 +71,27 @@ test('上一周从上周一零点到本周一零点', () => {
     key: '2026-07-27',
     start: Date.parse('2026-07-26T16:00:00.000Z') / 1000,
     end: Date.parse('2026-08-02T16:00:00.000Z') / 1000,
+  })
+})
+
+test('从历史排行榜周期键还原同步范围', () => {
+  const now = new Date('2026-08-20T12:00:00.000Z')
+  const options = { now, timeZone: 'Asia/Shanghai', allStartTimestamp: 123 }
+
+  assert.deepEqual(usagePeriodRangeFromKey('day', '2026-07-13', options), {
+    type: 'day',
+    key: '2026-07-13',
+    start: Date.parse('2026-07-12T16:00:00.000Z') / 1000,
+    end: Date.parse('2026-07-13T16:00:00.000Z') / 1000,
+  })
+  assert.deepEqual(usagePeriodRangeFromKey('month', '2026-07', options), {
+    type: 'month',
+    key: '2026-07',
+    start: Date.parse('2026-06-30T16:00:00.000Z') / 1000,
+    end: Date.parse('2026-07-31T16:00:00.000Z') / 1000,
+  })
+  assert.deepEqual(usagePeriodRangeFromKey('all', 'all', options), {
+    type: 'all', key: 'all', start: 123, end: now.getTime() / 1000,
   })
 })
 

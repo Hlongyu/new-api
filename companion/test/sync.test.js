@@ -102,3 +102,46 @@ test('root 流量数据缺少 user_id 时拒绝写入', async () => {
     fs.rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('Token v2 首次同步重建已有历史周期且后续不重复', async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'leaderboard-sync-v2-'))
+  const db = createDatabase(path.join(directory, 'test.db'))
+  try {
+    const entry = db.ensureAnonymousEntry(7, 1, 'Alice')
+    db.upsertAggregate({
+      entryId: entry.id,
+      periodType: 'day',
+      periodKey: '2026-07-13',
+      tokenUsed: 100,
+      quota: 200,
+      requestCount: 1,
+      updatedAt: 1,
+    })
+    const historicalStart = Date.parse('2026-07-12T16:00:00.000Z') / 1000
+    let historicalRequests = 0
+    const client = {
+      async getUsers() {
+        return [{ id: 7, username: 'alice', display_name: 'Alice' }]
+      },
+      async getFlow(start) {
+        if (start === historicalStart) {
+          historicalRequests += 1
+          return [{ user_id: 7, token_used: 900, quota: 200, count: 1 }]
+        }
+        return [{ user_id: 7, token_used: 200, quota: 100, count: 1 }]
+      },
+    }
+    const synchronizer = new UsageSynchronizer({ db, client, config: config() })
+
+    assert.equal(await synchronizer.sync(), true)
+    assert.equal(historicalRequests, 1)
+    assert.equal(db.listLeaderboard('day', '2026-07-13')[0].token_used, 900)
+    assert.ok(Number(db.getSetting('token_usage_semantics_v2_rebuilt_at', 0)) > 0)
+
+    assert.equal(await synchronizer.sync(), true)
+    assert.equal(historicalRequests, 1)
+  } finally {
+    db.close()
+    fs.rmSync(directory, { recursive: true, force: true })
+  }
+})

@@ -36,7 +36,7 @@ func TestGetFlowQuotaDataUsesQuotaDataRoleSpecificDimensions(t *testing.T) {
 		CreatedAt:       1000,
 		Count:           2,
 		Quota:           100,
-		TokenUsed:       40,
+		TokenUsed:       1,
 		InputTokens:     30,
 		OutputTokens:    10,
 		CacheReadTokens: 12,

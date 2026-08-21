@@ -159,6 +159,42 @@ export function weekRangeFromKey(key, timeZone = 'Asia/Shanghai') {
   }
 }
 
+export function usagePeriodRangeFromKey(type, key, {
+  now = new Date(),
+  timeZone = 'Asia/Shanghai',
+  allStartTimestamp = 1,
+} = {}) {
+  const nowUnix = Math.floor(now.getTime() / 1000)
+  if (type === 'all' && key === 'all') {
+    return { type, key, start: allStartTimestamp, end: nowUnix }
+  }
+  if (type === 'week') {
+    const range = weekRangeFromKey(key, timeZone)
+    return { type, ...range, end: Math.min(range.end, nowUnix) }
+  }
+  if (type === 'day') {
+    const match = String(key).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (!match) throw new Error(`无效日期键：${key}`)
+    const startDate = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+    const endDate = new Date(startDate.getTime() + 86_400_000)
+    const start = zonedStartUnix(startDate.getUTCFullYear(), startDate.getUTCMonth() + 1, startDate.getUTCDate(), timeZone)
+    const end = zonedStartUnix(endDate.getUTCFullYear(), endDate.getUTCMonth() + 1, endDate.getUTCDate(), timeZone)
+    return { type, key, start, end: Math.min(end, nowUnix) }
+  }
+  if (type === 'month') {
+    const match = String(key).match(/^(\d{4})-(\d{2})$/)
+    if (!match) throw new Error(`无效月份键：${key}`)
+    const year = Number(match[1])
+    const month = Number(match[2])
+    if (month < 1 || month > 12) throw new Error(`无效月份键：${key}`)
+    const next = new Date(Date.UTC(year, month, 1))
+    const start = zonedStartUnix(year, month, 1, timeZone)
+    const end = zonedStartUnix(next.getUTCFullYear(), next.getUTCMonth() + 1, 1, timeZone)
+    return { type, key, start, end: Math.min(end, nowUnix) }
+  }
+  throw new Error(`不支持的用量周期：${type}/${key}`)
+}
+
 export function periodKey(period, options = {}) {
   const range = currentPeriodRanges(options).find((item) => item.type === period)
   if (!range) throw new Error('不支持的排行榜周期')

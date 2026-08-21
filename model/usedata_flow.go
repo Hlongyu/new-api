@@ -43,7 +43,7 @@ func flowQuotaBaseQuery(startTime int64, endTime int64) *gorm.DB {
 func getSelfFlowQuotaData(startTime int64, endTime int64, userID int) ([]*FlowQuotaData, error) {
 	rows := make([]*FlowQuotaData, 0)
 	err := flowQuotaBaseQuery(startTime, endTime).
-		Select("token_id, use_group, model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
+		Select(fmt.Sprintf("token_id, use_group, model_name, sum(count) as count, sum(quota) as quota, sum(%s) as token_used", quotaDataTotalTokensExpr)).
 		Where("user_id = ?", userID).
 		Group("token_id, use_group, model_name").
 		Order("quota DESC").
@@ -57,7 +57,7 @@ func getSelfFlowQuotaData(startTime int64, endTime int64, userID int) ([]*FlowQu
 func getAdminFlowQuotaData(startTime int64, endTime int64, username string) ([]*FlowQuotaData, error) {
 	rows := make([]*FlowQuotaData, 0)
 	query := flowQuotaBaseQuery(startTime, endTime).
-		Select("user_id, username, use_group, model_name, channel_id, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used")
+		Select(fmt.Sprintf("user_id, username, use_group, model_name, channel_id, sum(count) as count, sum(quota) as quota, sum(%s) as token_used", quotaDataTotalTokensExpr))
 	if username != "" {
 		query = query.Where("username = ?", username)
 	}
@@ -74,7 +74,7 @@ func getAdminFlowQuotaData(startTime int64, endTime int64, username string) ([]*
 func getRootFlowQuotaData(startTime int64, endTime int64, username string) ([]*FlowQuotaData, error) {
 	rows := make([]*FlowQuotaData, 0)
 	query := flowQuotaBaseQuery(startTime, endTime).
-		Select("user_id, username, node_name, token_id, use_group, model_name, channel_id, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used")
+		Select(fmt.Sprintf("user_id, username, node_name, token_id, use_group, model_name, channel_id, sum(count) as count, sum(quota) as quota, sum(%s) as token_used", quotaDataTotalTokensExpr))
 	if username != "" {
 		query = query.Where("username = ?", username)
 	}

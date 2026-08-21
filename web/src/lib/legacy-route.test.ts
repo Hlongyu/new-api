@@ -26,6 +26,7 @@ describe('legacy frontend route migration', () => {
     const routes = {
       '/login': '/sign-in',
       '/forbidden': '/403',
+      '/leaderboard': '/rankings',
       '/console': '/dashboard',
       '/console/models': '/models',
       '/console/deployment': '/models/deployments',
@@ -55,6 +56,10 @@ describe('legacy frontend route migration', () => {
     assert.equal(
       resolveLegacyRoute('/console/topup?source=email#orders'),
       '/wallet?source=email#orders'
+    )
+    assert.equal(
+      resolveLegacyRoute('/leaderboard?period=week&board=usage#top'),
+      '/rankings?period=week&board=usage#top'
     )
   })
 
