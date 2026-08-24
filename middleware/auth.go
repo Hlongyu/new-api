@@ -453,11 +453,19 @@ func TokenAuth() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
 			return
 		}
-		if userCache.Quota <= 0 {
-			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgQuotaInsufficient), types.ErrorCodeInsufficientUserQuota)
-			return
-		}
 		rateLimitAt := common.GetTimestamp()
+		if userCache.Quota <= 0 {
+			hasSubscriptionQuota, err := model.HasUsableSubscriptionQuota(token.UserId, rateLimitAt)
+			if err != nil {
+				common.SysLog(fmt.Sprintf("TokenAuth HasUsableSubscriptionQuota error for user %d: %v", token.UserId, err))
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+				return
+			}
+			if !hasSubscriptionQuota {
+				abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgQuotaInsufficient), types.ErrorCodeInsufficientUserQuota)
+				return
+			}
+		}
 		if err := model.CheckTokenQuotaLimits(token, rateLimitAt); err != nil {
 			var quotaErr *model.TokenQuotaExceededError
 			if !errors.As(err, &quotaErr) {

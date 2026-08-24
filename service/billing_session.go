@@ -94,7 +94,8 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 }
 
 // NewBillingSession performs admission only. Paid requests are allowed while
-// the wallet is positive; no funding source or token quota is modified here.
+// the wallet is positive or an active subscription has usable quota; no funding
+// source or token quota is modified here.
 func NewBillingSession(_ *gin.Context, relayInfo *relaycommon.RelayInfo, _ int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -104,13 +105,19 @@ func NewBillingSession(_ *gin.Context, relayInfo *relaycommon.RelayInfo, _ int) 
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
 	if userQuota <= 0 {
-		return nil, types.NewErrorWithStatusCode(
-			fmt.Errorf("用户额度不足, 剩余额度: %s", logger.FormatQuota(userQuota)),
-			types.ErrorCodeInsufficientUserQuota,
-			http.StatusForbidden,
-			types.ErrOptionWithSkipRetry(),
-			types.ErrOptionWithNoRecordErrorLog(),
-		)
+		hasSubscriptionQuota, err := model.HasUsableSubscriptionQuota(relayInfo.UserId, common.GetTimestamp())
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		}
+		if !hasSubscriptionQuota {
+			return nil, types.NewErrorWithStatusCode(
+				fmt.Errorf("用户额度不足, 剩余额度: %s", logger.FormatQuota(userQuota)),
+				types.ErrorCodeInsufficientUserQuota,
+				http.StatusForbidden,
+				types.ErrOptionWithSkipRetry(),
+				types.ErrOptionWithNoRecordErrorLog(),
+			)
+		}
 	}
 	relayInfo.UserQuota = userQuota
 	relayInfo.FinalPreConsumedQuota = 0

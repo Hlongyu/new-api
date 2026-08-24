@@ -144,19 +144,51 @@ func TestPostpaidRefundAfterSubscriptionResetDoesNotCreateNegativeUsage(t *testi
 	assert.Zero(t, subscription.AmountUsed)
 }
 
-func TestPostpaidAdmissionRequiresPositiveWalletEvenWithSubscription(t *testing.T) {
+func TestPostpaidAdmissionAllowsUsableSubscriptionWithNegativeWallet(t *testing.T) {
 	truncate(t)
 	gin.SetMode(gin.TestMode)
-	seedUser(t, 804, 0)
+	seedUser(t, 804, -10)
 	require.NoError(t, model.DB.Create(&model.UserSubscription{
 		Id: 1005, UserId: 804, AmountTotal: 100, AmountUsed: 0,
 		Status: "active", EndTime: time.Now().Add(time.Hour).Unix(),
 	}).Error)
 
 	ctx, _ := gin.CreateTestContext(nil)
-	_, apiErr := NewBillingSession(ctx, &relaycommon.RelayInfo{UserId: 804}, 0)
-	require.NotNil(t, apiErr)
-	assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+	info := &relaycommon.RelayInfo{UserId: 804}
+	session, apiErr := NewBillingSession(ctx, info, 0)
+	require.Nil(t, apiErr)
+	require.NotNil(t, session)
+	assert.Equal(t, -10, info.UserQuota)
+}
+
+func TestPostpaidAdmissionRejectsUnavailableSubscriptionsWithoutWallet(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     string
+		endTime    int64
+		amountUsed int64
+	}{
+		{name: "exhausted", status: "active", endTime: time.Now().Add(time.Hour).Unix(), amountUsed: 100},
+		{name: "expired", status: "active", endTime: time.Now().Add(-time.Hour).Unix(), amountUsed: 0},
+		{name: "cancelled", status: "cancelled", endTime: time.Now().Add(time.Hour).Unix(), amountUsed: 0},
+	}
+
+	for index, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			truncate(t)
+			userId := 810 + index
+			seedUser(t, userId, 0)
+			require.NoError(t, model.DB.Create(&model.UserSubscription{
+				Id: 1010 + index, UserId: userId, AmountTotal: 100, AmountUsed: test.amountUsed,
+				Status: test.status, EndTime: test.endTime,
+			}).Error)
+
+			ctx, _ := gin.CreateTestContext(nil)
+			_, apiErr := NewBillingSession(ctx, &relaycommon.RelayInfo{UserId: userId}, 0)
+			require.NotNil(t, apiErr)
+			assert.Equal(t, types.ErrorCodeInsufficientUserQuota, apiErr.GetErrorCode())
+		})
+	}
 }
 
 func TestTokenRateLimitsUseFirstCallAnchoredWindows(t *testing.T) {

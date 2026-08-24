@@ -199,3 +199,32 @@ func TestAdminResetPlanSubscriptionsNoMatchSucceeds(t *testing.T) {
 	assert.Zero(t, result.UserCount)
 	assert.Empty(t, result.AffectedUserIds)
 }
+
+func TestHasUsableSubscriptionQuotaAppliesDueDailyReset(t *testing.T) {
+	truncateTables(t)
+
+	now := GetDBTimestamp()
+	plan := &SubscriptionPlan{
+		Id:               9701,
+		Title:            "Daily",
+		PriceAmount:      10,
+		DurationUnit:     SubscriptionDurationMonth,
+		DurationValue:    1,
+		TotalAmount:      1000,
+		QuotaResetPeriod: SubscriptionResetDaily,
+	}
+	seedSubscriptionResetPlan(t, plan)
+	seedSubscriptionResetSub(t, &UserSubscription{
+		Id: 9702, UserId: 501, PlanId: plan.Id,
+		AmountTotal: 1000, AmountUsed: 1000,
+		StartTime: now - 2*24*3600, EndTime: now + 30*24*3600, Status: "active",
+		LastResetTime: now - 2*24*3600, NextResetTime: now - 24*3600,
+	})
+
+	hasQuota, err := HasUsableSubscriptionQuota(501, now)
+	require.NoError(t, err)
+	assert.True(t, hasQuota)
+	subscription := getSubscriptionResetSub(t, 9702)
+	assert.Zero(t, subscription.AmountUsed)
+	assert.Greater(t, subscription.NextResetTime, now)
+}

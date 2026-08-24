@@ -1284,6 +1284,47 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
+// HasUsableSubscriptionQuota reports whether an active subscription can fund
+// another paid request. Due periodic resets are applied before quota is checked.
+func HasUsableSubscriptionQuota(userId int, now int64) (bool, error) {
+	if userId <= 0 {
+		return false, errors.New("invalid userId")
+	}
+	if now <= 0 {
+		now = GetDBTimestamp()
+	}
+
+	hasQuota := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var subscriptions []UserSubscription
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Order("end_time asc, id asc").
+			Find(&subscriptions).Error; err != nil {
+			return err
+		}
+
+		for _, candidate := range subscriptions {
+			subscription := candidate
+			if subscription.PlanId > 0 {
+				plan, err := getSubscriptionPlanByIdTx(tx, subscription.PlanId)
+				if err != nil {
+					return err
+				}
+				if err := maybeResetUserSubscriptionWithPlanTx(tx, &subscription, plan, now); err != nil {
+					return err
+				}
+			}
+			if subscription.AmountTotal <= 0 || subscription.AmountUsed < subscription.AmountTotal {
+				hasQuota = true
+				return nil
+			}
+		}
+		return nil
+	})
+	return hasQuota, err
+}
+
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
 func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {

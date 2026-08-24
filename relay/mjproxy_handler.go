@@ -211,20 +211,6 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(info.UserId, false)
-	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
-	}
-
-	if userQuota <= 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
-		}
-	}
 	if apiErr := service.PreConsumeBilling(c, 0, info); apiErr != nil {
 		return &dto.MidjourneyResponse{Code: 4, Description: apiErr.Error()}
 	}
@@ -521,20 +507,6 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
-		}
-	}
-
-	if consumeQuota && userQuota <= 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
-		}
-	}
 	if consumeQuota {
 		if apiErr := service.PreConsumeBilling(c, 0, relayInfo); apiErr != nil {
 			return &dto.MidjourneyResponse{Code: 4, Description: apiErr.Error()}
