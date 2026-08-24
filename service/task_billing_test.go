@@ -47,6 +47,9 @@ func TestMain(m *testing.M) {
 		&model.Channel{},
 		&model.TopUp{},
 		&model.UserSubscription{},
+		&model.TokenQuotaUsage{},
+		&model.PostpaidSettlement{},
+		&model.PostpaidSettlementAllocation{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
 	); err != nil {
@@ -70,6 +73,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM token_quota_usages")
+		model.DB.Exec("DELETE FROM postpaid_settlement_allocations")
+		model.DB.Exec("DELETE FROM postpaid_settlements")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})

@@ -36,6 +36,15 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
     .object({
       name: z.string().min(1, t('Please enter a name')),
       remain_quota_dollars: z.number().optional(),
+      five_hour_quota_dollars: z
+        .number()
+        .min(0, t('Quota must be zero or greater')),
+      daily_quota_dollars: z
+        .number()
+        .min(0, t('Quota must be zero or greater')),
+      weekly_quota_dollars: z
+        .number()
+        .min(0, t('Quota must be zero or greater')),
       expired_time: z.date().optional(),
       unlimited_quota: z.boolean(),
       model_limits: z.array(z.string()),
@@ -106,6 +115,9 @@ export type ApiKeyFormValues = z.infer<ReturnType<typeof getApiKeyFormSchema>>
 export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   name: '',
   remain_quota_dollars: 10,
+  five_hour_quota_dollars: 0,
+  daily_quota_dollars: 0,
+  weekly_quota_dollars: 0,
   expired_time: undefined,
   unlimited_quota: true,
   model_limits: [],
@@ -148,6 +160,9 @@ export function transformFormDataToPayload(
       ? Math.floor(data.expired_time.getTime() / 1000)
       : -1,
     unlimited_quota: data.unlimited_quota,
+    five_hour_quota: parseQuotaFromDollars(data.five_hour_quota_dollars),
+    daily_quota: parseQuotaFromDollars(data.daily_quota_dollars),
+    weekly_quota: parseQuotaFromDollars(data.weekly_quota_dollars),
     model_limits_enabled: data.model_limits.length > 0,
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
@@ -185,6 +200,9 @@ export function transformApiKeyToFormDefaults(
         ? new Date(apiKey.expired_time * 1000)
         : undefined,
     unlimited_quota: apiKey.unlimited_quota,
+    five_hour_quota_dollars: quotaUnitsToDollars(apiKey.five_hour_quota ?? 0),
+    daily_quota_dollars: quotaUnitsToDollars(apiKey.daily_quota ?? 0),
+    weekly_quota_dollars: quotaUnitsToDollars(apiKey.weekly_quota ?? 0),
     model_limits: apiKey.model_limits
       ? apiKey.model_limits.split(',').filter(Boolean)
       : [],

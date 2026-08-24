@@ -130,7 +130,9 @@ function ApiKeysMobileList({
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
-        const total = apiKey.used_quota + apiKey.remain_quota
+        const total =
+          apiKey.used_quota + apiKey.remain_quota - (apiKey.quota_overage ?? 0)
+        const remaining = Math.max(0, apiKey.remain_quota)
 
         return (
           <div
@@ -171,7 +173,7 @@ function ApiKeysMobileList({
                 <UnlimitedQuotaBadge used={apiKey.used_quota} />
               ) : (
                 <span className='font-medium tabular-nums'>
-                  {formatQuota(apiKey.remain_quota)}
+                  {formatQuota(remaining)}
                   <span className='text-muted-foreground font-normal'>
                     {' / '}
                     {formatQuota(total)}
@@ -179,6 +181,31 @@ function ApiKeysMobileList({
                 </span>
               )}
             </div>
+            {((apiKey.five_hour_quota ?? 0) > 0 ||
+              (apiKey.daily_quota ?? 0) > 0 ||
+              (apiKey.weekly_quota ?? 0) > 0) && (
+              <div className='text-muted-foreground grid grid-cols-1 gap-1 text-[11px] tabular-nums sm:grid-cols-3'>
+                {(apiKey.five_hour_quota ?? 0) > 0 && (
+                  <span>
+                    {t('5 hours')}{' '}
+                    {formatQuota(apiKey.five_hour_used_quota ?? 0)} /{' '}
+                    {formatQuota(apiKey.five_hour_quota)}
+                  </span>
+                )}
+                {(apiKey.daily_quota ?? 0) > 0 && (
+                  <span>
+                    {t('Daily')} {formatQuota(apiKey.daily_used_quota ?? 0)} /{' '}
+                    {formatQuota(apiKey.daily_quota)}
+                  </span>
+                )}
+                {(apiKey.weekly_quota ?? 0) > 0 && (
+                  <span>
+                    {t('Weekly')} {formatQuota(apiKey.weekly_used_quota ?? 0)} /{' '}
+                    {formatQuota(apiKey.weekly_quota)}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )
       })}

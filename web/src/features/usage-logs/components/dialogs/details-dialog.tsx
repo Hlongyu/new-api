@@ -82,6 +82,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { SettlementDetails } from './settlement-details'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -489,6 +490,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  const hasLegacySubscriptionDetails =
+    isSubscription &&
+    other != null &&
+    (other.subscription_plan_id != null ||
+      other.subscription_id != null ||
+      other.subscription_pre_consumed != null ||
+      other.subscription_post_delta != null ||
+      other.subscription_remain != null)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -1073,6 +1082,10 @@ export function DetailsDialog(props: DetailsDialogProps) {
           />
         )}
 
+        {isConsume && other && !isViolation && (
+          <SettlementDetails quota={props.log.quota} other={other} />
+        )}
+
         {/* Tiered pricing breakdown (when billing_mode is tiered_expr) */}
         {isTieredBilling && other?.expr_b64 && (
           <DetailSection label={t('Dynamic Pricing')}>
@@ -1149,7 +1162,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         )}
 
         {/* Subscription billing details */}
-        {isSubscription && other && (
+        {hasLegacySubscriptionDetails && other && (
           <DetailSection label={t('Subscription Billing')}>
             {other.subscription_plan_id && (
               <DetailRow
@@ -1179,13 +1192,6 @@ export function DetailsDialog(props: DetailsDialogProps) {
                   mono
                 />
               )}
-            {other.subscription_consumed != null && (
-              <DetailRow
-                label={t('Final Consumed')}
-                value={formatLogQuota(other.subscription_consumed)}
-                mono
-              />
-            )}
             {other.subscription_remain != null && (
               <DetailRow
                 label={t('Remaining')}

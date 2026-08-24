@@ -73,6 +73,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 // resolveTokenKey 通过 TokenId 运行时获取令牌 Key（用于 Redis 缓存操作）。
 // 如果令牌已被删除或查询失败，返回空字符串。
 func resolveTokenKey(ctx context.Context, tokenId int, taskID string) string {
+	if tokenId <= 0 {
+		return ""
+	}
 	token, err := model.GetTokenById(tokenId)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("获取令牌 key 失败 (tokenId=%d, task=%s): %s", tokenId, taskID, err.Error()))
@@ -169,14 +172,28 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		return true
 	}
 
-	// 1. 退还资金来源（钱包或订阅）
-	if err := taskAdjustFunding(task, -quota); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
-		return false
+	if task.PrivateData.BillingRequestId != "" {
+		tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
+		_, err := model.SettlePostpaidRequest(model.PostpaidSettlementParams{
+			RequestId: task.PrivateData.BillingRequestId,
+			UserId:    task.UserId,
+			TokenId:   task.PrivateData.TokenId,
+			TokenKey:  tokenKey,
+			Quota:     0,
+			StartedAt: task.PrivateData.BillingStartedAt,
+		})
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还后付费结算失败 task %s: %s", task.TaskID, err.Error()))
+			return false
+		}
+	} else {
+		// Compatibility for tasks created before postpaid settlement IDs were persisted.
+		if err := taskAdjustFunding(task, -quota); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
+			return false
+		}
+		taskAdjustTokenQuota(ctx, task, -quota)
 	}
-
-	// 2. 退还令牌额度
-	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 记录日志
 	other := taskBillingOther(task)
@@ -228,14 +245,27 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		reason,
 	))
 
-	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
+	if task.PrivateData.BillingRequestId != "" {
+		tokenKey := resolveTokenKey(ctx, task.PrivateData.TokenId, task.TaskID)
+		_, err := model.SettlePostpaidRequest(model.PostpaidSettlementParams{
+			RequestId: task.PrivateData.BillingRequestId,
+			UserId:    task.UserId,
+			TokenId:   task.PrivateData.TokenId,
+			TokenKey:  tokenKey,
+			Quota:     actualQuota,
+			StartedAt: task.PrivateData.BillingStartedAt,
+		})
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("后付费差额结算失败 task %s: %s", task.TaskID, err.Error()))
+			return
+		}
+	} else {
+		if err := taskAdjustFunding(task, quotaDelta); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
+			return
+		}
+		taskAdjustTokenQuota(ctx, task, quotaDelta)
 	}
-
-	// 调整令牌额度
-	taskAdjustTokenQuota(ctx, task, quotaDelta)
 
 	task.Quota = actualQuota
 	if err := task.UpdateQuota(); err != nil {

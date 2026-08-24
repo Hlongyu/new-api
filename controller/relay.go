@@ -171,7 +171,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	defer func() {
-		// Only return quota if downstream failed and quota was actually pre-consumed
+		// Postpaid sessions have nothing to refund before settlement.
 		if newAPIError != nil {
 			newAPIError = service.NormalizeViolationFeeError(newAPIError)
 			if relayInfo.Billing != nil {
@@ -589,6 +589,11 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
+		task.PrivateData.BillingRequestId = relayInfo.RequestId
+		task.PrivateData.BillingStartedAt = relayInfo.RateLimitAt
+		if task.PrivateData.BillingStartedAt <= 0 {
+			task.PrivateData.BillingStartedAt = relayInfo.StartTime.Unix()
+		}
 		task.PrivateData.NodeName = common.NodeName
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
 			ModelPrice:      relayInfo.PriceData.ModelPrice,

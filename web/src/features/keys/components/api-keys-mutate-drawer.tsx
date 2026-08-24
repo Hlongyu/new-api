@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
+import {
+  ChevronDown,
+  Gauge,
+  KeyRound,
+  RotateCcw,
+  Settings2,
+  WalletCards,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -65,6 +72,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { parseQuotaFromDollars } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import {
@@ -72,6 +80,7 @@ import {
   updateApiKey,
   getApiKey,
   getTokenAutoGroups,
+  resetApiKeyRateLimits,
 } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -86,6 +95,7 @@ import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
 } from './api-key-group-combobox'
+import { ApiKeyRateLimitProgress } from './api-key-rate-limit-progress'
 import { useApiKeys } from './api-keys-provider'
 import { AutoGroupOrderEditor } from './auto-group-order-editor'
 
@@ -106,6 +116,7 @@ export function ApiKeysMutateDrawer({
   const { triggerRefresh } = useApiKeys()
   const { status, loading: statusLoading } = useStatus()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isResettingRateLimits, setIsResettingRateLimits] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [initializedTarget, setInitializedTarget] = useState<string | null>(
     null
@@ -136,6 +147,7 @@ export function ApiKeysMutateDrawer({
     data: apiKeyData,
     isFetched: apiKeyFetched,
     isFetching: apiKeyFetching,
+    refetch: refetchApiKey,
   } = useQuery({
     queryKey: ['api-key', currentRowId],
     queryFn: () => getApiKey(currentRowId ?? 0),
@@ -336,6 +348,25 @@ export function ApiKeysMutateDrawer({
     toast.error(t('Please fix the highlighted fields before saving'))
   }
 
+  const handleResetRateLimits = async () => {
+    if (!currentRowId) return
+    setIsResettingRateLimits(true)
+    try {
+      const result = await resetApiKeyRateLimits(currentRowId)
+      if (!result.success) {
+        toast.error(result.message || t('Failed to reset rate limits'))
+        return
+      }
+      await refetchApiKey()
+      triggerRefresh()
+      toast.success(t('Rate limits reset'))
+    } catch {
+      toast.error(t('Failed to reset rate limits'))
+    } finally {
+      setIsResettingRateLimits(false)
+    }
+  }
+
   const handleSetExpiry = (months: number, days: number, hours: number) => {
     if (months === 0 && days === 0 && hours === 0) {
       form.setValue('expired_time', undefined)
@@ -354,11 +385,25 @@ export function ApiKeysMutateDrawer({
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
   const quotaLabel = t('Quota ({{currency}})', { currency: currencyLabel })
+  const fiveHourQuotaLabel = t('5-hour limit ({{currency}})', {
+    currency: currencyLabel,
+  })
+  const dailyQuotaLabel = t('Daily limit ({{currency}})', {
+    currency: currencyLabel,
+  })
+  const weeklyQuotaLabel = t('Weekly limit ({{currency}})', {
+    currency: currencyLabel,
+  })
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
   const autoGroupsMode = form.watch('auto_groups_mode')
   const unlimitedQuota = form.watch('unlimited_quota')
+  const fiveHourQuota = parseQuotaFromDollars(
+    form.watch('five_hour_quota_dollars')
+  )
+  const dailyQuota = parseQuotaFromDollars(form.watch('daily_quota_dollars'))
+  const weeklyQuota = parseQuotaFromDollars(form.watch('weekly_quota_dollars'))
 
   return (
     <Sheet
@@ -663,6 +708,133 @@ export function ApiKeysMutateDrawer({
                   </FormItem>
                 )}
               />
+            </SideDrawerSection>
+
+            <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Rate limits')}
+                description={t('Set 5-hour, daily, and weekly limits')}
+                icon={<Gauge className='size-4' />}
+                iconTone='warning'
+              />
+              <div className='flex flex-col gap-5'>
+                <FormField
+                  control={form.control}
+                  name='five_hour_quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{fiveHourQuotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='0'
+                          step={tokensOnly ? 1 : 0.01}
+                          onChange={(event) =>
+                            field.onChange(
+                              Number.parseFloat(event.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('0 means unlimited')}
+                      </FormDescription>
+                      {fiveHourQuota > 0 && (
+                        <ApiKeyRateLimitProgress
+                          used={apiKeyData?.data?.five_hour_used_quota ?? 0}
+                          limit={fiveHourQuota}
+                          resetAt={apiKeyData?.data?.five_hour_reset_at ?? 0}
+                        />
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='daily_quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{dailyQuotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='0'
+                          step={tokensOnly ? 1 : 0.01}
+                          onChange={(event) =>
+                            field.onChange(
+                              Number.parseFloat(event.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('0 means unlimited')}
+                      </FormDescription>
+                      {dailyQuota > 0 && (
+                        <ApiKeyRateLimitProgress
+                          used={apiKeyData?.data?.daily_used_quota ?? 0}
+                          limit={dailyQuota}
+                          resetAt={apiKeyData?.data?.daily_reset_at ?? 0}
+                        />
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='weekly_quota_dollars'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{weeklyQuotaLabel}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min='0'
+                          step={tokensOnly ? 1 : 0.01}
+                          onChange={(event) =>
+                            field.onChange(
+                              Number.parseFloat(event.target.value) || 0
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('0 means unlimited')}
+                      </FormDescription>
+                      {weeklyQuota > 0 && (
+                        <ApiKeyRateLimitProgress
+                          used={apiKeyData?.data?.weekly_used_quota ?? 0}
+                          limit={weeklyQuota}
+                          resetAt={apiKeyData?.data?.weekly_reset_at ?? 0}
+                        />
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {isUpdate && (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    className='self-start'
+                    disabled={isResettingRateLimits}
+                    onClick={handleResetRateLimits}
+                  >
+                    <RotateCcw className='size-4' />
+                    {isResettingRateLimits
+                      ? t('Resetting...')
+                      : t('Reset rate limits')}
+                  </Button>
+                )}
+              </div>
             </SideDrawerSection>
 
             <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>

@@ -48,8 +48,12 @@ import {
 import { DataTableRowActions } from './data-table-row-actions'
 
 function getQuotaProgressColor(percentage: number): string {
-  if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  if (percentage <= 30) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  if (percentage <= 10) {
+    return '[&_[data-slot=progress-indicator]]:bg-rose-500'
+  }
+  if (percentage <= 30) {
+    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  }
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
@@ -151,8 +155,9 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         }
 
         const used = apiKey.used_quota
-        const remaining = apiKey.remain_quota
-        const total = used + remaining
+        const rawRemaining = apiKey.remain_quota
+        const remaining = Math.max(0, rawRemaining)
+        const total = used + rawRemaining - (apiKey.quota_overage ?? 0)
         const percentage = total > 0 ? (remaining / total) * 100 : 0
 
         return (
@@ -183,6 +188,25 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
                 <div>
                   {t('Total:')} {formatQuota(total)}
                 </div>
+                {(apiKey.five_hour_quota ?? 0) > 0 && (
+                  <div>
+                    {t('5 hours')}:{' '}
+                    {formatQuota(apiKey.five_hour_used_quota ?? 0)} /{' '}
+                    {formatQuota(apiKey.five_hour_quota)}
+                  </div>
+                )}
+                {(apiKey.daily_quota ?? 0) > 0 && (
+                  <div>
+                    {t('Daily')}: {formatQuota(apiKey.daily_used_quota ?? 0)} /{' '}
+                    {formatQuota(apiKey.daily_quota)}
+                  </div>
+                )}
+                {(apiKey.weekly_quota ?? 0) > 0 && (
+                  <div>
+                    {t('Weekly')}: {formatQuota(apiKey.weekly_used_quota ?? 0)}{' '}
+                    / {formatQuota(apiKey.weekly_quota)}
+                  </div>
+                )}
               </div>
             </TooltipContent>
           </Tooltip>

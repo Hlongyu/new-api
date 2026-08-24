@@ -85,6 +85,11 @@ export async function updateApiKey(
   return res.data
 }
 
+export async function resetApiKeyRateLimits(id: number): Promise<ApiResponse> {
+  const res = await api.post(`/api/token/${id}/reset-rate-limits`)
+  return res.data
+}
+
 // Delete a single API key
 export async function deleteApiKey(id: number): Promise<ApiResponse> {
   const res = await api.delete(`/api/token/${id}/`)

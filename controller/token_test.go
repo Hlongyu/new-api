@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -32,10 +34,13 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	Key           string `json:"key"`
+	Status        int    `json:"status"`
+	FiveHourQuota int    `json:"five_hour_quota"`
+	DailyQuota    int    `json:"daily_quota"`
+	WeeklyQuota   int    `json:"weekly_quota"`
 }
 
 type tokenKeyResponse struct {
@@ -99,7 +104,7 @@ func openTokenControllerTestDB(t *testing.T) *gorm.DB {
 func migrateTokenControllerTestDB(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.Token{}, &model.TokenQuotaUsage{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 }
@@ -519,6 +524,9 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 		"expired_time":         -1,
 		"remain_quota":         100,
 		"unlimited_quota":      true,
+		"five_hour_quota":      100,
+		"daily_quota":          250,
+		"weekly_quota":         1_000,
 		"model_limits_enabled": false,
 		"model_limits":         "",
 		"group":                "default",
@@ -540,9 +548,43 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	if detail.Key != token.GetMaskedKey() {
 		t.Fatalf("expected masked update key %q, got %q", token.GetMaskedKey(), detail.Key)
 	}
+	assert.Equal(t, 100, detail.FiveHourQuota)
+	assert.Equal(t, 250, detail.DailyQuota)
+	assert.Equal(t, 1_000, detail.WeeklyQuota)
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
 	}
+	updated, err := model.GetTokenByIds(token.Id, 1)
+	if err != nil {
+		t.Fatalf("failed to reload updated token: %v", err)
+	}
+	if updated.FiveHourQuota != 100 || updated.DailyQuota != 250 || updated.WeeklyQuota != 1_000 {
+		t.Fatalf("expected rate limits 100/250/1000, got %d/%d/%d", updated.FiveHourQuota, updated.DailyQuota, updated.WeeklyQuota)
+	}
+}
+
+func TestResetTokenRateLimitsRequiresOwnershipAndClearsAllWindows(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "rate-limited-token", "rate1234token5678")
+	require.NoError(t, db.Create(&model.TokenQuotaUsage{TokenId: token.Id, Period: model.TokenQuotaPeriodFiveHour, WindowStart: 100, UsedQuota: 25}).Error)
+	require.NoError(t, db.Create(&model.TokenQuotaUsage{TokenId: token.Id, Period: model.TokenQuotaPeriodDaily, WindowStart: 100, UsedQuota: 50}).Error)
+	require.NoError(t, db.Create(&model.TokenQuotaUsage{TokenId: token.Id, Period: model.TokenQuotaPeriodWeekly, WindowStart: 100, UsedQuota: 75}).Error)
+
+	unauthorizedCtx, unauthorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/reset-rate-limits", nil, 2)
+	unauthorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	ResetTokenRateLimits(unauthorizedCtx)
+	unauthorizedResponse := decodeAPIResponse(t, unauthorizedRecorder)
+	assert.False(t, unauthorizedResponse.Success)
+
+	authorizedCtx, authorizedRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/"+strconv.Itoa(token.Id)+"/reset-rate-limits", nil, 1)
+	authorizedCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	ResetTokenRateLimits(authorizedCtx)
+	authorizedResponse := decodeAPIResponse(t, authorizedRecorder)
+	require.True(t, authorizedResponse.Success, authorizedResponse.Message)
+
+	var count int64
+	require.NoError(t, db.Model(&model.TokenQuotaUsage{}).Where("token_id = ?", token.Id).Count(&count).Error)
+	assert.Zero(t, count)
 }
 
 func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {

@@ -123,7 +123,19 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		return false
 	}
 
-	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
+	tokenId := relayInfo.TokenId
+	if relayInfo.IsPlayground {
+		tokenId = 0
+	}
+	settlement, err := model.SettlePostpaidRequest(model.PostpaidSettlementParams{
+		RequestId: relayInfo.RequestId + ":violation",
+		UserId:    relayInfo.UserId,
+		TokenId:   tokenId,
+		TokenKey:  relayInfo.TokenKey,
+		Quota:     feeQuota,
+		StartedAt: billingStartedAt(relayInfo),
+	})
+	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
 		return false
 	}
@@ -139,6 +151,8 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		"violation_fee":        true,
 		"violation_fee_code":   string(types.ErrorCodeViolationFeeGrokCSAM),
 		"fee_quota":            feeQuota,
+		"subscription_quota":   settlement.SubscriptionQuota,
+		"wallet_quota":         settlement.WalletQuota,
 		"base_amount":          settings.ViolationDeductionAmount,
 		"group_ratio":          groupRatio,
 		"status_code":          apiErr.StatusCode,

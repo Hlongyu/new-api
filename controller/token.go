@@ -38,10 +38,16 @@ type tokenRequest struct {
 
 type tokenResponse struct {
 	*model.Token
-	AutoGroups []string `json:"auto_groups"`
+	AutoGroups      []string `json:"auto_groups"`
+	FiveHourUsed    int64    `json:"five_hour_used_quota"`
+	FiveHourResetAt int64    `json:"five_hour_reset_at"`
+	DailyUsed       int64    `json:"daily_used_quota"`
+	DailyResetAt    int64    `json:"daily_reset_at"`
+	WeeklyUsed      int64    `json:"weekly_used_quota"`
+	WeeklyResetAt   int64    `json:"weekly_reset_at"`
 }
 
-func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
+func buildMaskedTokenResponseWithState(token *model.Token, state model.TokenQuotaUsageState) *tokenResponse {
 	if token == nil {
 		return nil
 	}
@@ -55,15 +61,59 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if len(autoGroups) == 0 {
 		autoGroups = nil
 	}
-	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
+	return &tokenResponse{
+		Token: &maskedToken, AutoGroups: autoGroups,
+		FiveHourUsed: state.FiveHourUsed, FiveHourResetAt: state.FiveHourResetAt,
+		DailyUsed: state.DailyUsed, DailyResetAt: state.DailyResetAt,
+		WeeklyUsed: state.WeeklyUsed, WeeklyResetAt: state.WeeklyResetAt,
+	}
+}
+
+func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
+	if token == nil {
+		return nil
+	}
+	state, err := model.GetTokenQuotaUsageState(token.Id, common.GetTimestamp())
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to load quota usage for token %d: %v", token.Id, err))
+	}
+	return buildMaskedTokenResponseWithState(token, state)
 }
 
 func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+	tokenIds := make([]int, 0, len(tokens))
+	for _, token := range tokens {
+		tokenIds = append(tokenIds, token.Id)
+	}
+	states, err := model.GetTokenQuotaUsageStates(tokenIds, common.GetTimestamp())
+	if err != nil {
+		common.SysError("failed to load token quota usage: " + err.Error())
+		states = make(map[int]model.TokenQuotaUsageState)
+	}
 	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
-		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
+		maskedTokens = append(maskedTokens, buildMaskedTokenResponseWithState(token, states[token.Id]))
 	}
 	return maskedTokens
+}
+
+func validateTokenQuotaValues(c *gin.Context, token *model.Token) bool {
+	maxQuotaValue := int(1000000000 * common.QuotaPerUnit)
+	if !token.UnlimitedQuota && token.RemainQuota < 0 {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+		return false
+	}
+	if token.FiveHourQuota < 0 || token.DailyQuota < 0 || token.WeeklyQuota < 0 {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+		return false
+	}
+	if (!token.UnlimitedQuota && token.RemainQuota > maxQuotaValue) ||
+		token.FiveHourQuota > maxQuotaValue || token.DailyQuota > maxQuotaValue ||
+		token.WeeklyQuota > maxQuotaValue {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
+		return false
+	}
+	return true
 }
 
 func getTokenRequestUserGroup(c *gin.Context) (string, error) {
@@ -243,6 +293,15 @@ func GetTokenUsage(c *gin.Context) {
 	if expiredAt == -1 {
 		expiredAt = 0
 	}
+	quotaState, quotaErr := model.GetTokenQuotaUsageState(token.Id, common.GetTimestamp())
+	if quotaErr != nil {
+		common.ApiError(c, quotaErr)
+		return
+	}
+	availableQuota := token.RemainQuota
+	if availableQuota < 0 {
+		availableQuota = 0
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"code":    true,
@@ -250,10 +309,19 @@ func GetTokenUsage(c *gin.Context) {
 		"data": gin.H{
 			"object":               "token_usage",
 			"name":                 token.Name,
-			"total_granted":        token.RemainQuota + token.UsedQuota,
+			"total_granted":        token.RemainQuota + token.UsedQuota - token.QuotaOverage,
 			"total_used":           token.UsedQuota,
-			"total_available":      token.RemainQuota,
+			"total_available":      availableQuota,
 			"unlimited_quota":      token.UnlimitedQuota,
+			"five_hour_quota":      token.FiveHourQuota,
+			"five_hour_used_quota": quotaState.FiveHourUsed,
+			"five_hour_reset_at":   quotaState.FiveHourResetAt,
+			"daily_quota":          token.DailyQuota,
+			"daily_used_quota":     quotaState.DailyUsed,
+			"daily_reset_at":       quotaState.DailyResetAt,
+			"weekly_quota":         token.WeeklyQuota,
+			"weekly_used_quota":    quotaState.WeeklyUsed,
+			"weekly_reset_at":      quotaState.WeeklyResetAt,
 			"model_limits":         token.GetModelLimitsMap(),
 			"model_limits_enabled": token.ModelLimitsEnabled,
 			"expires_at":           expiredAt,
@@ -273,17 +341,8 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	// 非无限额度时，检查额度值是否超出有效范围
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := int((1000000000 * common.QuotaPerUnit))
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !validateTokenQuotaValues(c, &token) {
+		return
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
@@ -322,6 +381,10 @@ func AddToken(c *gin.Context) {
 		ExpiredTime:        token.ExpiredTime,
 		RemainQuota:        token.RemainQuota,
 		UnlimitedQuota:     token.UnlimitedQuota,
+		FiveHourQuota:      token.FiveHourQuota,
+		DailyQuota:         token.DailyQuota,
+		WeeklyQuota:        token.WeeklyQuota,
+		QuotaOverage:       0,
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
@@ -368,16 +431,8 @@ func UpdateToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := int((1000000000 * common.QuotaPerUnit))
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !validateTokenQuotaValues(c, &token) {
+		return
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {
@@ -402,6 +457,10 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
 		cleanToken.UnlimitedQuota = token.UnlimitedQuota
+		cleanToken.FiveHourQuota = token.FiveHourQuota
+		cleanToken.DailyQuota = token.DailyQuota
+		cleanToken.WeeklyQuota = token.WeeklyQuota
+		cleanToken.QuotaOverage = 0
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
@@ -426,6 +485,19 @@ func UpdateToken(c *gin.Context) {
 		"message": "",
 		"data":    buildMaskedTokenResponse(cleanToken),
 	})
+}
+
+func ResetTokenRateLimits(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidId)
+		return
+	}
+	if err := model.ResetTokenQuotaUsage(id, c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 type TokenBatch struct {

@@ -18,8 +18,11 @@ var (
 
 // Token auth errors
 var (
-	ErrTokenNotProvided = errors.New("token not provided")
-	ErrTokenInvalid     = errors.New("token invalid")
+	ErrTokenNotProvided           = errors.New("token not provided")
+	ErrTokenInvalid               = errors.New("token invalid")
+	ErrTokenFiveHourQuotaExceeded = errors.New("token five-hour quota exceeded")
+	ErrTokenDailyQuotaExceeded    = errors.New("token daily quota exceeded")
+	ErrTokenWeeklyQuotaExceeded   = errors.New("token weekly quota exceeded")
 )
 
 // Redemption errors

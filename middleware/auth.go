@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -452,6 +453,37 @@ func TokenAuth() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
 			return
 		}
+		if userCache.Quota <= 0 {
+			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgQuotaInsufficient), types.ErrorCodeInsufficientUserQuota)
+			return
+		}
+		rateLimitAt := common.GetTimestamp()
+		if err := model.CheckTokenQuotaLimits(token, rateLimitAt); err != nil {
+			var quotaErr *model.TokenQuotaExceededError
+			if !errors.As(err, &quotaErr) {
+				common.SysLog("TokenAuth CheckTokenQuotaLimits error: " + err.Error())
+				abortWithOpenAiMessage(c, http.StatusInternalServerError, common.TranslateMessage(c, i18n.MsgDatabaseError))
+				return
+			}
+			retryAfter := quotaErr.ResetAt - rateLimitAt
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			c.Header("Retry-After", strconv.FormatInt(retryAfter, 10))
+			messageKey := i18n.MsgTokenDailyQuotaExceeded
+			errorCode := types.ErrorCodeTokenDailyQuotaExceeded
+			switch quotaErr.Period {
+			case model.TokenQuotaPeriodFiveHour:
+				messageKey = i18n.MsgTokenFiveHourQuotaExceeded
+				errorCode = types.ErrorCodeTokenFiveHourQuotaExceeded
+			case model.TokenQuotaPeriodWeekly:
+				messageKey = i18n.MsgTokenWeeklyQuotaExceeded
+				errorCode = types.ErrorCodeTokenWeeklyQuotaExceeded
+			}
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, common.TranslateMessage(c, messageKey), errorCode)
+			return
+		}
+		common.SetContextKey(c, constant.ContextKeyTokenRateLimitAt, rateLimitAt)
 
 		userCache.WriteContext(c)
 
