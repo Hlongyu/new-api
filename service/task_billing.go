@@ -130,6 +130,13 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		if bc.CouponId > 0 {
+			other["coupon_id"] = bc.CouponId
+			other["coupon_name"] = bc.CouponName
+			other["coupon_ratio"] = bc.CouponRatio
+			other["original_group_ratio"] = bc.OriginalGroupRatio
+			other["coupon_active_until"] = bc.CouponActiveUntil
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v

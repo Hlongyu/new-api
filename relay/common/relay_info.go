@@ -156,6 +156,9 @@ type RelayInfo struct {
 	UpstreamRequestBodySize int64
 
 	PriceData hosttypes.PriceData
+	// CouponResolutionError blocks billing when the request-scoped coupon
+	// lookup fails, avoiding an unexpected fallback to the undiscounted rate.
+	CouponResolutionError error
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
 	// int32 bound (or NaN fallback) while computing this request's charge.

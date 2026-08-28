@@ -8,9 +8,27 @@ import (
 )
 
 type GroupRatioInfo struct {
-	GroupRatio        float64
-	GroupSpecialRatio float64
-	HasSpecialRatio   bool
+	GroupRatio         float64
+	GroupSpecialRatio  float64
+	HasSpecialRatio    bool
+	OriginalGroupRatio float64
+	CouponId           int
+	CouponName         string
+	CouponRatio        float64
+	CouponActiveUntil  int64
+}
+
+func (info *GroupRatioInfo) ApplyCouponCap(couponId int, couponName string, couponRatio float64, activeUntil int64) bool {
+	if info == nil || couponId <= 0 || couponRatio <= 0 || info.GroupRatio <= couponRatio {
+		return false
+	}
+	info.OriginalGroupRatio = info.GroupRatio
+	info.GroupRatio = couponRatio
+	info.CouponId = couponId
+	info.CouponName = couponName
+	info.CouponRatio = couponRatio
+	info.CouponActiveUntil = activeUntil
+	return true
 }
 
 type PriceData struct {

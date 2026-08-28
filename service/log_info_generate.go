@@ -166,6 +166,14 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.WalletQuota > 0 {
 		other["wallet_quota_deducted"] = relayInfo.WalletQuota
 	}
+	groupRatioInfo := relayInfo.PriceData.GroupRatioInfo
+	if groupRatioInfo.CouponId > 0 {
+		other["coupon_id"] = groupRatioInfo.CouponId
+		other["coupon_name"] = groupRatioInfo.CouponName
+		other["coupon_ratio"] = groupRatioInfo.CouponRatio
+		other["original_group_ratio"] = groupRatioInfo.OriginalGroupRatio
+		other["coupon_active_until"] = groupRatioInfo.CouponActiveUntil
+	}
 	if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionId != 0 {
 		if relayInfo.SubscriptionId != 0 {
 			other["subscription_id"] = relayInfo.SubscriptionId
@@ -299,6 +307,7 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData hosttypes.P
 		other["user_group_ratio"] = priceData.GroupRatioInfo.GroupSpecialRatio
 	}
 	appendRequestPath(nil, relayInfo, other)
+	appendBillingInfo(relayInfo, other)
 	return other
 }
 

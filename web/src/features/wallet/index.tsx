@@ -20,12 +20,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { WalletCouponsCard } from '@/features/coupons/components/wallet-coupons-card'
+import { PostpaidCard } from '@/features/postpaid'
+import { SponsorCard } from '@/features/sponsor'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
-
-import { PostpaidCard } from '@/features/postpaid'
-import { SponsorCard } from '@/features/sponsor'
 
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
@@ -292,6 +292,8 @@ export function Wallet(props: WalletProps) {
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
             <WalletStatsCard user={user} loading={userLoading} />
+
+            <WalletCouponsCard />
 
             <SponsorCard />
 

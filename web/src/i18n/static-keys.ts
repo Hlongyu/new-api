@@ -203,6 +203,19 @@ export const STATIC_I18N_KEYS = [
   'Quota must be a positive number',
   'Successfully created {{count}} redemption codes',
 
+  // Coupon status and API errors
+  'Available',
+  'Active',
+  'Ended',
+  'Revoked',
+  'Coupon not found',
+  'This coupon can no longer be activated',
+  'This coupon has already been activated',
+  'Another coupon is already active for this group',
+  'This coupon has been revoked',
+  'The coupon issuance request is incomplete',
+  'Coupon operation failed',
+
   // Home page (constants-driven labels)
   'Cost Tracking',
   'Model Access',

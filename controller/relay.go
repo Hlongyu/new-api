@@ -320,6 +320,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	}
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
+	if info.CouponResolutionError != nil {
+		return nil, types.NewError(info.CouponResolutionError, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
+	}
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
 	if newAPIError != nil {
@@ -596,12 +599,17 @@ func RelayTask(c *gin.Context) {
 		}
 		task.PrivateData.NodeName = common.NodeName
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
-			ModelPrice:      relayInfo.PriceData.ModelPrice,
-			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-			ModelRatio:      relayInfo.PriceData.ModelRatio,
-			OtherRatios:     relayInfo.PriceData.OtherRatios(),
-			OriginModelName: relayInfo.OriginModelName,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			ModelPrice:         relayInfo.PriceData.ModelPrice,
+			GroupRatio:         relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+			ModelRatio:         relayInfo.PriceData.ModelRatio,
+			OtherRatios:        relayInfo.PriceData.OtherRatios(),
+			OriginModelName:    relayInfo.OriginModelName,
+			PerCallBilling:     common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			CouponId:           relayInfo.PriceData.GroupRatioInfo.CouponId,
+			CouponName:         relayInfo.PriceData.GroupRatioInfo.CouponName,
+			CouponRatio:        relayInfo.PriceData.GroupRatioInfo.CouponRatio,
+			OriginalGroupRatio: relayInfo.PriceData.GroupRatioInfo.OriginalGroupRatio,
+			CouponActiveUntil:  relayInfo.PriceData.GroupRatioInfo.CouponActiveUntil,
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData

@@ -43,6 +43,7 @@ const defaultTieredPreConsumeMaxTokens = 8192
 
 // HandleGroupRatio checks for "auto_group" in the context and updates the group ratio and relayInfo.UsingGroup if present
 func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hosttypes.GroupRatioInfo {
+	relayInfo.CouponResolutionError = nil
 	groupRatioInfo := hosttypes.GroupRatioInfo{
 		GroupRatio:        1.0, // default ratio
 		GroupSpecialRatio: -1,
@@ -67,6 +68,16 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
+	coupon, err := model.GetActiveCoupon(relayInfo.UserId, relayInfo.UsingGroup, common.GetTimestamp())
+	if err != nil {
+		logger.LogError(ctx, "failed to resolve active coupon: "+err.Error())
+		relayInfo.CouponResolutionError = err
+		return groupRatioInfo
+	}
+	if coupon != nil {
+		groupRatioInfo.ApplyCouponCap(coupon.Id, coupon.Name, coupon.Ratio(), coupon.ActiveUntil)
+	}
+
 	return groupRatioInfo
 }
 
@@ -74,6 +85,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
 
 	groupRatioInfo := HandleGroupRatio(c, info)
+	if info.CouponResolutionError != nil {
+		return hosttypes.PriceData{}, info.CouponResolutionError
+	}
 
 	// Check if this model uses tiered_expr billing
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeTieredExpr {
@@ -186,6 +200,9 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 // ModelPriceHelperPerCall 按次/按量计费的 PriceHelper (MJ、Task)
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
+	if info.CouponResolutionError != nil {
+		return hosttypes.PriceData{}, info.CouponResolutionError
+	}
 
 	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
 	usePrice := success

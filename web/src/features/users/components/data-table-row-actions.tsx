@@ -28,6 +28,7 @@ import {
   ShieldAlert,
   Link2,
   CreditCard,
+  TicketPercent,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -46,6 +47,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { UserCouponsDialog } from '@/features/coupons/components/user-coupons-dialog'
 import { UserSubscriptionsDialog } from '@/features/subscriptions/components/dialogs/user-subscriptions-dialog'
 
 import { manageUser, resetUserPasskey, resetUserTwoFA } from '../api'
@@ -72,6 +74,7 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const [resetTwoFAOpen, setResetTwoFAOpen] = useState(false)
   const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [subscriptionsDialogOpen, setSubscriptionsDialogOpen] = useState(false)
+  const [couponsDialogOpen, setCouponsDialogOpen] = useState(false)
 
   const handleEdit = () => {
     setCurrentRow(user)
@@ -213,6 +216,18 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault()
+            setCouponsDialogOpen(true)
+          }}
+        >
+          {t('Manage Coupons')}
+          <DropdownMenuShortcut>
+            <TicketPercent size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault()
             setSubscriptionsDialogOpen(true)
           }}
         >
@@ -300,6 +315,12 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         onOpenChange={setSubscriptionsDialogOpen}
         user={{ id: user.id, username: user.username }}
         onSuccess={triggerRefresh}
+      />
+
+      <UserCouponsDialog
+        open={couponsDialogOpen}
+        onOpenChange={setCouponsDialogOpen}
+        user={{ id: user.id, username: user.username }}
       />
     </div>
   )

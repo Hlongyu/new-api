@@ -270,6 +270,21 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/invalid", controller.DeleteInvalidRedemption)
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
+
+		couponRoute := apiRouter.Group("/coupon")
+		couponRoute.Use(middleware.UserAuth())
+		{
+			couponRoute.GET("/self", controller.GetSelfCoupons)
+			couponRoute.POST("/:id/activate", middleware.CriticalRateLimit(), controller.ActivateSelfCoupon)
+		}
+		couponAdminRoute := apiRouter.Group("/coupon/admin")
+			couponAdminRoute.Use(middleware.AdminAuth())
+			{
+				couponAdminRoute.GET("/", controller.AdminListCoupons)
+				couponAdminRoute.GET("/users/:id", controller.AdminGetUserCoupons)
+			couponAdminRoute.POST("/grants", controller.AdminIssueCoupons)
+			couponAdminRoute.POST("/:id/revoke", controller.AdminRevokeCoupon)
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
