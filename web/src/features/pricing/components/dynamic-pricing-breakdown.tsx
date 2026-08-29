@@ -52,6 +52,14 @@ type DynamicPricingBreakdownProps = {
    * the usage-log details dialog to show which tier the engine selected.
    */
   matchedTierLabel?: string | null
+  /** Runtime results for request-conditional multipliers in expression order. */
+  conditionalMultipliers?: Array<{
+    index: number
+    multiplier: number
+    matched: boolean
+  }> | null
+  /** Product of the multipliers that matched this request. */
+  requestMultiplier?: number | null
   /**
    * Hide cache-pricing columns regardless of the per-tier values. The log
    * details dialog passes this when the actual request did not consume any
@@ -95,6 +103,11 @@ function formatTokenHint(value: string | number): string {
     return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`
   }
   return String(n)
+}
+
+function formatMultiplier(value: number): string {
+  if (!Number.isFinite(value)) return '-'
+  return String(Number(value.toPrecision(12)))
 }
 
 function formatConditionSummary(
@@ -156,6 +169,8 @@ function describeGroup(
 export function DynamicPricingBreakdown({
   billingExpr,
   matchedTierLabel,
+  conditionalMultipliers,
+  requestMultiplier,
   hideCacheColumns = false,
   compact = false,
 }: DynamicPricingBreakdownProps) {
@@ -260,7 +275,7 @@ export function DynamicPricingBreakdown({
             {t('Tiered price table')}
           </div>
           <div className='space-y-1.5 sm:hidden'>
-            {tiers.map((tier, i) => {
+            {tiers.map((tier) => {
               const condSummary = formatConditionSummary(tier.conditions, t)
               const isMatched =
                 matchedTierLabel != null &&
@@ -268,7 +283,7 @@ export function DynamicPricingBreakdown({
                 tier.label === matchedTierLabel
               return (
                 <div
-                  key={`tier-mobile-${i}`}
+                  key={`tier-mobile-${tier.label}`}
                   className={cn(
                     'rounded-md border p-2',
                     isMatched && 'border-emerald-500/40 bg-emerald-500/10'
@@ -415,37 +430,80 @@ export function DynamicPricingBreakdown({
 
       {hasRules && (
         <div>
-          <div
-            className={
-              compact
-                ? 'text-muted-foreground mb-1.5 text-xs font-medium'
-                : 'text-foreground mb-2 text-sm font-semibold'
-            }
-          >
-            {t('Conditional multipliers')}
-          </div>
-          <ul className='space-y-1.5'>
-            {ruleGroups.map((group, gi) => (
-              <li
-                key={`group-${gi}`}
-                className='bg-muted/50 flex items-center justify-between gap-3 rounded-md px-3 py-2'
-              >
-                <span
-                  className={cn(
-                    'text-foreground break-all',
-                    compact ? 'text-xs' : 'text-sm'
-                  )}
-                >
-                  {describeGroup(group, t)}
-                </span>
+          <div className='mb-1.5 flex flex-wrap items-center justify-between gap-2'>
+            <div
+              className={
+                compact
+                  ? 'text-muted-foreground text-xs font-medium'
+                  : 'text-foreground text-sm font-semibold'
+              }
+            >
+              {t('Conditional multipliers')}
+            </div>
+            {conditionalMultipliers &&
+              conditionalMultipliers.length > 0 &&
+              requestMultiplier != null &&
+              Number.isFinite(requestMultiplier) && (
                 <Badge
                   variant='secondary'
-                  className='shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+                  className='bg-emerald-100 font-mono text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                  data-applied-multiplier={requestMultiplier}
                 >
-                  {group.multiplier}x
+                  {t('Applied extra multiplier')}:{' '}
+                  {formatMultiplier(requestMultiplier)}x
                 </Badge>
-              </li>
-            ))}
+              )}
+          </div>
+          <ul className='space-y-1.5'>
+            {ruleGroups.map((group, gi) => {
+              const runtimeResult = conditionalMultipliers?.find(
+                (result) => result.index === gi
+              )
+              const isMatched = runtimeResult?.matched === true
+              return (
+                <li
+                  key={JSON.stringify(group)}
+                  className={cn(
+                    'bg-muted/50 flex items-center justify-between gap-3 rounded-md border border-transparent px-3 py-2',
+                    isMatched && 'border-emerald-500/40 bg-emerald-500/10'
+                  )}
+                  data-conditional-multiplier-index={gi}
+                  data-matched={runtimeResult ? String(isMatched) : undefined}
+                >
+                  <span
+                    className={cn(
+                      'text-foreground break-all',
+                      compact ? 'text-xs' : 'text-sm'
+                    )}
+                  >
+                    {describeGroup(group, t)}
+                  </span>
+                  <div className='flex shrink-0 items-center gap-1.5'>
+                    {runtimeResult && (
+                      <Badge
+                        variant='secondary'
+                        className={cn(
+                          isMatched
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {isMatched ? t('Matched') : t('Not matched')}
+                      </Badge>
+                    )}
+                    <Badge
+                      variant='secondary'
+                      className='bg-orange-100 font-mono text-orange-700 dark:bg-orange-500/20 dark:text-orange-300'
+                    >
+                      {runtimeResult
+                        ? formatMultiplier(runtimeResult.multiplier)
+                        : group.multiplier}
+                      x
+                    </Badge>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         </div>
       )}

@@ -3,6 +3,7 @@ package billingexpr
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -49,8 +50,20 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 }
 
 func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (float64, TraceResult, error) {
-	trace := TraceResult{}
+	trace := TraceResult{RequestMultiplier: 1}
 	headers := normalizeHeaders(request.Headers)
+	traceConditionalMultiplier := func(index int, matched bool, multiplier float64) float64 {
+		trace.ConditionalMultipliers = append(trace.ConditionalMultipliers, ConditionalMultiplier{
+			Index:      index,
+			Multiplier: multiplier,
+			Matched:    matched,
+		})
+		if matched {
+			trace.RequestMultiplier *= multiplier
+			return multiplier
+		}
+		return 1
+	}
 
 	env := map[string]interface{}{
 		"p":     params.P,
@@ -93,6 +106,7 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 		"weekday": func(tz string) int { return int(timeInZone(tz).Weekday()) },
 		"month":   func(tz string) int { return int(timeInZone(tz).Month()) },
 		"day":     func(tz string) int { return timeInZone(tz).Day() },
+		"__cm":    traceConditionalMultiplier,
 		"max":     math.Max,
 		"min":     math.Min,
 		"abs":     math.Abs,
@@ -108,6 +122,9 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 	if !ok {
 		return 0, trace, fmt.Errorf("expr result is %T, want float64", out)
 	}
+	sort.Slice(trace.ConditionalMultipliers, func(i, j int) bool {
+		return trace.ConditionalMultipliers[i].Index < trace.ConditionalMultipliers[j].Index
+	})
 	return f, trace, nil
 }
 

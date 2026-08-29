@@ -326,5 +326,9 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
 	if result != nil {
 		other["matched_tier"] = result.MatchedTier
+		if len(result.ConditionalMultipliers) > 0 {
+			other["request_multiplier"] = result.RequestMultiplier
+			other["conditional_multipliers"] = result.ConditionalMultipliers
+		}
 	}
 }

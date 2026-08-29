@@ -58,6 +58,7 @@ var compileEnvPrototypeV1 = map[string]interface{}{
 	"weekday": func(string) int { return 0 },
 	"month":   func(string) int { return 0 },
 	"day":     func(string) int { return 0 },
+	"__cm":    func(int, bool, float64) float64 { return 1 },
 	"max":     math.Max,
 	"min":     math.Min,
 	"abs":     math.Abs,
@@ -93,7 +94,12 @@ func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 	cacheMu.RUnlock()
 
 	version, body := ParseExprVersion(exprStr)
-	prog, err := expr.Compile(body, expr.Env(getCompileEnv(version)), expr.AsFloat64())
+	prog, err := expr.Compile(
+		body,
+		expr.Env(getCompileEnv(version)),
+		expr.Patch(&conditionalMultiplierPatcher{}),
+		expr.AsFloat64(),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("expr compile error: %w", err)
 	}
@@ -108,6 +114,61 @@ func compileFromCacheByHash(exprStr, hash string) (*vm.Program, error) {
 	cacheMu.Unlock()
 
 	return prog, nil
+}
+
+// conditionalMultiplierPatcher instruments the request-rule shape emitted by
+// the visual editor: condition ? multiplier : 1. The stored expression stays
+// unchanged while runtime evaluation can report which multipliers fired.
+type conditionalMultiplierPatcher struct {
+	nextIndex int
+}
+
+func (p *conditionalMultiplierPatcher) Visit(node *ast.Node) {
+	conditional, ok := (*node).(*ast.ConditionalNode)
+	if !ok || !conditional.Ternary || !isNumericOne(conditional.Exp2) {
+		return
+	}
+
+	multiplier, ok := numericLiteralValue(conditional.Exp1)
+	if !ok {
+		return
+	}
+
+	ast.Patch(node, &ast.CallNode{
+		Callee: &ast.IdentifierNode{Value: "__cm"},
+		Arguments: []ast.Node{
+			&ast.IntegerNode{Value: p.nextIndex},
+			conditional.Cond,
+			&ast.FloatNode{Value: multiplier},
+		},
+	})
+	p.nextIndex++
+}
+
+func numericLiteralValue(node ast.Node) (float64, bool) {
+	switch value := node.(type) {
+	case *ast.IntegerNode:
+		return float64(value.Value), true
+	case *ast.FloatNode:
+		return value.Value, true
+	case *ast.UnaryNode:
+		number, ok := numericLiteralValue(value.Node)
+		if !ok {
+			return 0, false
+		}
+		switch value.Operator {
+		case "+":
+			return number, true
+		case "-":
+			return -number, true
+		}
+	}
+	return 0, false
+}
+
+func isNumericOne(node ast.Node) bool {
+	value, ok := numericLiteralValue(node)
+	return ok && value == 1
 }
 
 // ExprVersion returns the version of a cached expression. Returns DefaultExprVersion

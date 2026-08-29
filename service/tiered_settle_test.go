@@ -294,6 +294,25 @@ func TestTryTieredSettle_RequestProbeInfluencesBilling(t *testing.T) {
 	}
 }
 
+func TestTryTieredSettleCarriesConditionalMultiplierResults(t *testing.T) {
+	exprStr := `(tier("base", p * 2)) * (param("service_tier") == "fast" ? 3 : 1) * (param("priority") == "high" ? 0.5 : 1)`
+	info := makeRelayInfo(exprStr, 1.0, 1000, 0)
+	info.BillingRequestInput = &billingexpr.RequestInput{
+		Body: []byte(`{"service_tier":"fast","priority":"normal"}`),
+	}
+
+	ok, quota, result := TryTieredSettle(info, billingexpr.TokenParams{P: 1000})
+
+	require.True(t, ok)
+	require.NotNil(t, result)
+	assert.Equal(t, 3000, quota)
+	assert.Equal(t, 3.0, result.RequestMultiplier)
+	assert.Equal(t, []billingexpr.ConditionalMultiplier{
+		{Index: 0, Multiplier: 3, Matched: true},
+		{Index: 1, Multiplier: 0.5, Matched: false},
+	}, result.ConditionalMultipliers)
+}
+
 func TestTryTieredSettle_NoRequestInput_FallsBackToDefault(t *testing.T) {
 	info := makeRelayInfo(probeExpr, 1.0, 1000, 500)
 	// No BillingRequestInput set — param("service_tier") returns nil, not "fast"

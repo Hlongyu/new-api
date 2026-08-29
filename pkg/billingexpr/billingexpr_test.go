@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ---------------------------------------------------------------------------
@@ -229,7 +231,7 @@ func TestRequestProbeMissingFieldReturnsNil(t *testing.T) {
 }
 
 func TestRequestProbeMultipleRulesMultiply(t *testing.T) {
-	cost, _, err := billingexpr.RunExprWithRequest(
+	cost, trace, err := billingexpr.RunExprWithRequest(
 		`(param("service_tier") == "fast" ? 2 : 1) * (has(header("anthropic-beta"), "fast-mode-2026-02-01") ? 2.5 : 1)`,
 		billingexpr.TokenParams{},
 		billingexpr.RequestInput{
@@ -239,12 +241,27 @@ func TestRequestProbeMultipleRulesMultiply(t *testing.T) {
 			Body: []byte(`{"service_tier":"fast"}`),
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if math.Abs(cost-5) > 1e-6 {
-		t.Errorf("cost = %f, want 5", cost)
-	}
+	require.NoError(t, err)
+	assert.InDelta(t, 5, cost, 1e-6)
+	assert.Equal(t, 5.0, trace.RequestMultiplier)
+	assert.Equal(t, []billingexpr.ConditionalMultiplier{
+		{Index: 0, Multiplier: 2, Matched: true},
+		{Index: 1, Multiplier: 2.5, Matched: true},
+	}, trace.ConditionalMultipliers)
+}
+
+func TestRequestProbeRecordsUnmatchedMultiplier(t *testing.T) {
+	_, trace, err := billingexpr.RunExprWithRequest(
+		`tier("base", p * 2) * (param("service_tier") == "fast" ? 3 : 1)`,
+		billingexpr.TokenParams{P: 100},
+		billingexpr.RequestInput{Body: []byte(`{"service_tier":"standard"}`)},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1.0, trace.RequestMultiplier)
+	assert.Equal(t, []billingexpr.ConditionalMultiplier{
+		{Index: 0, Multiplier: 3, Matched: false},
+	}, trace.ConditionalMultipliers)
 }
 
 func TestCeilFloor(t *testing.T) {

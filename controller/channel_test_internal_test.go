@@ -266,11 +266,19 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	}
 
 	other := buildTestLogOther(ctx, info, priceData, usage, &billingexpr.TieredResult{
-		MatchedTier: "base",
+		MatchedTier:       "base",
+		RequestMultiplier: 2,
+		ConditionalMultipliers: []billingexpr.ConditionalMultiplier{
+			{Index: 0, Multiplier: 2, Matched: true},
+		},
 	})
 
 	require.Equal(t, "tiered_expr", other["billing_mode"])
 	require.Equal(t, "base", other["matched_tier"])
+	require.Equal(t, 2.0, other["request_multiplier"])
+	require.Equal(t, []billingexpr.ConditionalMultiplier{
+		{Index: 0, Multiplier: 2, Matched: true},
+	}, other["conditional_multipliers"])
 	require.NotEmpty(t, other["expr_b64"])
 }
 

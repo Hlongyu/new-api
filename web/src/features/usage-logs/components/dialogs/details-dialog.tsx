@@ -1093,6 +1093,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
               compact
               billingExpr={decodeBillingExprB64(other.expr_b64)}
               matchedTierLabel={other.matched_tier}
+              conditionalMultipliers={other.conditional_multipliers}
+              requestMultiplier={other.request_multiplier}
               hideCacheColumns={!hasAnyCacheTokens(other)}
             />
           </DetailSection>
