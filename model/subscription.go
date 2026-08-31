@@ -3,10 +3,12 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
@@ -31,6 +33,15 @@ const (
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
 	SubscriptionResetCustom  = "custom"
+)
+
+const (
+	SubscriptionResetIntervalHour  = "hour"
+	SubscriptionResetIntervalDay   = "day"
+	SubscriptionResetIntervalWeek  = "week"
+	SubscriptionResetIntervalMonth = "month"
+
+	SubscriptionSourceAdminCustom = "admin_custom"
 )
 
 var (
@@ -262,10 +273,22 @@ type UserSubscription struct {
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
 	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
 
-	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
+	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin/admin_custom
+	Title  string `json:"title" gorm:"type:varchar(128);default:''"`
+
+	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	Currency    string  `json:"currency" gorm:"type:varchar(8);default:''"`
 
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
+
+	ResetAnchorTime    int64  `json:"reset_anchor_time" gorm:"type:bigint;default:0"`
+	ResetIntervalValue int    `json:"reset_interval_value" gorm:"type:int;default:0"`
+	ResetIntervalUnit  string `json:"reset_interval_unit" gorm:"type:varchar(16);default:''"`
+	ResetTimezone      string `json:"reset_timezone" gorm:"type:varchar(64);default:''"`
+
+	GrantedBy int    `json:"-" gorm:"index"`
+	AdminNote string `json:"-" gorm:"type:text"`
 
 	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
@@ -294,6 +317,8 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 
 type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
+	AdminNote    string            `json:"admin_note,omitempty"`
+	GrantedBy    int               `json:"granted_by,omitempty"`
 }
 
 type SubscriptionResetResult struct {
@@ -304,6 +329,21 @@ type SubscriptionResetResult struct {
 	AdvanceResetTime bool   `json:"advance_reset_time"`
 	PlanTitle        string `json:"-"`
 	AffectedUserIds  []int  `json:"-"`
+}
+
+type CustomSubscriptionGrant struct {
+	Title               string
+	StartTime           int64
+	EndTime             int64
+	AmountTotal         int64
+	ResetAnchorTime     int64
+	ResetIntervalValue  int
+	ResetIntervalUnit   string
+	ResetTimezone       string
+	PriceAmount         float64
+	AllowWalletOverflow bool
+	AdminNote           string
+	GrantedBy           int
 }
 
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
@@ -382,6 +422,139 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 	return next.Unix()
 }
 
+func normalizeSubscriptionResetIntervalUnit(unit string) string {
+	switch strings.TrimSpace(unit) {
+	case SubscriptionResetIntervalHour,
+		SubscriptionResetIntervalDay,
+		SubscriptionResetIntervalWeek,
+		SubscriptionResetIntervalMonth:
+		return strings.TrimSpace(unit)
+	default:
+		return SubscriptionResetNever
+	}
+}
+
+func addCalendarMonthsClamped(base time.Time, months int) time.Time {
+	targetMonth := time.Date(base.Year(), base.Month()+time.Month(months), 1,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location())
+	lastDay := time.Date(targetMonth.Year(), targetMonth.Month()+1, 0,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location()).Day()
+	day := base.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(targetMonth.Year(), targetMonth.Month(), day,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location())
+}
+
+func customSubscriptionResetBoundary(anchor time.Time, unit string, value int, index int64) (time.Time, error) {
+	if value <= 0 || index < 0 || index > 10_000_000 {
+		return time.Time{}, errors.New("invalid subscription reset boundary")
+	}
+	steps := int64(value) * index
+	switch unit {
+	case SubscriptionResetIntervalHour:
+		stepDuration := time.Duration(value) * time.Hour
+		maxDuration := int64(^uint64(0) >> 1)
+		if index > maxDuration/int64(stepDuration) {
+			return time.Time{}, errors.New("subscription reset boundary is out of range")
+		}
+		return anchor.Add(time.Duration(index) * stepDuration), nil
+	case SubscriptionResetIntervalDay:
+		return anchor.AddDate(0, 0, int(steps)), nil
+	case SubscriptionResetIntervalWeek:
+		return anchor.AddDate(0, 0, int(steps*7)), nil
+	case SubscriptionResetIntervalMonth:
+		return addCalendarMonthsClamped(anchor, int(steps)), nil
+	default:
+		return time.Time{}, errors.New("invalid subscription reset interval unit")
+	}
+}
+
+func estimateCustomSubscriptionResetIndex(anchor time.Time, current time.Time, unit string, value int) int64 {
+	switch unit {
+	case SubscriptionResetIntervalHour:
+		return int64(current.Sub(anchor) / (time.Duration(value) * time.Hour))
+	case SubscriptionResetIntervalDay, SubscriptionResetIntervalWeek:
+		anchorDay := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC)
+		currentDay := time.Date(current.Year(), current.Month(), current.Day(), 0, 0, 0, 0, time.UTC)
+		intervalDays := int64(value)
+		if unit == SubscriptionResetIntervalWeek {
+			intervalDays *= 7
+		}
+		return int64(currentDay.Sub(anchorDay)/(24*time.Hour)) / intervalDays
+	case SubscriptionResetIntervalMonth:
+		months := int64(current.Year()-anchor.Year())*12 + int64(current.Month()-anchor.Month())
+		return months / int64(value)
+	default:
+		return 0
+	}
+}
+
+func resolveCustomSubscriptionResetState(startUnix int64, endUnix int64, anchorUnix int64, unit string, value int, timezone string, currentUnix int64) (int64, int64, error) {
+	unit = normalizeSubscriptionResetIntervalUnit(unit)
+	if unit == SubscriptionResetNever {
+		return 0, 0, nil
+	}
+	if value <= 0 || value > 10_000 {
+		return 0, 0, errors.New("reset_interval_value must be between 1 and 10000")
+	}
+	if startUnix <= 0 || endUnix <= startUnix || anchorUnix < startUnix || anchorUnix >= endUnix {
+		return 0, 0, errors.New("invalid custom subscription time range")
+	}
+	location, err := time.LoadLocation(strings.TrimSpace(timezone))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid reset timezone: %w", err)
+	}
+
+	effectiveCurrent := currentUnix
+	if effectiveCurrent < startUnix {
+		effectiveCurrent = startUnix
+	}
+	if effectiveCurrent < anchorUnix {
+		return startUnix, anchorUnix, nil
+	}
+
+	anchor := time.Unix(anchorUnix, 0).In(location)
+	current := time.Unix(effectiveCurrent, 0).In(location)
+	index := estimateCustomSubscriptionResetIndex(anchor, current, unit, value)
+	if index < 0 {
+		index = 0
+	}
+	boundary, err := customSubscriptionResetBoundary(anchor, unit, value, index)
+	if err != nil {
+		return 0, 0, err
+	}
+	for boundary.After(current) && index > 0 {
+		index--
+		boundary, err = customSubscriptionResetBoundary(anchor, unit, value, index)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	next, err := customSubscriptionResetBoundary(anchor, unit, value, index+1)
+	if err != nil {
+		return 0, 0, err
+	}
+	for !next.After(current) {
+		index++
+		boundary = next
+		next, err = customSubscriptionResetBoundary(anchor, unit, value, index+1)
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	lastUnix := boundary.Unix()
+	if lastUnix < startUnix {
+		lastUnix = startUnix
+	}
+	nextUnix := next.Unix()
+	if nextUnix >= endUnix {
+		nextUnix = 0
+	}
+	return lastUnix, nextUnix, nil
+}
+
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
 	return getSubscriptionPlanByIdTx(nil, id)
 }
@@ -453,8 +626,8 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	}
 	// If another active upgraded subscription exists, keep the current group.
 	var activeSub UserSubscription
-	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
-		sub.UserId, "active", now, sub.Id).
+	activeQuery := tx.Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
+		sub.UserId, "active", now, now, sub.Id).
 		Order("end_time desc, id desc").
 		Limit(1).
 		Find(&activeSub)
@@ -536,6 +709,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	sub := &UserSubscription{
 		UserId:              userId,
 		PlanId:              plan.Id,
+		Title:               plan.Title,
+		PriceAmount:         plan.PriceAmount,
+		Currency:            plan.Currency,
 		AmountTotal:         plan.TotalAmount,
 		AmountUsed:          0,
 		StartTime:           now.Unix(),
@@ -555,6 +731,95 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		return nil, err
 	}
 	return sub, nil
+}
+
+func CreateCustomUserSubscription(userId int, grant CustomSubscriptionGrant) (*UserSubscription, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	grant.Title = strings.TrimSpace(grant.Title)
+	if grant.Title == "" || utf8.RuneCountInString(grant.Title) > 128 {
+		return nil, errors.New("title must contain between 1 and 128 characters")
+	}
+	if grant.StartTime <= 0 || grant.EndTime <= grant.StartTime {
+		return nil, errors.New("end_time must be later than start_time")
+	}
+	if grant.EndTime <= GetDBTimestamp() {
+		return nil, errors.New("end_time must be in the future")
+	}
+	if grant.AmountTotal < 0 {
+		return nil, errors.New("amount_total must not be negative")
+	}
+	if grant.PriceAmount < 0 || grant.PriceAmount > 999_999 || math.IsNaN(grant.PriceAmount) || math.IsInf(grant.PriceAmount, 0) {
+		return nil, errors.New("price_amount is out of range")
+	}
+	if utf8.RuneCountInString(grant.AdminNote) > 1000 {
+		return nil, errors.New("admin note is too long")
+	}
+
+	rawResetIntervalUnit := strings.TrimSpace(grant.ResetIntervalUnit)
+	grant.ResetIntervalUnit = normalizeSubscriptionResetIntervalUnit(rawResetIntervalUnit)
+	if rawResetIntervalUnit != "" && rawResetIntervalUnit != SubscriptionResetNever && grant.ResetIntervalUnit == SubscriptionResetNever {
+		return nil, errors.New("invalid reset_interval_unit")
+	}
+	if grant.ResetIntervalUnit == SubscriptionResetNever {
+		grant.ResetIntervalValue = 0
+		grant.ResetAnchorTime = 0
+		grant.ResetTimezone = ""
+	} else {
+		if grant.ResetAnchorTime == 0 {
+			grant.ResetAnchorTime = grant.StartTime
+		}
+		if strings.TrimSpace(grant.ResetTimezone) == "" {
+			grant.ResetTimezone = "UTC"
+		}
+	}
+	lastReset, nextReset, err := resolveCustomSubscriptionResetState(
+		grant.StartTime,
+		grant.EndTime,
+		grant.ResetAnchorTime,
+		grant.ResetIntervalUnit,
+		grant.ResetIntervalValue,
+		grant.ResetTimezone,
+		GetDBTimestamp(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	subscription := &UserSubscription{
+		UserId:              userId,
+		PlanId:              0,
+		AmountTotal:         grant.AmountTotal,
+		AmountUsed:          0,
+		StartTime:           grant.StartTime,
+		EndTime:             grant.EndTime,
+		Status:              "active",
+		Source:              SubscriptionSourceAdminCustom,
+		Title:               grant.Title,
+		PriceAmount:         grant.PriceAmount,
+		Currency:            "USD",
+		LastResetTime:       lastReset,
+		NextResetTime:       nextReset,
+		ResetAnchorTime:     grant.ResetAnchorTime,
+		ResetIntervalValue:  grant.ResetIntervalValue,
+		ResetIntervalUnit:   grant.ResetIntervalUnit,
+		ResetTimezone:       grant.ResetTimezone,
+		AllowWalletOverflow: grant.AllowWalletOverflow,
+		GrantedBy:           grant.GrantedBy,
+		AdminNote:           strings.TrimSpace(grant.AdminNote),
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var user User
+		if err := tx.Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		return tx.Create(subscription).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 func refreshSubscriptionUserGroupCache(userId int, operation string) {
@@ -841,7 +1106,7 @@ func GetAllActiveUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	}
 	now := common.GetTimestamp()
 	var subs []UserSubscription
-	err := DB.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+	err := DB.Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ?", userId, "active", now, now).
 		Order("end_time desc, id desc").
 		Find(&subs).Error
 	if err != nil {
@@ -859,7 +1124,7 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	now := common.GetTimestamp()
 	var count int64
 	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ?", userId, "active", now, now).
 		Count(&count).Error; err != nil {
 		return false, err
 	}
@@ -876,8 +1141,8 @@ func UserActiveSubscriptionsAllowWalletOverflow(userId int) (bool, error) {
 	now := common.GetTimestamp()
 	var strictCount int64
 	if err := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND status = ? AND end_time > ? AND allow_wallet_overflow = ?",
-			userId, "active", now, false).
+		Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ? AND allow_wallet_overflow = ?",
+			userId, "active", now, now, false).
 		Count(&strictCount).Error; err != nil {
 		return false, err
 	}
@@ -897,6 +1162,25 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 		return nil, err
 	}
 	return buildSubscriptionSummaries(subs), nil
+}
+
+func GetAllUserSubscriptionsForAdmin(userId int) ([]SubscriptionSummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	err := DB.Where("user_id = ?", userId).
+		Order("end_time desc, id desc").
+		Find(&subs).Error
+	if err != nil {
+		return nil, err
+	}
+	result := buildSubscriptionSummaries(subs)
+	for index, sub := range subs {
+		result[index].AdminNote = sub.AdminNote
+		result[index].GrantedBy = sub.GrantedBy
+	}
+	return result, nil
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
@@ -1016,6 +1300,27 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	return tx.Save(sub).Error
 }
 
+func AdminResetUserSubscription(userSubscriptionId int) (*UserSubscription, error) {
+	if userSubscriptionId <= 0 {
+		return nil, errors.New("invalid userSubscriptionId")
+	}
+	now := GetDBTimestamp()
+	var result UserSubscription
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).
+			Where("id = ? AND status = ? AND start_time <= ? AND end_time > ?", userSubscriptionId, "active", now, now).
+			First(&result).Error; err != nil {
+			return err
+		}
+		result.AmountUsed = 0
+		return tx.Save(&result).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscription, advanceResetTime bool) *SubscriptionResetResult {
 	userIds := make([]int, 0, len(subs))
 	seenUsers := make(map[int]struct{}, len(subs))
@@ -1043,7 +1348,7 @@ func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *Subscrip
 	}
 	var subs []UserSubscription
 	if err := lockForUpdate(tx).
-		Where("user_id = ? AND plan_id = ? AND status = ? AND end_time > ?", userId, plan.Id, "active", now).
+		Where("user_id = ? AND plan_id = ? AND status = ? AND start_time <= ? AND end_time > ?", userId, plan.Id, "active", now, now).
 		Order("end_time asc, id asc").
 		Find(&subs).Error; err != nil {
 		return nil, err
@@ -1065,7 +1370,7 @@ func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int6
 	}
 	var subs []UserSubscription
 	if err := lockForUpdate(tx).
-		Where("plan_id = ? AND status = ? AND end_time > ?", plan.Id, "active", now).
+		Where("plan_id = ? AND status = ? AND start_time <= ? AND end_time > ?", plan.Id, "active", now, now).
 		Order("user_id asc, end_time asc, id asc").
 		Find(&subs).Error; err != nil {
 		return nil, err
@@ -1165,8 +1470,8 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 
 			// If there's an active upgraded subscription, keep current group.
 			var activeSub UserSubscription
-			activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
-				userId, "active", now).
+			activeQuery := tx.Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ? AND upgrade_group <> ''",
+				userId, "active", now, now).
 				Order("end_time desc, id desc").
 				Limit(1).
 				Find(&activeSub)
@@ -1284,6 +1589,48 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	return tx.Save(sub).Error
 }
 
+func maybeResetCustomUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) error {
+	if tx == nil || sub == nil {
+		return errors.New("invalid reset args")
+	}
+	if sub.NextResetTime <= 0 || sub.NextResetTime > now {
+		return nil
+	}
+	lastReset, nextReset, err := resolveCustomSubscriptionResetState(
+		sub.StartTime,
+		sub.EndTime,
+		sub.ResetAnchorTime,
+		sub.ResetIntervalUnit,
+		sub.ResetIntervalValue,
+		sub.ResetTimezone,
+		now,
+	)
+	if err != nil {
+		return err
+	}
+	sub.AmountUsed = 0
+	sub.LastResetTime = lastReset
+	sub.NextResetTime = nextReset
+	return tx.Save(sub).Error
+}
+
+func maybeResetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) error {
+	if tx == nil || sub == nil {
+		return errors.New("invalid reset args")
+	}
+	if sub.Source == SubscriptionSourceAdminCustom {
+		return maybeResetCustomUserSubscriptionTx(tx, sub, now)
+	}
+	if sub.PlanId <= 0 {
+		return nil
+	}
+	plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+	if err != nil {
+		return err
+	}
+	return maybeResetUserSubscriptionWithPlanTx(tx, sub, plan, now)
+}
+
 // HasUsableSubscriptionQuota reports whether an active subscription can fund
 // another paid request. Due periodic resets are applied before quota is checked.
 func HasUsableSubscriptionQuota(userId int, now int64) (bool, error) {
@@ -1298,7 +1645,7 @@ func HasUsableSubscriptionQuota(userId int, now int64) (bool, error) {
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var subscriptions []UserSubscription
 		if err := lockForUpdate(tx).
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ?", userId, "active", now, now).
 			Order("end_time asc, id asc").
 			Find(&subscriptions).Error; err != nil {
 			return err
@@ -1306,14 +1653,8 @@ func HasUsableSubscriptionQuota(userId int, now int64) (bool, error) {
 
 		for _, candidate := range subscriptions {
 			subscription := candidate
-			if subscription.PlanId > 0 {
-				plan, err := getSubscriptionPlanByIdTx(tx, subscription.PlanId)
-				if err != nil {
-					return err
-				}
-				if err := maybeResetUserSubscriptionWithPlanTx(tx, &subscription, plan, now); err != nil {
-					return err
-				}
+			if err := maybeResetUserSubscriptionTx(tx, &subscription, now); err != nil {
+				return err
 			}
 			if subscription.AmountTotal <= 0 || subscription.AmountUsed < subscription.AmountTotal {
 				hasQuota = true
@@ -1364,7 +1705,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 
 		var subs []UserSubscription
 		if err := lockForUpdate(tx).
-			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+			Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ?", userId, "active", now, now).
 			Order("end_time asc, id asc").
 			Find(&subs).Error; err != nil {
 			return errors.New("no active subscription")
@@ -1374,11 +1715,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 		for _, candidate := range subs {
 			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
-			if err != nil {
-				return err
-			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
+			if err := maybeResetUserSubscriptionTx(tx, &sub, now); err != nil {
 				return err
 			}
 			usedBefore := sub.AmountUsed
@@ -1474,18 +1811,22 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
-		if err != nil || plan == nil {
-			continue
+		if subCopy.Source != SubscriptionSourceAdminCustom {
+			if subCopy.PlanId <= 0 {
+				continue
+			}
+			if _, err := getSubscriptionPlanByIdTx(nil, subCopy.PlanId); err != nil {
+				continue
+			}
 		}
-		err = DB.Transaction(func(tx *gorm.DB) error {
+		err := DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
 			if err := lockForUpdate(tx).
 				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
 				First(&locked).Error; err != nil {
 				return nil
 			}
-			if err := maybeResetUserSubscriptionWithPlanTx(tx, &locked, plan, now); err != nil {
+			if err := maybeResetUserSubscriptionTx(tx, &locked, now); err != nil {
 				return err
 			}
 			resetCount++

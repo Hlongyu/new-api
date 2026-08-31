@@ -20,8 +20,10 @@ import { api } from '@/lib/api'
 
 import type {
   ApiResponse,
+  CreateCustomSubscriptionRequest,
   PlanRecord,
   PlanPayload,
+  UserSubscription,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
   ResetUserSubscriptionsRequest,
@@ -86,6 +88,26 @@ export async function createUserSubscription(
   const res = await api.post(
     `/api/subscription/admin/users/${userId}/subscriptions`,
     data
+  )
+  return res.data
+}
+
+export async function createCustomUserSubscription(
+  userId: number,
+  data: CreateCustomSubscriptionRequest
+): Promise<ApiResponse<UserSubscription>> {
+  const res = await api.post(
+    `/api/subscription/admin/users/${userId}/custom-subscriptions`,
+    data
+  )
+  return res.data
+}
+
+export async function resetUserSubscription(
+  subscriptionId: number
+): Promise<ApiResponse<UserSubscription>> {
+  const res = await api.post(
+    `/api/subscription/admin/user_subscriptions/${subscriptionId}/reset`
   )
   return res.data
 }

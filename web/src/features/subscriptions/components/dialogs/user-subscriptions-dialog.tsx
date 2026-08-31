@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Ban, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { Ban, CalendarPlus, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -63,10 +63,12 @@ import {
   createUserSubscription,
   invalidateUserSubscription,
   deleteUserSubscription,
+  resetUserSubscription,
   resetUserSubscriptionsByPlan,
 } from '../../api'
 import { formatTimestamp } from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
+import { CustomSubscriptionDialog } from './custom-subscription-dialog'
 
 interface Props {
   open: boolean
@@ -82,12 +84,23 @@ function SubscriptionStatusBadge(props: {
   // eslint-disable-next-line react-hooks/purity
   const now = Date.now() / 1000
   const isExpired = (props.sub.end_time || 0) > 0 && props.sub.end_time < now
-  const isActive = props.sub.status === 'active' && !isExpired
+  const isPending =
+    props.sub.status === 'active' && (props.sub.start_time || 0) > now
+  const isActive = props.sub.status === 'active' && !isExpired && !isPending
   if (isActive) {
     return (
       <StatusBadge
         label={props.t('Active')}
         variant='success'
+        copyable={false}
+      />
+    )
+  }
+  if (isPending) {
+    return (
+      <StatusBadge
+        label={props.t('Pending')}
+        variant='warning'
         copyable={false}
       />
     )
@@ -117,11 +130,16 @@ export function UserSubscriptionsDialog(props: Props) {
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [subs, setSubs] = useState<UserSubscriptionRecord[]>([])
   const [selectedPlanId, setSelectedPlanId] = useState<string>('')
+  const [customSubscriptionOpen, setCustomSubscriptionOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
   const [advanceResetTime, setAdvanceResetTime] = useState(true)
   const [resetAction, setResetAction] = useState<{
     planId: number
     planTitle: string
+  } | null>(null)
+  const [customResetAction, setCustomResetAction] = useState<{
+    subscriptionId: number
+    title: string
   } | null>(null)
   const [confirmAction, setConfirmAction] = useState<{
     type: 'invalidate' | 'delete'
@@ -233,6 +251,24 @@ export function UserSubscriptionsDialog(props: Props) {
     }
   }
 
+  const handleCustomResetConfirm = async () => {
+    if (!customResetAction) return
+    setResetting(true)
+    try {
+      const res = await resetUserSubscription(customResetAction.subscriptionId)
+      if (res.success) {
+        toast.success(t('Subscription quota reset'))
+        await loadData()
+        props.onSuccess?.()
+      }
+    } catch {
+      toast.error(t('Operation failed'))
+    } finally {
+      setResetting(false)
+      setCustomResetAction(null)
+    }
+  }
+
   return (
     <>
       <Sheet open={props.open} onOpenChange={props.onOpenChange}>
@@ -245,7 +281,7 @@ export function UserSubscriptionsDialog(props: Props) {
           </SheetHeader>
 
           <div className={sideDrawerFormClassName()}>
-            <div className='flex gap-2'>
+            <div className='flex flex-wrap gap-2'>
               <Select
                 items={plans.map((p) => ({
                   value: String(p.plan.id),
@@ -280,6 +316,14 @@ export function UserSubscriptionsDialog(props: Props) {
                 <Plus className='mr-1 h-4 w-4' />
                 {t('Add subscription')}
               </Button>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => setCustomSubscriptionOpen(true)}
+              >
+                <CalendarPlus className='h-4 w-4' />
+                {t('Issue custom subscription')}
+              </Button>
             </div>
 
             <StaticDataTable
@@ -304,11 +348,27 @@ export function UserSubscriptionsDialog(props: Props) {
                     return (
                       <div>
                         <div className='font-medium'>
-                          {planTitleMap.get(sub.plan_id) || `#${sub.plan_id}`}
+                          {sub.title ||
+                            planTitleMap.get(sub.plan_id) ||
+                            t('Custom subscription')}
                         </div>
                         <div className='text-muted-foreground text-sm'>
                           {t('Source')}: {sub.source || '-'}
                         </div>
+                        {sub.source === 'admin_custom' && (
+                          <>
+                            <div className='text-muted-foreground text-sm'>
+                              {t('Agreed price')}:{' '}
+                              {Number(sub.price_amount || 0).toFixed(2)}{' '}
+                              {sub.currency || ''}
+                            </div>
+                            {record.admin_note && (
+                              <div className='text-muted-foreground max-w-48 truncate text-sm'>
+                                {t('Internal note')}: {record.admin_note}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                     )
                   },
@@ -334,6 +394,12 @@ export function UserSubscriptionsDialog(props: Props) {
                         <div>
                           {t('End')}: {formatTimestamp(sub.end_time)}
                         </div>
+                        {!!sub.next_reset_time && (
+                          <div>
+                            {t('Next refresh')}:{' '}
+                            {formatTimestamp(sub.next_reset_time)}
+                          </div>
+                        )}
                       </div>
                     )
                   },
@@ -360,13 +426,22 @@ export function UserSubscriptionsDialog(props: Props) {
                     const now = Date.now() / 1000
                     const isExpired =
                       (sub.end_time || 0) > 0 && sub.end_time < now
-                    const isActive = sub.status === 'active' && !isExpired
+                    const isPending = (sub.start_time || 0) > now
+                    const isActive =
+                      sub.status === 'active' && !isExpired && !isPending
 
                     return (
                       <DataTableRowActionMenu ariaLabel={t('Actions')}>
                         <DropdownMenuItem
                           disabled={!isActive}
                           onClick={() => {
+                            if (sub.source === 'admin_custom') {
+                              setCustomResetAction({
+                                subscriptionId: sub.id,
+                                title: sub.title || t('Custom subscription'),
+                              })
+                              return
+                            }
                             setAdvanceResetTime(true)
                             setResetAction({
                               planId: sub.plan_id,
@@ -420,6 +495,19 @@ export function UserSubscriptionsDialog(props: Props) {
         </SheetContent>
       </Sheet>
 
+      {customSubscriptionOpen && props.user?.id && (
+        <CustomSubscriptionDialog
+          open
+          userId={props.user.id}
+          username={props.user.username}
+          onOpenChange={setCustomSubscriptionOpen}
+          onSuccess={async () => {
+            await loadData()
+            props.onSuccess?.()
+          }}
+        />
+      )}
+
       {confirmAction && (
         <ConfirmDialog
           open
@@ -464,6 +552,20 @@ export function UserSubscriptionsDialog(props: Props) {
             />
           </label>
         </ConfirmDialog>
+      )}
+
+      {customResetAction && (
+        <ConfirmDialog
+          open
+          onOpenChange={(value) => !value && setCustomResetAction(null)}
+          title={t('Reset subscription quota')}
+          desc={t('Reset quota for {{subscription}}?', {
+            subscription: customResetAction.title,
+          })}
+          confirmText={t('Reset quota')}
+          handleConfirm={handleCustomResetConfirm}
+          isLoading={resetting}
+        />
       )}
     </>
   )

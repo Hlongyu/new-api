@@ -62,17 +62,27 @@ export const userSubscriptionSchema = z.object({
   plan_id: z.number(),
   status: z.string(),
   source: z.string().optional(),
+  title: z.string().optional(),
+  price_amount: z.number().optional(),
+  currency: z.string().optional(),
   start_time: z.number(),
   end_time: z.number(),
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
+  reset_anchor_time: z.number().optional(),
+  reset_interval_value: z.number().optional(),
+  reset_interval_unit: z.string().optional(),
+  reset_timezone: z.string().optional(),
+  allow_wallet_overflow: z.boolean().optional(),
 })
 
 export type UserSubscription = z.infer<typeof userSubscriptionSchema>
 
 export interface UserSubscriptionRecord {
   subscription: UserSubscription
+  admin_note?: string
+  granted_by?: number
 }
 
 // ============================================================================
@@ -115,6 +125,20 @@ export interface SubscriptionPayResponse {
 
 export interface CreateUserSubscriptionRequest {
   plan_id: number
+}
+
+export interface CreateCustomSubscriptionRequest {
+  title: string
+  start_time: number
+  end_time: number
+  amount_total: number
+  reset_anchor_time: number
+  reset_interval_value: number
+  reset_interval_unit: 'never' | 'hour' | 'day' | 'week' | 'month'
+  reset_timezone: string
+  price_amount: number
+  allow_wallet_overflow: boolean
+  note: string
 }
 
 export interface ResetUserSubscriptionsRequest {

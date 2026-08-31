@@ -272,7 +272,7 @@ func consumePostpaidFundingTx(tx *gorm.DB, settlement *PostpaidSettlement, quota
 	remaining := quota
 	var subscriptions []UserSubscription
 	if err = lockForUpdate(tx).
-		Where("user_id = ? AND status = ? AND end_time > ?", settlement.UserId, "active", now).
+		Where("user_id = ? AND status = ? AND start_time <= ? AND end_time > ?", settlement.UserId, "active", now, now).
 		Order("end_time asc, id asc").
 		Find(&subscriptions).Error; err != nil {
 		return 0, 0, err
@@ -282,14 +282,8 @@ func consumePostpaidFundingTx(tx *gorm.DB, settlement *PostpaidSettlement, quota
 			break
 		}
 		subscription := candidate
-		if subscription.PlanId > 0 {
-			plan, planErr := getSubscriptionPlanByIdTx(tx, subscription.PlanId)
-			if planErr != nil {
-				return 0, 0, planErr
-			}
-			if resetErr := maybeResetUserSubscriptionWithPlanTx(tx, &subscription, plan, now); resetErr != nil {
-				return 0, 0, resetErr
-			}
+		if resetErr := maybeResetUserSubscriptionTx(tx, &subscription, now); resetErr != nil {
+			return 0, 0, resetErr
 		}
 
 		take := remaining

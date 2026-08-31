@@ -367,7 +367,7 @@ func AdminListUserSubscriptions(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的用户ID")
 		return
 	}
-	subs, err := model.GetAllUserSubscriptions(userId)
+	subs, err := model.GetAllUserSubscriptionsForAdmin(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -377,6 +377,20 @@ func AdminListUserSubscriptions(c *gin.Context) {
 
 type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
+}
+
+type AdminCreateCustomSubscriptionRequest struct {
+	Title               string  `json:"title"`
+	StartTime           int64   `json:"start_time"`
+	EndTime             int64   `json:"end_time"`
+	AmountTotal         int64   `json:"amount_total"`
+	ResetAnchorTime     int64   `json:"reset_anchor_time"`
+	ResetIntervalValue  int     `json:"reset_interval_value"`
+	ResetIntervalUnit   string  `json:"reset_interval_unit"`
+	ResetTimezone       string  `json:"reset_timezone"`
+	PriceAmount         float64 `json:"price_amount"`
+	AllowWalletOverflow *bool   `json:"allow_wallet_overflow"`
+	Note                string  `json:"note"`
 }
 
 type AdminResetSubscriptionRequest struct {
@@ -427,6 +441,73 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminCreateCustomSubscription(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	userId, _ := strconv.Atoi(c.Param("id"))
+	if userId <= 0 {
+		common.ApiErrorMsg(c, "无效的用户ID")
+		return
+	}
+	var req AdminCreateCustomSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	allowWalletOverflow := true
+	if req.AllowWalletOverflow != nil {
+		allowWalletOverflow = *req.AllowWalletOverflow
+	}
+	subscription, err := model.CreateCustomUserSubscription(userId, model.CustomSubscriptionGrant{
+		Title:               req.Title,
+		StartTime:           req.StartTime,
+		EndTime:             req.EndTime,
+		AmountTotal:         req.AmountTotal,
+		ResetAnchorTime:     req.ResetAnchorTime,
+		ResetIntervalValue:  req.ResetIntervalValue,
+		ResetIntervalUnit:   req.ResetIntervalUnit,
+		ResetTimezone:       req.ResetTimezone,
+		PriceAmount:         req.PriceAmount,
+		AllowWalletOverflow: allowWalletOverflow,
+		AdminNote:           req.Note,
+		GrantedBy:           c.GetInt("id"),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RecordLogWithAdminInfo(userId, model.LogTypeManage,
+		fmt.Sprintf("管理员发放定制订阅 %s（ID: %d）", subscription.Title, subscription.Id),
+		map[string]interface{}{
+			"admin_id":        c.GetInt("id"),
+			"subscription_id": subscription.Id,
+			"price_amount":    subscription.PriceAmount,
+			"currency":        subscription.Currency,
+		})
+	common.ApiSuccess(c, subscription)
+}
+
+func AdminResetUserSubscription(c *gin.Context) {
+	subscriptionId, _ := strconv.Atoi(c.Param("id"))
+	if subscriptionId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	subscription, err := model.AdminResetUserSubscription(subscriptionId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RecordLogWithAdminInfo(subscription.UserId, model.LogTypeManage,
+		fmt.Sprintf("管理员重置订阅（ID: %d）额度", subscription.Id),
+		map[string]interface{}{
+			"admin_id":        c.GetInt("id"),
+			"subscription_id": subscription.Id,
+		})
+	common.ApiSuccess(c, subscription)
 }
 
 func AdminResetUserSubscriptionsByPlan(c *gin.Context) {
