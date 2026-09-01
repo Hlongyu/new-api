@@ -7,8 +7,7 @@ Core image
   └─ new-api             Go API on 127.0.0.1:3000
 
 App image
-  ├─ new-api-web         custom frontend and gateway on 127.0.0.1:3002
-  └─ new-api-companion   custom backend on 127.0.0.1:8787
+  └─ new-api-web         custom frontend and gateway on 127.0.0.1:3002
 
 Persistent services
   ├─ postgres
@@ -16,10 +15,9 @@ Persistent services
   └─ leaderboard_data
 ```
 
-The gateway sends Core API, relay, leaderboard, and recharge-lottery routes to
-`new-api`. Only the legacy model-status compatibility API is sent to
-`new-api-companion`; browser routes and the recharge-lottery assets are served
-by the Web image.
+The gateway sends all API, relay, leaderboard, and recharge-lottery routes to
+`new-api`. Browser routes and the recharge-lottery assets are served by the Web
+image.
 
 ## Release policy
 
@@ -31,7 +29,7 @@ The `Custom Delivery` workflow then:
 
 1. verifies that the tagged commit belongs to `custom/main`;
 2. builds the Core image from `Dockerfile`;
-3. builds the Web/Companion App image from `Dockerfile.app`;
+3. builds the Web/Gateway App image from `Dockerfile.app`;
 4. publishes both images to GHCR with version and full-commit tags;
 5. signs both immutable image digests;
 6. uploads `release-manifest.json` containing both digest references.
@@ -73,18 +71,18 @@ gh auth token | ssh -T linode-seattle \
 ```
 
 Before changing containers, the command validates both image revision labels,
-checks the Core executable, validates Companion JavaScript and Nginx config,
-and runs `new-api-backup.service`.
+checks the Core executables, validates the Nginx config, and runs
+`new-api-backup.service`.
 
 Deployment order is:
 
-1. recreate Core and wait for `/api/status`;
-2. recreate Companion and verify its release commit;
-3. recreate Web/Gateway and verify Core and Companion through the gateway.
+1. remove any remaining legacy Companion container;
+2. recreate Core and wait for `/api/status`;
+3. recreate Web/Gateway and verify Core through the gateway.
 
 The selected Core/App digests are recorded together in
 `/var/lib/new-api/release.env`. If any health check fails, the command restores
-the previous Core/App pair and recreates all three application containers.
+the previous Core/App pair and recreates both application containers.
 
 Core updates restart the API process. Schedule releases that include database
 migrations or historical backfills for a maintenance window.
@@ -107,8 +105,9 @@ bring up the Core-backed frontend until that import has completed.
 /usr/local/sbin/new-api-backup
 ```
 
-The PostgreSQL, Redis, and rollback-only Companion SQLite volumes are external.
-The Compose project does not delete them during application recreation.
+The PostgreSQL, Redis, and preserved legacy SQLite volumes are external. The
+Compose project does not delete them during application recreation. The SQLite
+volume is read-only to the migration tool and remains included in backups.
 
 Install repository-owned server files as root:
 
@@ -124,8 +123,7 @@ deploy/server/new-api-backup.timer              -> /etc/systemd/system/new-api-b
 ```
 
 The public reverse proxy sends application traffic to the Web/Gateway at
-`127.0.0.1:3002`. Core and Companion remain loopback-only implementation
-endpoints.
+`127.0.0.1:3002`. Core remains a loopback-only implementation endpoint.
 
 ## Existing server transition
 

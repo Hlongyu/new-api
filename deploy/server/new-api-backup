@@ -10,8 +10,10 @@ readonly release_env="/var/lib/new-api/release.env"
 readonly postgres_container="postgres"
 readonly core_container="new-api"
 readonly web_container="new-api-web"
-readonly companion_container="new-api-companion"
-readonly legacy_companion_container="new-api-leaderboard-leaderboard-1"
+readonly legacy_companion_containers=(
+  "new-api-companion"
+  "new-api-leaderboard-leaderboard-1"
+)
 readonly lock_file="/run/lock/new-api-backup.lock"
 
 if [[ ! -r "${production_env}" ]]; then
@@ -21,8 +23,14 @@ fi
 
 # shellcheck disable=SC1090 # Root-owned deployment environment is trusted.
 source "${production_env}"
+if [[ -r "${release_env}" ]]; then
+  # shellcheck disable=SC1090 # Root-owned release metadata is trusted.
+  source "${release_env}"
+fi
 : "${POSTGRES_USER:?POSTGRES_USER is required}"
 : "${POSTGRES_DB:?POSTGRES_DB is required}"
+: "${CORE_IMAGE:?CORE_IMAGE is required}"
+readonly leaderboard_data_volume="${LEADERBOARD_DATA_VOLUME:-new-api-leaderboard_leaderboard-data}"
 
 exec 8>"${lock_file}"
 if ! flock --wait 300 8; then
@@ -33,19 +41,20 @@ fi
 timestamp="$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
 temporary_dir="${backup_root}/.new-api-${timestamp}.tmp"
 final_dir="${backup_root}/new-api-${timestamp}"
-companion_snapshot=""
-active_companion_container=""
+paused_containers=()
 
 # shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
-cleanup_temporary_dir() {
-  if [[ -n "${active_companion_container}" && -n "${companion_snapshot}" ]]; then
-    docker exec "${active_companion_container}" rm -f -- "${companion_snapshot}" >/dev/null 2>&1 || true
-  fi
+cleanup() {
+  local container=""
+
+  for container in "${paused_containers[@]}"; do
+    docker unpause "${container}" >/dev/null 2>&1 || true
+  done
   if [[ -d "${temporary_dir}" ]]; then
     find "${temporary_dir}" -depth -delete
   fi
 }
-trap cleanup_temporary_dir EXIT
+trap cleanup EXIT
 
 install -d -m 0700 "${backup_root}"
 install -d -m 0700 "${temporary_dir}"
@@ -67,47 +76,35 @@ docker exec -i "${postgres_container}" pg_restore --list \
   sha256sum database.dump >database.dump.sha256
 )
 
-for container in "${companion_container}" "${legacy_companion_container}"; do
-  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
-    active_companion_container="${container}"
-    break
+docker volume inspect "${leaderboard_data_volume}" >/dev/null
+for container in "${legacy_companion_containers[@]}"; do
+  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] && \
+    [[ "$(docker inspect "${container}" --format '{{.State.Paused}}' 2>/dev/null || true)" != "true" ]]; then
+    docker pause "${container}" >/dev/null
+    paused_containers+=("${container}")
   fi
 done
-if [[ -z "${active_companion_container}" ]]; then
-  echo "running companion container not found" >&2
+
+docker run --rm --network none \
+  --entrypoint /bin/sh \
+  --mount "type=volume,source=${leaderboard_data_volume},target=/source,readonly" \
+  --mount "type=bind,source=${temporary_dir},target=/backup" \
+  "${CORE_IMAGE}" \
+  -c 'test -s /source/leaderboard.db && tar -C /source -cf /backup/leaderboard-data.tar .'
+chmod 0600 "${temporary_dir}/leaderboard-data.tar"
+if ! tar -tf "${temporary_dir}/leaderboard-data.tar" ./leaderboard.db >/dev/null; then
+  echo "preserved leaderboard database is missing from the archive" >&2
   exit 3
 fi
-
-companion_snapshot="/app/data/.new-api-backup-${timestamp}.db"
-docker exec -i "${active_companion_container}" node --input-type=module - "${companion_snapshot}" <<'NODE'
-import { DatabaseSync } from 'node:sqlite'
-
-const snapshotPath = process.argv[2]
-if (!/^\/app\/data\/\.new-api-backup-\d{8}-\d{6}\.db$/.test(snapshotPath)) {
-  throw new Error('invalid companion snapshot path')
-}
-const databasePath = process.env.DATABASE_PATH || '/app/data/leaderboard.db'
-const database = new DatabaseSync(databasePath)
-database.exec('PRAGMA busy_timeout = 30000')
-database.exec(`VACUUM INTO '${snapshotPath.replaceAll("'", "''")}'`)
-database.close()
-
-const snapshot = new DatabaseSync(snapshotPath)
-const result = snapshot.prepare('PRAGMA integrity_check').get()
-snapshot.close()
-if (Object.values(result)[0] !== 'ok') {
-  throw new Error('companion snapshot failed integrity_check')
-}
-NODE
-docker cp "${active_companion_container}:${companion_snapshot}" \
-  "${temporary_dir}/leaderboard.db"
-chmod 0600 "${temporary_dir}/leaderboard.db"
-docker exec "${active_companion_container}" rm -f -- "${companion_snapshot}"
-companion_snapshot=""
 (
   cd "${temporary_dir}"
-  sha256sum leaderboard.db >leaderboard.db.sha256
+  sha256sum leaderboard-data.tar >leaderboard-data.tar.sha256
 )
+
+for container in "${paused_containers[@]}"; do
+  docker unpause "${container}" >/dev/null
+done
+paused_containers=()
 
 install -m 0600 "${compose_file}" "${temporary_dir}/compose.yaml"
 install -m 0600 "${production_env}" "${temporary_dir}/production.env"
@@ -128,9 +125,8 @@ fi
     docker inspect "${web_container}" --format 'app_image={{.Config.Image}}'
     docker inspect "${web_container}" --format 'app_image_id={{.Image}}'
   fi
-  docker inspect "${active_companion_container}" --format 'companion_container={{.Name}}'
-  docker inspect "${active_companion_container}" --format 'companion_image={{.Config.Image}}'
-  printf 'companion_database_bytes=%s\n' "$(wc -c <"${temporary_dir}/leaderboard.db")"
+  printf 'legacy_sqlite_volume=%s\n' "${leaderboard_data_volume}"
+  printf 'legacy_sqlite_archive_bytes=%s\n' "$(wc -c <"${temporary_dir}/leaderboard-data.tar")"
   docker inspect postgres --format 'postgres_image={{.Config.Image}}'
   docker inspect redis --format 'redis_image={{.Config.Image}}'
 } >"${temporary_dir}/metadata.txt"

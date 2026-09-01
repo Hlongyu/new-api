@@ -209,12 +209,12 @@ describe('weekly lottery card', () => {
     let awarded = 0
     apiClient.get = async (...args) => {
       const [url] = args
-      assert.equal(url, '/leaderboard/api/lottery')
+      assert.equal(url, '/api/leaderboard/lottery')
       return { data: { success: true, data: eligiblePayload } }
     }
     apiClient.post = async (...args) => {
       const [url, body, rawConfig] = args
-      assert.equal(url, '/leaderboard/api/lottery/draw')
+      assert.equal(url, '/api/leaderboard/lottery/draw')
       assert.deepEqual(body, {})
       assert.ok(rawConfig && typeof rawConfig === 'object')
       const config = rawConfig as { headers: Record<string, string> }
@@ -254,7 +254,7 @@ describe('weekly lottery card', () => {
     assert.match(container.textContent, /You won \$5/)
   })
 
-  test('remains visible when the companion lottery is disabled', async () => {
+  test('remains visible when the lottery is disabled', async () => {
     apiClient.get = async () => ({
       data: {
         success: true,

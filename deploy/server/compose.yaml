@@ -77,84 +77,13 @@ services:
     depends_on:
       new-api:
         condition: service_healthy
-      companion:
-        condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3000/api/status | grep -q ''"success":true'' && wget -q -O - http://127.0.0.1:3000/healthz | grep -q ''"service":"new-api-companion"''']
+      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3000/healthz | grep -q ''"success":true''']
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
     stop_grace_period: 15s
-    security_opt:
-      - no-new-privileges:true
-    logging: *default-logging
-    networks:
-      - backend
-
-  companion:
-    image: ${APP_IMAGE:?APP_IMAGE is required}
-    container_name: new-api-companion
-    restart: unless-stopped
-    entrypoint: ['node']
-    command: ['/opt/new-api/companion/src/server.js']
-    user: '1000:1000'
-    read_only: true
-    ports:
-      - name: companion-http
-        target: 8787
-        published: '8787'
-        host_ip: 127.0.0.1
-        protocol: tcp
-    volumes:
-      - type: volume
-        source: leaderboard_data
-        target: /app/data
-    tmpfs:
-      - /tmp:mode=1777
-    environment:
-      PORT: 8787
-      NODE_ENV: production
-      TZ: ${TZ:-Asia/Shanghai}
-      BASE_PATH: ${LEADERBOARD_BASE_PATH:-/leaderboard}
-      MODEL_STATUS_BASE_PATH: ${MODEL_STATUS_BASE_PATH:-/modelstatus}
-      LOTTERY_SITE_BASE_PATH: ${LOTTERY_SITE_BASE_PATH:-/lottery}
-      PUBLIC_URL: ${COMPANION_PUBLIC_URL:?COMPANION_PUBLIC_URL is required}
-      NEW_API_PUBLIC_URL: ${NEW_API_PUBLIC_URL:-}
-      NEW_API_BASE_URL: http://new-api:3000
-      NEW_API_ROOT_ACCESS_TOKEN: ${NEW_API_ROOT_ACCESS_TOKEN:-}
-      NEW_API_ROOT_USER_ID: ${NEW_API_ROOT_USER_ID:-0}
-      CORE_LEADERBOARD_ENABLED: ${CORE_LEADERBOARD_ENABLED:-true}
-      CORE_RECHARGE_LOTTERY_ENABLED: ${CORE_RECHARGE_LOTTERY_ENABLED:-true}
-      NEW_API_REQUEST_TIMEOUT_MS: ${NEW_API_REQUEST_TIMEOUT_MS:-12000}
-      NEW_API_QUOTA_PER_UNIT: ${NEW_API_QUOTA_PER_UNIT:-500000}
-      LEADERBOARD_TIME_ZONE: ${LEADERBOARD_TIME_ZONE:-Asia/Shanghai}
-      LEADERBOARD_SYNC_INTERVAL_MINUTES: ${LEADERBOARD_SYNC_INTERVAL_MINUTES:-5}
-      LEADERBOARD_ALL_START_TIMESTAMP: ${LEADERBOARD_ALL_START_TIMESTAMP:-1}
-      LEADERBOARD_EXCLUDED_USER_IDS: ${LEADERBOARD_EXCLUDED_USER_IDS:-}
-      DATABASE_PATH: /app/data/leaderboard.db
-      SPONSOR_MIN_AMOUNT: ${SPONSOR_MIN_AMOUNT:-1}
-      SPONSOR_MAX_AMOUNT: ${SPONSOR_MAX_AMOUNT:-1000}
-      SUPPORT_ACTIVITY_ACTIVE_DAYS: ${SUPPORT_ACTIVITY_ACTIVE_DAYS:-3}
-      SUPPORT_ACTIVITY_START_TIMESTAMP: ${SUPPORT_ACTIVITY_START_TIMESTAMP:-1784217600}
-      RANK_SYSTEM_START_TIMESTAMP: ${RANK_SYSTEM_START_TIMESTAMP:-1784304000}
-      POSTPAID_SYNC_INTERVAL_SECONDS: ${POSTPAID_SYNC_INTERVAL_SECONDS:-30}
-      LOTTERY_ENABLED: ${LOTTERY_ENABLED:-true}
-      LOTTERY_PRIZES: ${LOTTERY_PRIZES:-}
-      LOTTERY_FULFILLMENT_INTERVAL_SECONDS: ${LOTTERY_FULFILLMENT_INTERVAL_SECONDS:-15}
-      LOTTERY_REDEMPTION_INTERVAL_SECONDS: ${LOTTERY_REDEMPTION_INTERVAL_SECONDS:-60}
-      APP_GIT_COMMIT: ${APP_RELEASE_REVISION:-}
-      APP_DEPLOYED_AT: ${APP_RELEASE_DEPLOYED_AT:-0}
-    depends_on:
-      new-api:
-        condition: service_healthy
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:8787/healthz | grep -q ''"service":"new-api-companion"''']
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
     logging: *default-logging

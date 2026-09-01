@@ -14,12 +14,6 @@ export default defineConfig(({ envMode }) => {
     process.env.VITE_REACT_APP_SERVER_URL ||
     env.rawPublicVars.VITE_REACT_APP_SERVER_URL ||
     'http://localhost:3000'
-  // The leaderboard runs as its own service alongside New API and is mounted
-  // under /leaderboard in production, so it needs a separate proxy target.
-  const leaderboardUrl =
-    process.env.VITE_LEADERBOARD_URL ||
-    env.rawPublicVars.VITE_LEADERBOARD_URL ||
-    'http://localhost:8787'
   const lotteryPreviewUserId =
     process.env.VITE_LOTTERY_PREVIEW_USER_ID ||
     env.rawPublicVars.VITE_LOTTERY_PREVIEW_USER_ID ||
@@ -33,7 +27,6 @@ export default defineConfig(({ envMode }) => {
         { target: serverUrl, changeOrigin: true },
       ])
     ) as Record<string, { target: string; changeOrigin: boolean }>),
-    '/leaderboard': { target: leaderboardUrl, changeOrigin: true },
     '/lottery/api': {
       target: serverUrl,
       changeOrigin: true,

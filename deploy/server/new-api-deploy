@@ -15,7 +15,10 @@ readonly revision_pattern='^[0-9a-f]{40}$'
 readonly actor_pattern='^[A-Za-z0-9-]+$'
 readonly core_container="new-api"
 readonly web_container="new-api-web"
-readonly companion_container="new-api-companion"
+readonly legacy_companion_containers=(
+  "new-api-companion"
+  "new-api-leaderboard-leaderboard-1"
+)
 
 candidate_core_image="${1:-}"
 candidate_app_image="${2:-}"
@@ -178,52 +181,18 @@ wait_for_core_health() {
   return 1
 }
 
-wait_for_companion_health() {
-  local companion_health=""
-  local companion_response=""
-  local companion_state=""
-  local expected_revision=""
-
-  expected_revision="$(app_revision)"
-
-  for _ in $(seq 1 75); do
-    companion_state="$(docker inspect "${companion_container}" --format '{{.State.Status}}' 2>/dev/null || true)"
-    companion_health="$(docker inspect "${companion_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-    if [[ "${companion_state}" == "running" && "${companion_health}" == "healthy" ]]; then
-      companion_response="$(curl --fail --silent --show-error --max-time 5 \
-        http://127.0.0.1:8787/healthz || true)"
-      if grep -Fq "\"commit\":\"${expected_revision}\"" <<<"${companion_response}"; then
-        return 0
-      fi
-    fi
-    if [[ "${companion_state}" == "dead" || "${companion_state}" == "exited" ]]; then
-      break
-    fi
-    sleep 2
-  done
-
-  docker inspect "${companion_container}" \
-    --format 'companion_state={{.State.Status}} companion_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
-  return 1
-}
-
 wait_for_app_health() {
   local web_health=""
   local web_state=""
-  local companion_response=""
-  local expected_revision=""
-
-  expected_revision="$(app_revision)"
 
   for _ in $(seq 1 75); do
     web_state="$(docker inspect "${web_container}" --format '{{.State.Status}}' 2>/dev/null || true)"
     web_health="$(docker inspect "${web_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
     if [[ "${web_state}" == "running" && "${web_health}" == "healthy" ]]; then
-      companion_response="$(curl --fail --silent --show-error --max-time 5 \
-        http://127.0.0.1:3002/healthz || true)"
       if curl --fail --silent --show-error --max-time 5 \
         http://127.0.0.1:3002/api/status >/dev/null && \
-        grep -Fq "\"commit\":\"${expected_revision}\"" <<<"${companion_response}"; then
+        curl --fail --silent --show-error --max-time 5 \
+          http://127.0.0.1:3002/healthz >/dev/null; then
         return 0
       fi
     fi
@@ -238,11 +207,20 @@ wait_for_app_health() {
   return 1
 }
 
+remove_legacy_companion_containers() {
+  local container=""
+
+  for container in "${legacy_companion_containers[@]}"; do
+    if docker container inspect "${container}" >/dev/null 2>&1; then
+      docker rm --force "${container}" >/dev/null
+    fi
+  done
+}
+
 deploy_release() {
+  remove_legacy_companion_containers || return
   compose up -d --no-deps --force-recreate --pull never new-api || return
   wait_for_core_health || return
-  compose up -d --no-deps --force-recreate --pull never companion || return
-  wait_for_companion_health || return
   compose up -d --no-deps --force-recreate --pull never web || return
   wait_for_app_health
 }
@@ -265,7 +243,12 @@ validate_offline_backup() {
   if ! (
     cd "${backup_dir}"
     sha256sum -c database.dump.sha256 >/dev/null
-    sha256sum -c leaderboard.db.sha256 >/dev/null
+    if [[ -f leaderboard-data.tar.sha256 ]]; then
+      sha256sum -c leaderboard-data.tar.sha256 >/dev/null
+      tar -tf leaderboard-data.tar ./leaderboard.db >/dev/null
+    else
+      sha256sum -c leaderboard.db.sha256 >/dev/null
+    fi
     test -s database.contents
   ); then
     echo "offline backup validation failed" >&2
@@ -294,14 +277,14 @@ if ! docker image inspect "${current_app_image}" >/dev/null 2>&1; then
 fi
 application_mode="running"
 running_application_containers=0
-for container in "${core_container}" "${web_container}" "${companion_container}"; do
-  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}')" == "true" ]]; then
+for container in "${core_container}" "${web_container}"; do
+  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
     running_application_containers=$((running_application_containers + 1))
   fi
 done
 if [[ "${running_application_containers}" -eq 0 ]]; then
   application_mode="offline"
-elif [[ "${running_application_containers}" -ne 3 ]]; then
+elif [[ "${running_application_containers}" -ne 2 ]]; then
   echo "application containers are only partially running; refusing deployment" >&2
   exit 4
 elif ! wait_for_core_health 30; then
@@ -334,16 +317,11 @@ if ! docker run --rm --network none --entrypoint /bin/sh "${candidate_core_image
   echo "candidate Core image does not contain the required executables" >&2
   exit 4
 fi
-if ! docker run --rm --network none --entrypoint node "${candidate_app_image}" \
-  --check /opt/new-api/companion/src/server.js >/dev/null; then
-  echo "candidate App image does not contain a valid Companion backend" >&2
-  exit 4
-fi
 if ! docker run --rm --network none \
   --read-only \
   --tmpfs /tmp:rw,mode=1777 \
   --tmpfs /var/lib/nginx:rw,mode=0755 \
-  --add-host new-api:127.0.0.1 --add-host companion:127.0.0.1 \
+  --add-host new-api:127.0.0.1 \
   --entrypoint nginx "${candidate_app_image}" -t >/dev/null; then
   echo "candidate App image does not contain a valid Web/Gateway configuration" >&2
   exit 4

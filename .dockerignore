@@ -1,5 +1,6 @@
 .github
 .git
+.local-tests
 *.md
 .vscode
 .gitignore
@@ -9,6 +10,5 @@ docs
 .gocache
 /web/node_modules
 /web/dist
-/companion/data
-/companion/node_modules
+/web/asset-work
 !THIRD-PARTY-LICENSES.md

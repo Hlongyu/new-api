@@ -76,9 +76,6 @@ jobs:
           push: true
           tags: ${{ steps.core_meta.outputs.tags }}
           labels: ${{ steps.core_meta.outputs.labels }}
-          build-args: |
-            APP_GIT_COMMIT=${{ steps.release.outputs.sha }}
-            APP_DEPLOYED_AT=0
           cache-from: type=gha,scope=custom-core-amd64
           cache-to: type=gha,mode=max,scope=custom-core-amd64
           provenance: mode=max
@@ -108,9 +105,6 @@ jobs:
           push: true
           tags: ${{ steps.app_meta.outputs.tags }}
           labels: ${{ steps.app_meta.outputs.labels }}
-          build-args: |
-            APP_GIT_COMMIT=${{ steps.release.outputs.sha }}
-            APP_DEPLOYED_AT=0
           cache-from: type=gha,scope=custom-app-amd64
           cache-to: type=gha,mode=max,scope=custom-app-amd64
           provenance: mode=max

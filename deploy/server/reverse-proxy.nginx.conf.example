@@ -1,7 +1,7 @@
 # Include this fragment inside the public HTTPS server block.
 # Port 3002 is the custom Web/Gateway container. It serves the custom frontend
-# and routes official API traffic to Core and extension APIs to Companion.
-# Keep Core port 3000 and Companion port 8787 bound to loopback only.
+# and routes all API traffic to Core through the gateway.
+# Keep Core port 3000 bound to loopback only.
 
 location / {
     proxy_pass http://127.0.0.1:3002;

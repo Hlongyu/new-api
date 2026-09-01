@@ -19,18 +19,22 @@ The importer never grants, deducts, repays, or awards quota. Imported rows descr
 ## Before stopping services
 
 1. Build and publish a Core image containing `/companion-migrate` and an App image whose frontend uses `/api/leaderboard`.
-2. Set `CORE_LEADERBOARD_ENABLED=true` in `/etc/new-api/production.env`.
-   Also set `CORE_LEADERBOARD_MIGRATION_REQUIRED=true`; Core will return HTTP
+2. Set `CORE_LEADERBOARD_MIGRATION_REQUIRED=true` in
+   `/etc/new-api/production.env`; Core will return HTTP
    503 for these APIs until the importer commits its migration marker.
 3. Put the public site into maintenance mode so no final request can bypass the cutover.
 4. Wait for at least one old postpaid sync interval after the final redemption. Verify its admin state has a recent `lastSyncAt`, no sync error, and no `processing` grant or repayment row.
    Also verify that the recharge lottery has no `processing` grant batch or draw fulfillment.
 5. Run and verify the normal PostgreSQL plus Companion SQLite backup.
-6. Deploy the new immutable Core and App release while maintenance mode remains active. The migration gate makes the new Core leaderboard APIs return HTTP 503, and the new Companion no longer starts the legacy writers. Do not remove maintenance mode yet.
+6. Deploy the new immutable Core and App release while maintenance mode remains
+   active. The deployment removes the legacy Companion container without
+   deleting its SQLite volume. The migration gate makes the new Core
+   leaderboard APIs return HTTP 503. Do not remove maintenance mode yet.
 
 ## Stop and migrate
 
-Load the immutable release metadata, then stop every process that can change Core usage or Companion state. Keep PostgreSQL running.
+Load the immutable release metadata, then stop Core and Web. Keep PostgreSQL
+running and keep the preserved SQLite volume unchanged.
 
 ```bash
 cd /opt/new-api
@@ -41,7 +45,7 @@ set +a
 docker compose --project-name new-api \
   --env-file /etc/new-api/production.env \
   -f /opt/new-api/compose.yaml \
-  stop web companion new-api
+  stop web new-api
 
 cutover_at="$(date +%s)"
 migration_key="companion-core-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -76,13 +80,13 @@ The entire import and its `companion_migrations` marker commit in one database t
 
 ## Start and verify
 
-Start Core first, then Companion and Web.
+Start Core first, then Web.
 
 ```bash
 docker compose --project-name new-api \
   --env-file /etc/new-api/production.env \
   -f /opt/new-api/compose.yaml \
-  up -d new-api companion web
+  up -d new-api web
 ```
 
 Verify these contracts before removing maintenance mode:
@@ -94,9 +98,6 @@ Verify these contracts before removing maintenance mode:
 - redeeming enough code quota grants a recharge-lottery draw immediately, and a
   draw creates its seven-day reward subscription in the same Core transaction.
 - redeeming a test code repays the oldest due open quota loan before crediting the remaining wallet quota.
-- `/leaderboard/api/me` on Companion returns HTTP 410.
-- `/lottery/api/status` on Companion returns HTTP 410 when called directly.
-- Companion logs show neither the old usage synchronizer, postpaid worker, nor
-  recharge-lottery workers starting.
+- no legacy Companion container is present, and port 8787 is not listening.
 
 Do not manually adjust user quota during import. If validation fails after the transaction commits, keep traffic stopped and restore both PostgreSQL and Companion SQLite from the same pre-cutover backup pair.
