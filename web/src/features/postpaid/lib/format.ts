@@ -26,3 +26,8 @@ export function formatDate(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '—'
   return new Date(seconds * 1000).toLocaleDateString()
 }
+
+export function formatDateTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—'
+  return new Date(seconds * 1000).toLocaleString()
+}

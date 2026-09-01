@@ -13,6 +13,7 @@ var (
 	ErrLeaderboardInsufficientQuota = errors.New("leaderboard wallet quota is insufficient")
 	ErrLeaderboardRenameCardNeeded  = errors.New("本周免费改名已用完，请购买改名卡")
 	ErrQuotaLoanCreditExceeded      = errors.New("quota loan credit limit exceeded")
+	ErrQuotaLoanOverdue             = errors.New("overdue quota credit must be repaid before another drawdown")
 	ErrQuotaLoanPending             = errors.New("quota loan request is still pending")
 	ErrQuotaLoanRequestConflict     = errors.New("quota loan request key conflicts with another user")
 )
@@ -239,10 +240,41 @@ func GetQuotaLoanExposure(userId int) (int64, error) {
 	return exposure, err
 }
 
+func HasOverdueQuotaLoan(userId int, now int64) (bool, error) {
+	var count int64
+	err := DB.Model(&QuotaLoan{}).
+		Where("user_id = ? AND status IN ? AND outstanding_quota > 0", userId, []string{QuotaLoanActive, QuotaLoanOverdue}).
+		Where("(status = ? OR due_at < ?)", QuotaLoanOverdue, now).
+		Count(&count).Error
+	return count > 0, err
+}
+
 func MarkQuotaLoansOverdue(now int64) error {
-	return DB.Model(&QuotaLoan{}).
-		Where("status = ? AND outstanding_quota > 0 AND due_at < ?", QuotaLoanActive, now).
-		Updates(map[string]interface{}{"status": QuotaLoanOverdue, "updated_at": now}).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var dueLoans []QuotaLoan
+		if err := lockForUpdate(tx).
+			Select("id", "user_id").
+			Where("status = ? AND outstanding_quota > 0 AND due_at < ?", QuotaLoanActive, now).
+			Order("user_id asc, due_at asc, id asc").
+			Find(&dueLoans).Error; err != nil {
+			return err
+		}
+		if len(dueLoans) == 0 {
+			return nil
+		}
+		userIds := make([]int, 0, len(dueLoans))
+		seen := make(map[int]bool, len(dueLoans))
+		for _, loan := range dueLoans {
+			if seen[loan.UserId] {
+				continue
+			}
+			seen[loan.UserId] = true
+			userIds = append(userIds, loan.UserId)
+		}
+		return tx.Model(&QuotaLoan{}).
+			Where("user_id IN ? AND status = ? AND outstanding_quota > 0", userIds, QuotaLoanActive).
+			Updates(map[string]interface{}{"status": QuotaLoanOverdue, "updated_at": now}).Error
+	})
 }
 
 func CreateQuotaLoan(requestKey string, userId int, entryId int, tierKey string, tierName string, creditAmount int, quotaAmount int, creditLimitQuota int, dueAt int64, now int64) (*QuotaLoan, error) {
@@ -274,11 +306,18 @@ func CreateQuotaLoan(requestKey string, userId int, entryId int, tierKey string,
 		if pendingCount > 0 {
 			return ErrQuotaLoanPending
 		}
-		var exposure int64
-		if err := tx.Model(&QuotaLoan{}).
-			Where("user_id = ? AND status IN ?", userId, []string{QuotaLoanActive, QuotaLoanOverdue}).
-			Select("COALESCE(SUM(outstanding_quota), 0)").Scan(&exposure).Error; err != nil {
+		var openLoans []QuotaLoan
+		if err := lockForUpdate(tx).
+			Where("user_id = ? AND status IN ? AND outstanding_quota > 0", userId, []string{QuotaLoanActive, QuotaLoanOverdue}).
+			Find(&openLoans).Error; err != nil {
 			return err
+		}
+		var exposure int64
+		for _, openLoan := range openLoans {
+			if openLoan.Status == QuotaLoanOverdue || openLoan.DueAt < now {
+				return ErrQuotaLoanOverdue
+			}
+			exposure += int64(openLoan.OutstandingQuota)
 		}
 		if exposure+int64(quotaAmount) > int64(creditLimitQuota) {
 			return ErrQuotaLoanCreditExceeded
@@ -320,6 +359,26 @@ func applyQuotaLoanRepaymentTx(tx *gorm.DB, userId int, sourceType string, sourc
 		Order("due_at asc, created_at asc, id asc").Find(&loans).Error; err != nil {
 		return 0, err
 	}
+	accountOverdue := false
+	for _, loan := range loans {
+		if loan.Status == QuotaLoanOverdue || loan.DueAt < now {
+			accountOverdue = true
+			break
+		}
+	}
+	if accountOverdue {
+		if err := tx.Model(&QuotaLoan{}).
+			Where("user_id = ? AND status = ? AND outstanding_quota > 0", userId, QuotaLoanActive).
+			Updates(map[string]interface{}{"status": QuotaLoanOverdue, "updated_at": now}).Error; err != nil {
+			return 0, err
+		}
+		for index := range loans {
+			if loans[index].Status == QuotaLoanActive {
+				loans[index].Status = QuotaLoanOverdue
+				loans[index].UpdatedAt = now
+			}
+		}
+	}
 	repaid := 0
 	for index := range loans {
 		if availableQuota <= 0 {
@@ -357,13 +416,21 @@ func ApplyQuotaLoanRepaymentForRedemptionTx(tx *gorm.DB, userId int, redemptionI
 
 func ListUserQuotaLoans(userId int, limit int) ([]QuotaLoan, error) {
 	var loans []QuotaLoan
-	err := DB.Where("user_id = ?", userId).Order("created_at desc").Limit(limit).Find(&loans).Error
+	query := DB.Where("user_id = ?", userId).Order("created_at desc")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&loans).Error
 	return loans, err
 }
 
 func ListUserQuotaLoanEvents(userId int, limit int) ([]QuotaLoanEvent, error) {
 	var events []QuotaLoanEvent
-	err := DB.Where("user_id = ?", userId).Order("created_at desc").Limit(limit).Find(&events).Error
+	query := DB.Where("user_id = ?", userId).Order("created_at desc")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	err := query.Find(&events).Error
 	return events, err
 }
 

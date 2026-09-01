@@ -80,10 +80,7 @@ export function usePostpaidAdminView(enabled: boolean) {
   })
 }
 
-export function usePostpaidApply(
-  userId: number,
-  onGranted?: () => void
-) {
+export function usePostpaidApply(userId: number, onGranted?: () => void) {
   const queryClient = useQueryClient()
   const [outcome, setOutcome] = useState<PostpaidOutcome>({ kind: 'idle' })
 
@@ -97,7 +94,7 @@ export function usePostpaidApply(
     },
     onSuccess: (result) => {
       // Either way the grant now exists server-side, so the key has done its
-      // job; replaying it would only collide with the one-open-grant guard.
+      // job; replaying it would only return the same idempotent drawdown.
       clearPendingCharge('postpaid')
       setOutcome(
         result.pending

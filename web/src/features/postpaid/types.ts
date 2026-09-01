@@ -21,9 +21,9 @@ For commercial licensing, please contact support@quantumnous.com
 // ----------------------------------------------------------------------------
 //
 // Served by the same Core API as the leaderboard, but surfaced on the
-// wallet page: a grant adds quota to the New API balance immediately, and the
-// debt is collected back out of that balance when the user later redeems a
-// top-up code. Both halves are wallet events, not ranking events.
+// wallet page: drawdowns add quota to the New API balance immediately, and the
+// aggregate debt is collected back out of that balance when the user later
+// redeems a top-up code. Both halves are wallet events, not ranking events.
 
 export type PostpaidGrantStatus =
   | 'processing'
@@ -39,7 +39,7 @@ export type PostpaidEventStatus =
   | 'failed'
   | 'unknown'
 
-/** One drawdown of credit. Amounts are in credit units, not raw quota. */
+/** One drawdown transaction. Amounts are in credit units, not raw quota. */
 export type PostpaidGrant = {
   id: string
   /** Tier at the time of the grant; the limit is recomputed per request. */
@@ -88,6 +88,8 @@ export type PostpaidContext = {
   creditLimit: number
   availableCredit: number
   outstandingAmount: number
+  /** Outstanding amount whose monthly due boundary has passed. */
+  overdueAmount: number
   /** 0 when nothing is owed. */
   nextDueAt: number
   /** A grant is mid-flight; block further applications until it settles. */

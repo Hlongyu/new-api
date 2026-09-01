@@ -42,6 +42,7 @@ type AppStatusPayload = {
       creditLimit: number
       availableCredit: number
       outstandingAmount: number
+      overdueAmount: number
       nextDueAt: number
       applicationPending: boolean
       canApply: boolean
@@ -73,6 +74,7 @@ export async function getPostpaidContext(): Promise<PostpaidContext | null> {
     creditLimit: postpaid.creditLimit,
     availableCredit: postpaid.availableCredit,
     outstandingAmount: postpaid.outstandingAmount,
+    overdueAmount: postpaid.overdueAmount ?? 0,
     nextDueAt: postpaid.nextDueAt,
     applicationPending: postpaid.applicationPending,
     canApply: postpaid.canApply,

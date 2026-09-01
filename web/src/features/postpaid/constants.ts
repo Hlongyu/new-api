@@ -18,9 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PostpaidEventStatus, PostpaidGrantStatus } from './types'
 
-/** Rows shown before the personal history collapses. */
-export const POSTPAID_HISTORY_LIMIT = 6
-
 /** Rows the root panel shows before offering to expand. */
 export const POSTPAID_ADMIN_PAGE_SIZE = 10
 
@@ -32,14 +29,14 @@ export const POSTPAID_STALE_TIME_MS = 20 * 1000
  * Apply failures mapped to i18n keys. Looked up dynamically via `t(...)`, so
  * every value is registered in i18n/static-keys.ts.
  *
- * 409 covers three distinct causes and the service distinguishes them only in
- * its Chinese message, which bypasses i18n. The shared wording therefore has
- * to cover all three rather than guess at one.
+ * 409 covers aggregate overdue credit, a pending request, changed available
+ * credit, and request-key conflicts. The shared wording covers the actionable
+ * cases without exposing backend messages that bypass i18n.
  */
 export const POSTPAID_ERROR_KEY: Record<number, string> = {
   400: 'Requested amount is invalid or above your available credit',
   403: 'Credit request was rejected',
-  409: 'Another request is still pending, or your available credit changed. Reload and try again.',
+  409: 'Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.',
   429: 'Too many requests. Please try again later.',
   502: 'Credit could not be granted',
   503: 'Postpaid credit is not configured.',

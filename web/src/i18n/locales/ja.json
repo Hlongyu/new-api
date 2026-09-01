@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "機密性の高いキーワードが検出された場合にメッセージをブロックします。",
     "Body param": "ボディパラメータ",
     "Border radius": "角丸",
+    "Borrowed at {{date}}": "借入日時 {{date}}",
     "Bot Name": "ボット名",
     "Bot Protection": "ボット保護",
     "Bot Token": "ボットトークン",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "FAQエントリはまだありません。「FAQを追加」をクリックして作成してください。",
     "No files match the accepted types.": "許可された種類に一致するファイルがありません。",
     "No flow data available": "フローデータがありません",
+    "No grants match this repayment status": "この返済状況に該当する履歴はありません",
     "No group": "グループなし",
     "No group found.": "グループが見つかりません。",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "グループベースのレート制限が設定されていません。\"グループを追加\" をクリックして開始してください。",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "名前が正常に変更されました",
     "Renames": "改名回数",
     "Repaid": "累計返済",
+    "Repaid at {{date}}": "返済日時 {{date}}",
     "Repaid by redemption": "コードで返済",
     "Repair": "修復",
     "Repair Channel Consistency": "チャネル整合性を修復",
     "Repair channel consistency?": "チャネル整合性を修復しますか？",
     "Repayment is collected within about a minute of redeeming a code.": "コード使用後およそ 1 分以内に自動で返済されます。",
     "Repayment is deducted immediately when you redeem a code.": "コードを使用すると、返済額がすぐに差し引かれます。",
+    "Repayment status": "返済状況",
     "Repayment sync is not running": "返済同期が停止しています",
     "Repayment sync is reporting errors": "返済同期がエラーを報告しています",
     "Repeat the administrator password": "管理者パスワードの再入力",
@@ -5646,5 +5650,7 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
     "Zoom": "ズーム"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "延滞中のクレジットを全額返済してから再度利用してください。別の申請が処理中、または利用可能額が変更された場合は、再読み込みしてお試しください。",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "月次残高の返済期限を過ぎています。全額返済してから再度クレジットを利用してください。"
 }

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
@@ -30,15 +30,15 @@ import {
 import {
   POSTPAID_EVENT_LABEL_KEY,
   POSTPAID_GRANT_LABEL_KEY,
-  POSTPAID_HISTORY_LIMIT,
 } from '../constants'
+import { formatDate, formatDateTime } from '../lib/format'
+import { buildPostpaidTimeline } from '../lib/timeline'
 import type {
   PostpaidEvent,
   PostpaidEventStatus,
   PostpaidGrant,
   PostpaidGrantStatus,
 } from '../types'
-import { formatDate } from '../lib/format'
 
 const GRANT_VARIANT: Record<
   PostpaidGrantStatus,
@@ -76,11 +76,12 @@ export type PostpaidHistoryProps = {
 export function PostpaidHistory(props: PostpaidHistoryProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const timeline = useMemo(
+    () => buildPostpaidTimeline(props.grants, props.events),
+    [props.grants, props.events]
+  )
 
-  const grants = props.grants.slice(0, POSTPAID_HISTORY_LIMIT)
-  const events = props.events.slice(0, POSTPAID_HISTORY_LIMIT)
-
-  if (grants.length === 0 && events.length === 0) return null
+  if (props.grants.length === 0 && props.events.length === 0) return null
 
   return (
     <Collapsible open={open} onOpenChange={setOpen} className='border-t pt-3'>
@@ -90,73 +91,59 @@ export function PostpaidHistory(props: PostpaidHistoryProps) {
       </CollapsibleTrigger>
 
       <CollapsibleContent>
-        <div className='space-y-3 pt-3'>
-          {grants.length > 0 && (
-            <div className='space-y-1'>
-              <p className='text-muted-foreground text-[10px]'>
-                {t('Credit drawn')}
-              </p>
-              <ul className='divide-border/60 divide-y'>
-                {grants.map((grant) => (
-                  <li
-                    key={grant.id}
-                    className='flex items-center gap-2 py-1.5 text-xs'
+        <ul className='divide-border/60 max-h-96 divide-y overflow-y-auto pt-3 pr-1'>
+          {timeline.map((item) => {
+            const exceptional =
+              item.kind === 'drawdown'
+                ? item.status === 'processing' ||
+                  item.status === 'failed' ||
+                  item.status === 'unknown'
+                : item.status !== 'completed'
+            return (
+              <li
+                key={item.id}
+                className='grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-0.5 py-2 text-xs'
+              >
+                <span className='row-span-2 font-mono font-medium tabular-nums'>
+                  {item.kind === 'drawdown' ? '+' : '−'}
+                  {item.amount}
+                </span>
+                <span className='min-w-0 font-medium break-words'>
+                  {item.kind === 'drawdown'
+                    ? t('Credit drawn')
+                    : t('Repaid by redemption')}
+                </span>
+                {exceptional && (
+                  <Badge
+                    variant={
+                      item.kind === 'drawdown'
+                        ? GRANT_VARIANT[item.status]
+                        : EVENT_VARIANT[item.status]
+                    }
+                    className='row-span-2 shrink-0 text-[10px]'
                   >
-                    <span className='font-mono tabular-nums'>
-                      +{grant.creditAmount}
-                    </span>
-                    <span className='text-muted-foreground min-w-0 flex-1 truncate'>
-                      {t('Due {{date}}', { date: formatDate(grant.dueAt) })}
-                    </span>
-                    <span className='text-muted-foreground shrink-0 tabular-nums'>
-                      {formatDate(grant.createdAt)}
-                    </span>
-                    <Badge
-                      variant={GRANT_VARIANT[grant.status]}
-                      className='shrink-0 text-[10px]'
-                    >
-                      {t(POSTPAID_GRANT_LABEL_KEY[grant.status])}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {events.length > 0 && (
-            <div className='space-y-1'>
-              <p className='text-muted-foreground text-[10px]'>
-                {t('Repaid by redemption')}
-              </p>
-              <ul className='divide-border/60 divide-y'>
-                {events.map((event) => (
-                  <li
-                    key={event.id}
-                    className='flex items-center gap-2 py-1.5 text-xs'
-                  >
-                    <span className='font-mono tabular-nums'>
-                      −{event.amount}
-                    </span>
-                    <span className='text-muted-foreground min-w-0 flex-1 truncate'>
-                      {t('Remaining {{amount}}', {
-                        amount: event.outstandingAfter,
+                    {t(
+                      item.kind === 'drawdown'
+                        ? POSTPAID_GRANT_LABEL_KEY[item.status]
+                        : POSTPAID_EVENT_LABEL_KEY[item.status]
+                    )}
+                  </Badge>
+                )}
+                <span className='text-muted-foreground min-w-0 break-words'>
+                  {item.kind === 'drawdown'
+                    ? `${t('Borrowed at {{date}}', {
+                        date: formatDateTime(item.timestamp),
+                      })} · ${t('Due {{date}}', {
+                        date: formatDate(item.dueAt),
+                      })}`
+                    : t('Repaid at {{date}}', {
+                        date: formatDateTime(item.timestamp),
                       })}
-                    </span>
-                    <span className='text-muted-foreground shrink-0 tabular-nums'>
-                      {formatDate(event.createdAt)}
-                    </span>
-                    <Badge
-                      variant={EVENT_VARIANT[event.status]}
-                      className='shrink-0 text-[10px]'
-                    >
-                      {t(POSTPAID_EVENT_LABEL_KEY[event.status])}
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
+                </span>
+              </li>
+            )
+          })}
+        </ul>
       </CollapsibleContent>
     </Collapsible>
   )

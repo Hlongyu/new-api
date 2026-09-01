@@ -179,7 +179,7 @@ func ApplyLeaderboardQuotaLoan(c *gin.Context) {
 		if errors.Is(err, service.ErrQuotaLoanUnavailable) {
 			status = http.StatusForbidden
 		}
-		if errors.Is(err, model.ErrQuotaLoanCreditExceeded) || errors.Is(err, model.ErrQuotaLoanPending) || errors.Is(err, model.ErrQuotaLoanRequestConflict) {
+		if errors.Is(err, model.ErrQuotaLoanCreditExceeded) || errors.Is(err, model.ErrQuotaLoanOverdue) || errors.Is(err, model.ErrQuotaLoanPending) || errors.Is(err, model.ErrQuotaLoanRequestConflict) {
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"success": false, "message": err.Error()})

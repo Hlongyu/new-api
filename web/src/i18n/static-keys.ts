@@ -127,7 +127,7 @@ export const STATIC_I18N_KEYS = [
   'Overdue',
   'Requested amount is invalid or above your available credit',
   'Credit request was rejected',
-  'Another request is still pending, or your available credit changed. Reload and try again.',
+  'Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.',
   'Credit could not be granted',
   'Postpaid credit is not configured.',
   'All',

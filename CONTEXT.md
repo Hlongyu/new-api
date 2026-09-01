@@ -32,9 +32,13 @@ _Avoid_: Rank snapshot, leaderboard position
 The user's public or anonymous leaderboard identity together with per-board participation preferences.
 _Avoid_: Leaderboard entry, rank account
 
-**Quota loan**:
-A wallet quota advance that creates an equal repayment obligation with a due date and an auditable repayment history.
-_Avoid_: Postpaid settlement, borrowed token
+**Quota credit account**:
+A user's aggregate outstanding wallet-quota advance balance, governed by a monthly due boundary and backed by an auditable transaction ledger.
+_Avoid_: Individual quota loan, borrowed token
+
+**Quota credit transaction**:
+A drawdown or repayment entry in a quota credit account's ledger. Stored loan rows are allocation details, not independent eligibility requirements.
+_Avoid_: Settled loan, quota loan record
 
 **Postpaid settlement**:
 The idempotent reconciliation of one API request to its actual billed quota after upstream execution.

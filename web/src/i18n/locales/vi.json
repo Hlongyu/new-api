@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "Chặn tin nhắn khi phát hiện từ khóa nhạy cảm.",
     "Body param": "Tham số body",
     "Border radius": "Độ bo góc",
+    "Borrowed at {{date}}": "Vay lúc {{date}}",
     "Bot Name": "Tên Bot",
     "Bot Protection": "Bảo vệ Bot",
     "Bot Token": "Mã thông báo Bot",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "Chưa có mục FAQ nào. Nhấp vào \"Thêm FAQ\" để tạo một mục.",
     "No files match the accepted types.": "Không có tệp nào khớp với các loại được chấp nhận.",
     "No flow data available": "Không có dữ liệu luồng",
+    "No grants match this repayment status": "Không có khoản vay phù hợp trạng thái hoàn trả này",
     "No group": "Không có nhóm",
     "No group found.": "Không tìm thấy nhóm.",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "Chưa cấu hình giới hạn tốc độ dựa trên nhóm. Nhấp \"Add group\" để bắt đầu.",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "Đổi tên thành công",
     "Renames": "Lần đổi tên",
     "Repaid": "Đã trả",
+    "Repaid at {{date}}": "Hoàn trả lúc {{date}}",
     "Repaid by redemption": "Trả bằng mã nạp",
     "Repair": "Sửa",
     "Repair Channel Consistency": "Sửa tính nhất quán kênh",
     "Repair channel consistency?": "Sửa tính nhất quán kênh?",
     "Repayment is collected within about a minute of redeeming a code.": "Khoản nợ được trừ trong khoảng một phút sau khi dùng mã.",
     "Repayment is deducted immediately when you redeem a code.": "Khoản nợ được khấu trừ ngay khi bạn dùng mã.",
+    "Repayment status": "Trạng thái hoàn trả",
     "Repayment sync is not running": "Đồng bộ trả nợ không chạy",
     "Repayment sync is reporting errors": "Đồng bộ trả nợ đang báo lỗi",
     "Repeat the administrator password": "Nhập lại mật khẩu quản trị viên",
@@ -5646,5 +5650,7 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "Hãy hoàn trả toàn bộ khoản tín dụng quá hạn trước khi vay tiếp, hoặc tải lại nếu yêu cầu khác đang chờ xử lý hay hạn mức khả dụng đã thay đổi.",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "Số dư phải trả hàng tháng đã quá hạn. Hãy hoàn trả toàn bộ trước khi vay tiếp."
 }

@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "检测到敏感关键词时阻止消息。",
     "Body param": "请求体参数",
     "Border radius": "圆角",
+    "Borrowed at {{date}}": "借款时间 {{date}}",
     "Bot Name": "机器人名称",
     "Bot Protection": "机器人保护",
     "Bot Token": "机器人令牌",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "暂无常见问题条目。点击“添加常见问题”来创建一个。",
     "No files match the accepted types.": "没有文件匹配接受的类型。",
     "No flow data available": "暂无分流数据",
+    "No grants match this repayment status": "没有符合该归还状态的记录",
     "No group": "未设置",
     "No group found.": "未找到分组。",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "未配置基于组的速率限制。点击“添加组”开始使用。",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "重命名成功",
     "Renames": "改名次数",
     "Repaid": "累计归还",
+    "Repaid at {{date}}": "归还时间 {{date}}",
     "Repaid by redemption": "兑换码抵扣",
     "Repair": "修复",
     "Repair Channel Consistency": "修复渠道一致性",
     "Repair channel consistency?": "修复渠道一致性？",
     "Repayment is collected within about a minute of redeeming a code.": "兑换码到账后约一分钟内自动完成抵扣。",
     "Repayment is deducted immediately when you redeem a code.": "兑换码使用时会立即抵扣欠款。",
+    "Repayment status": "归还状态",
     "Repayment sync is not running": "还款同步未运行",
     "Repayment sync is reporting errors": "还款同步报错",
     "Repeat the administrator password": "重复输入管理员密码",
@@ -5646,5 +5650,7 @@
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
     "Zoom": "缩放"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "请先全额归还逾期额度后再借用；如果有请求仍在处理中或可用额度已变化，请刷新后重试。",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "本月应还额度已逾期，请全额归还后再借用。"
 }

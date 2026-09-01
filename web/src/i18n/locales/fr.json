@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "Bloque les messages lorsque des mots-clés sensibles sont détectés.",
     "Body param": "Paramètre de corps",
     "Border radius": "Rayon de bordure",
+    "Borrowed at {{date}}": "Emprunté le {{date}}",
     "Bot Name": "Nom du bot",
     "Bot Protection": "Protection des bots",
     "Bot Token": "Jeton du bot",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "Aucune entrée FAQ pour l'instant. Cliquez sur \"Ajouter une FAQ\" pour en créer une.",
     "No files match the accepted types.": "Aucun fichier ne correspond aux types acceptés.",
     "No flow data available": "Aucune donnée de flux disponible",
+    "No grants match this repayment status": "Aucun crédit ne correspond à ce statut",
     "No group": "Aucun groupe",
     "No group found.": "Aucun groupe trouvé.",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "Aucune limite de taux basée sur les groupes configurée. Cliquez sur \"Ajouter un groupe\" pour commencer.",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "Renommé avec succès",
     "Renames": "Renommages",
     "Repaid": "Remboursé",
+    "Repaid at {{date}}": "Remboursé le {{date}}",
     "Repaid by redemption": "Remboursé par code",
     "Repair": "Réparer",
     "Repair Channel Consistency": "Réparer la cohérence des canaux",
     "Repair channel consistency?": "Réparer la cohérence des canaux ?",
     "Repayment is collected within about a minute of redeeming a code.": "Le remboursement est prélevé environ une minute après l’utilisation d’un code.",
     "Repayment is deducted immediately when you redeem a code.": "La dette est déduite immédiatement lors de l’utilisation d’un code.",
+    "Repayment status": "Statut du remboursement",
     "Repayment sync is not running": "La synchro de remboursement ne tourne pas",
     "Repayment sync is reporting errors": "La synchro de remboursement signale des erreurs",
     "Repeat the administrator password": "Répéter le mot de passe administrateur",
@@ -5646,5 +5650,7 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "Remboursez intégralement le crédit en retard avant un nouveau retrait, ou actualisez si une autre demande est en attente ou si votre crédit disponible a changé.",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "Votre solde mensuel est en retard. Remboursez-le intégralement avant de retirer à nouveau du crédit."
 }

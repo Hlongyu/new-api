@@ -28,6 +28,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 
 import {
@@ -35,9 +36,9 @@ import {
   POSTPAID_GRANT_LABEL_KEY,
 } from '../constants'
 import { usePostpaidAdminView } from '../hooks'
-import type { PostpaidAdminGrant, PostpaidGrantStatus } from '../types'
-import { formatDate } from '../lib/format'
+import { formatDateTime } from '../lib/format'
 import { syncTrouble } from '../lib/sync-health'
+import type { PostpaidAdminGrant, PostpaidGrantStatus } from '../types'
 
 const STATUS_VARIANT: Record<
   PostpaidGrantStatus,
@@ -55,6 +56,32 @@ function needsAttention(status: PostpaidGrantStatus): boolean {
   return status === 'overdue' || status === 'failed' || status === 'unknown'
 }
 
+type RepaymentFilter = 'all' | 'outstanding' | 'settled'
+
+const REPAYMENT_FILTERS: Array<{
+  value: RepaymentFilter
+  labelKey: string
+}> = [
+  { value: 'all', labelKey: 'All' },
+  { value: 'outstanding', labelKey: 'Outstanding' },
+  { value: 'settled', labelKey: 'Settled' },
+]
+
+const EMPTY_GRANTS: PostpaidAdminGrant[] = []
+
+function isRepaymentFilter(value: string): value is RepaymentFilter {
+  return value === 'all' || value === 'outstanding' || value === 'settled'
+}
+
+function matchesRepaymentFilter(
+  grant: PostpaidAdminGrant,
+  filter: RepaymentFilter
+): boolean {
+  if (filter === 'outstanding') return grant.outstandingAmount > 0
+  if (filter === 'settled') return grant.status === 'settled'
+  return true
+}
+
 function GrantRow(props: { grant: PostpaidAdminGrant }) {
   const { t } = useTranslation()
   const attention = needsAttention(props.grant.status)
@@ -62,32 +89,49 @@ function GrantRow(props: { grant: PostpaidAdminGrant }) {
   return (
     <li
       className={cn(
-        'flex items-center gap-2 py-2 text-xs',
+        'flex items-start gap-2 py-2 text-xs',
         attention && 'bg-destructive/[0.04]'
       )}
     >
-      <span className='text-muted-foreground w-10 shrink-0 font-mono'>
+      <span className='text-muted-foreground w-10 shrink-0 pt-0.5 font-mono'>
         #{props.grant.userId}
       </span>
-      <span className='min-w-0 flex-1 truncate'>{props.grant.displayName}</span>
-      <span className='shrink-0 font-mono tabular-nums'>
-        {props.grant.creditAmount}
-      </span>
-      <span
-        className={cn(
-          'w-14 shrink-0 text-right font-mono tabular-nums',
-          props.grant.outstandingAmount > 0
-            ? 'text-foreground'
-            : 'text-muted-foreground'
-        )}
-      >
-        {props.grant.outstandingAmount > 0
-          ? `−${props.grant.outstandingAmount}`
-          : '0'}
-      </span>
-      <span className='text-muted-foreground hidden shrink-0 tabular-nums sm:block'>
-        {formatDate(props.grant.dueAt)}
-      </span>
+      <div className='min-w-0 flex-1 space-y-0.5'>
+        <div className='flex min-w-0 items-baseline gap-2'>
+          <span className='min-w-0 flex-1 truncate'>
+            {props.grant.displayName}
+          </span>
+          <span className='shrink-0 font-mono tabular-nums'>
+            +{props.grant.creditAmount}
+          </span>
+          <span
+            className={cn(
+              'w-14 shrink-0 text-right font-mono tabular-nums',
+              props.grant.outstandingAmount > 0
+                ? 'text-foreground'
+                : 'text-muted-foreground'
+            )}
+          >
+            {props.grant.outstandingAmount > 0
+              ? `−${props.grant.outstandingAmount}`
+              : '0'}
+          </span>
+        </div>
+        <p className='text-muted-foreground text-[10px] break-words'>
+          {t('Borrowed at {{date}}', {
+            date: formatDateTime(props.grant.createdAt),
+          })}
+        </p>
+        <p className='text-muted-foreground text-[10px] break-words'>
+          {props.grant.completedAt > 0
+            ? t('Repaid at {{date}}', {
+                date: formatDateTime(props.grant.completedAt),
+              })
+            : t('Due {{date}}', {
+                date: formatDateTime(props.grant.dueAt),
+              })}
+        </p>
+      </div>
       <Badge
         variant={STATUS_VARIANT[props.grant.status]}
         className='shrink-0 text-[10px]'
@@ -117,14 +161,28 @@ export function PostpaidAdminPanel(props: PostpaidAdminPanelProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [repaymentFilter, setRepaymentFilter] = useState<RepaymentFilter>('all')
   const adminQuery = usePostpaidAdminView(props.enabled && open)
+  const allGrants = adminQuery.data?.grants ?? EMPTY_GRANTS
 
   const grants = useMemo(() => {
-    const all = adminQuery.data?.grants ?? []
-    const attention = all.filter((grant) => needsAttention(grant.status))
-    const settled = all.filter((grant) => !needsAttention(grant.status))
+    const filtered = allGrants.filter((grant) =>
+      matchesRepaymentFilter(grant, repaymentFilter)
+    )
+    const attention = filtered.filter((grant) => needsAttention(grant.status))
+    const settled = filtered.filter((grant) => !needsAttention(grant.status))
     return [...attention, ...settled]
-  }, [adminQuery.data])
+  }, [allGrants, repaymentFilter])
+
+  const filterCounts = useMemo(
+    () => ({
+      all: allGrants.length,
+      outstanding: allGrants.filter((grant) => grant.outstandingAmount > 0)
+        .length,
+      settled: allGrants.filter((grant) => grant.status === 'settled').length,
+    }),
+    [allGrants]
+  )
 
   const summary = adminQuery.data?.summary
   const state = adminQuery.data?.state
@@ -199,21 +257,57 @@ export function PostpaidAdminPanel(props: PostpaidAdminPanelProps) {
               </div>
 
               <p className='text-muted-foreground text-[11px]'>
-                {t('{{grants}} grants across {{users}} users · last sync {{sync}}', {
-                  grants: summary.grantCount,
-                  users: summary.userCount,
-                  sync:
-                    state.lastSyncAt > 0
-                      ? new Date(state.lastSyncAt * 1000).toLocaleString()
-                      : t('never'),
-                })}
+                {t(
+                  '{{grants}} grants across {{users}} users · last sync {{sync}}',
+                  {
+                    grants: summary.grantCount,
+                    users: summary.userCount,
+                    sync:
+                      state.lastSyncAt > 0
+                        ? new Date(state.lastSyncAt * 1000).toLocaleString()
+                        : t('never'),
+                  }
+                )}
               </p>
 
-              {grants.length === 0 ? (
+              <ToggleGroup
+                value={[repaymentFilter]}
+                onValueChange={(values) => {
+                  const next = values.find((value) => value !== repaymentFilter)
+                  if (!next || !isRepaymentFilter(next)) return
+                  setRepaymentFilter(next)
+                  setExpanded(false)
+                }}
+                variant='outline'
+                size='sm'
+                aria-label={t('Repayment status')}
+                className='grid w-full grid-cols-3'
+              >
+                {REPAYMENT_FILTERS.map((filter) => (
+                  <ToggleGroupItem
+                    key={filter.value}
+                    value={filter.value}
+                    className='min-w-0 px-2 text-xs'
+                  >
+                    <span className='truncate'>{t(filter.labelKey)}</span>
+                    <span className='text-muted-foreground font-mono tabular-nums'>
+                      {filterCounts[filter.value]}
+                    </span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+
+              {allGrants.length === 0 && (
                 <p className='text-muted-foreground text-xs'>
                   {t('No credit has been drawn yet')}
                 </p>
-              ) : (
+              )}
+              {allGrants.length > 0 && grants.length === 0 && (
+                <p className='text-muted-foreground text-xs'>
+                  {t('No grants match this repayment status')}
+                </p>
+              )}
+              {grants.length > 0 && (
                 <>
                   <ul className='divide-border/60 divide-y'>
                     {visible.map((grant) => (

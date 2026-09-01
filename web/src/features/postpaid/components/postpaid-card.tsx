@@ -29,8 +29,8 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { usePostpaidApply, usePostpaidContext } from '../hooks'
-import type { PostpaidContext } from '../types'
 import { formatDate } from '../lib/format'
+import type { PostpaidContext } from '../types'
 import { PostpaidAdminPanel } from './postpaid-admin-panel'
 import { PostpaidHistory } from './postpaid-history'
 
@@ -150,10 +150,23 @@ function ApplyForm(props: ApplyFormProps) {
     )
   }
 
+  if (props.context.overdueAmount > 0) {
+    return (
+      <p className='inline-flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400'>
+        <AlertTriangle className='size-3.5' />
+        {t(
+          'Your monthly balance is overdue. Repay it in full before drawing credit again.'
+        )}
+      </p>
+    )
+  }
+
   if (!props.context.canApply) {
     return (
       <p className='text-muted-foreground text-xs'>
-        {t('Your credit limit is fully drawn. Repay with a redemption code to free it up.')}
+        {t(
+          'Your credit limit is fully drawn. Repay with a redemption code to free it up.'
+        )}
       </p>
     )
   }

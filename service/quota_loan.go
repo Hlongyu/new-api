@@ -54,6 +54,7 @@ type QuotaLoanContext struct {
 	CreditLimit        int                     `json:"creditLimit"`
 	AvailableCredit    int                     `json:"availableCredit"`
 	OutstandingAmount  float64                 `json:"outstandingAmount"`
+	OverdueAmount      float64                 `json:"overdueAmount"`
 	NextDueAt          int64                   `json:"nextDueAt"`
 	ApplicationPending bool                    `json:"applicationPending"`
 	CanApply           bool                    `json:"canApply"`
@@ -105,11 +106,11 @@ func GetQuotaLoanContext(userId int, isRoot bool) (*QuotaLoanContext, error) {
 	if err != nil {
 		return nil, err
 	}
-	loans, err := model.ListUserQuotaLoans(userId, 20)
+	loans, err := model.ListUserQuotaLoans(userId, 0)
 	if err != nil {
 		return nil, err
 	}
-	events, err := model.ListUserQuotaLoanEvents(userId, 50)
+	events, err := model.ListUserQuotaLoanEvents(userId, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -121,22 +122,33 @@ func GetQuotaLoanContext(userId int, isRoot bool) (*QuotaLoanContext, error) {
 	outstandingQuota := int64(0)
 	context := &QuotaLoanContext{
 		Configured: true, UserId: userId, CreditLimit: limit, IsRoot: isRoot,
-		OpenGrants: make([]QuotaLoanPayload, 0), Grants: make([]QuotaLoanPayload, 0, len(loans)),
-		Events: make([]QuotaLoanEventPayload, 0, len(events)),
+		OpenGrants: make([]QuotaLoanPayload, 0),
+		Grants:     make([]QuotaLoanPayload, 0, len(loans)),
+		Events:     make([]QuotaLoanEventPayload, 0, len(events)),
 	}
 	loanById := make(map[string]model.QuotaLoan, len(loans))
 	for _, loan := range loans {
 		loanById[loan.Id] = loan
-		payload := quotaLoanPayload(loan, quotaPerUnit)
-		context.Grants = append(context.Grants, payload)
-		if loan.Status == model.QuotaLoanActive || loan.Status == model.QuotaLoanOverdue || loan.Status == model.LeaderboardOrderProcessing || loan.Status == model.LeaderboardOrderUnknown {
-			context.OpenGrants = append(context.OpenGrants, payload)
-			outstandingQuota += int64(max(loan.OutstandingQuota, 0))
-			if loan.Status == model.LeaderboardOrderProcessing || loan.Status == model.LeaderboardOrderUnknown {
-				context.ApplicationPending = true
-			}
+		context.Grants = append(context.Grants, quotaLoanPayload(loan, quotaPerUnit))
+		if loan.Status != model.QuotaLoanActive && loan.Status != model.QuotaLoanOverdue &&
+			loan.Status != model.LeaderboardOrderProcessing && loan.Status != model.LeaderboardOrderUnknown {
+			continue
+		}
+		context.OpenGrants = append(context.OpenGrants, quotaLoanPayload(loan, quotaPerUnit))
+		outstandingQuota += int64(max(loan.OutstandingQuota, 0))
+		if loan.Status == model.QuotaLoanOverdue {
+			context.OverdueAmount += float64(max(loan.OutstandingQuota, 0)) / quotaPerUnit
+		}
+		if loan.Status == model.LeaderboardOrderProcessing || loan.Status == model.LeaderboardOrderUnknown {
+			context.ApplicationPending = true
 		}
 	}
+	sort.Slice(context.Grants, func(left int, right int) bool {
+		if context.Grants[left].CreatedAt != context.Grants[right].CreatedAt {
+			return context.Grants[left].CreatedAt > context.Grants[right].CreatedAt
+		}
+		return context.Grants[left].Id > context.Grants[right].Id
+	})
 	sort.Slice(context.OpenGrants, func(left int, right int) bool {
 		if context.OpenGrants[left].DueAt != context.OpenGrants[right].DueAt {
 			return context.OpenGrants[left].DueAt < context.OpenGrants[right].DueAt
@@ -165,7 +177,7 @@ func GetQuotaLoanContext(userId int, isRoot bool) (*QuotaLoanContext, error) {
 	}
 	context.OutstandingAmount = float64(outstandingQuota) / quotaPerUnit
 	context.AvailableCredit = quotaLoanAvailableCredit(limit, outstandingQuota, quotaPerUnit)
-	context.CanApply = context.AvailableCredit > 0 && !context.ApplicationPending
+	context.CanApply = context.AvailableCredit > 0 && !context.ApplicationPending && context.OverdueAmount == 0
 	for _, event := range events {
 		context.Events = append(context.Events, quotaLoanEventPayload(event, loanById[event.LoanId], quotaPerUnit))
 	}
@@ -184,6 +196,14 @@ func ApplyQuotaLoan(requestKey string, userId int, amount *int) (*QuotaLoanPaylo
 	quotaPerUnit := common.QuotaPerUnit
 	if quotaPerUnit <= 0 {
 		return nil, errors.New("quota per unit must be positive")
+	}
+	now := common.GetTimestamp()
+	overdue, err := model.HasOverdueQuotaLoan(userId, now)
+	if err != nil {
+		return nil, err
+	}
+	if overdue {
+		return nil, model.ErrQuotaLoanOverdue
 	}
 	exposure, err := model.GetQuotaLoanExposure(userId)
 	if err != nil {
@@ -209,7 +229,6 @@ func ApplyQuotaLoan(requestKey string, userId int, amount *int) (*QuotaLoanPaylo
 	if err != nil {
 		return nil, err
 	}
-	now := common.GetTimestamp()
 	loan, err := model.CreateQuotaLoan(
 		requestKey, userId, entry.Id, progress.TierKey, progress.TierName,
 		creditAmount, quotaAmount, creditLimitQuota, quotaLoanDueAt(now), now,

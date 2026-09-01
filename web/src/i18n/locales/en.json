@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "Blocks messages when sensitive keywords are detected.",
     "Body param": "Body param",
     "Border radius": "Border radius",
+    "Borrowed at {{date}}": "Borrowed at {{date}}",
     "Bot Name": "Bot Name",
     "Bot Protection": "Bot Protection",
     "Bot Token": "Bot Token",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "No FAQ entries yet. Click \"Add FAQ\" to create one.",
     "No files match the accepted types.": "No files match the accepted types.",
     "No flow data available": "No flow data available",
+    "No grants match this repayment status": "No grants match this repayment status",
     "No group": "No group",
     "No group found.": "No group found.",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "No group-based rate limits configured. Click \"Add group\" to get started.",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "Renamed successfully",
     "Renames": "Renames",
     "Repaid": "Repaid",
+    "Repaid at {{date}}": "Repaid at {{date}}",
     "Repaid by redemption": "Repaid by redemption",
     "Repair": "Repair",
     "Repair Channel Consistency": "Repair Channel Consistency",
     "Repair channel consistency?": "Repair channel consistency?",
     "Repayment is collected within about a minute of redeeming a code.": "Repayment is collected within about a minute of redeeming a code.",
     "Repayment is deducted immediately when you redeem a code.": "Repayment is deducted immediately when you redeem a code.",
+    "Repayment status": "Repayment status",
     "Repayment sync is not running": "Repayment sync is not running",
     "Repayment sync is reporting errors": "Repayment sync is reporting errors",
     "Repeat the administrator password": "Repeat the administrator password",
@@ -5646,5 +5650,7 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "Your monthly balance is overdue. Repay it in full before drawing credit again."
 }

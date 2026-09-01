@@ -714,6 +714,7 @@
     "Blocks messages when sensitive keywords are detected.": "Блокирует сообщения при обнаружении конфиденциальных ключевых слов.",
     "Body param": "Параметр тела запроса",
     "Border radius": "Радиус скругления",
+    "Borrowed at {{date}}": "Получено: {{date}}",
     "Bot Name": "Имя бота",
     "Bot Protection": "Защита от ботов",
     "Bot Token": "Токен бота",
@@ -3126,6 +3127,7 @@
     "No FAQ entries yet. Click \"Add FAQ\" to create one.": "Пока нет записей FAQ. Нажмите \"Добавить FAQ\", чтобы создать одну.",
     "No files match the accepted types.": "Нет файлов, соответствующих допустимым типам.",
     "No flow data available": "Нет данных потока",
+    "No grants match this repayment status": "Нет кредитов с таким статусом погашения",
     "No group": "Без группы",
     "No group found.": "Группа не найдена.",
     "No group-based rate limits configured. Click \"Add group\" to get started.": "Групповые лимиты скорости не настроены. Нажмите \"Добавить группу\", чтобы начать.",
@@ -4056,12 +4058,14 @@
     "Renamed successfully": "Успешно переименовано",
     "Renames": "Переименования",
     "Repaid": "Погашено",
+    "Repaid at {{date}}": "Погашено: {{date}}",
     "Repaid by redemption": "Погашено кодом",
     "Repair": "Восстановить",
     "Repair Channel Consistency": "Восстановить согласованность каналов",
     "Repair channel consistency?": "Восстановить согласованность каналов?",
     "Repayment is collected within about a minute of redeeming a code.": "Погашение списывается примерно через минуту после активации кода.",
     "Repayment is deducted immediately when you redeem a code.": "При активации кода задолженность погашается сразу.",
+    "Repayment status": "Статус погашения",
     "Repayment sync is not running": "Синхронизация погашений не запущена",
     "Repayment sync is reporting errors": "Синхронизация погашений сообщает об ошибках",
     "Repeat the administrator password": "Повторите пароль администратора",
@@ -5646,5 +5650,7 @@
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
     "Zoom": "Zoom"
-  }
+  },
+  "Repay overdue credit in full before drawing again, or reload if another request is pending or your available credit changed.": "Полностью погасите просроченный кредит перед новым заимствованием. Если другой запрос еще обрабатывается или доступный лимит изменился, обновите страницу и повторите попытку.",
+  "Your monthly balance is overdue. Repay it in full before drawing credit again.": "Срок погашения месячного баланса истек. Полностью погасите его перед новым заимствованием."
 }
