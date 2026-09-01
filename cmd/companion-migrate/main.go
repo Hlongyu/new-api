@@ -86,6 +86,14 @@ type migrationBundle struct {
 	LotteryOpportunities []model.LotteryOpportunity
 	PostpaidGrants       []sourcePostpaidGrant
 	PostpaidEvents       []sourcePostpaidEvent
+	RechargeCampaigns    []model.RechargeLotteryCampaign
+	RechargePrizes       []model.RechargeLotteryPrize
+	RechargeGrantBatches []model.RechargeLotteryGrantBatch
+	RechargeLedger       []model.RechargeLotteryLedger
+	RechargeDrawBatches  []model.RechargeLotteryDrawBatch
+	RechargeDrawItems    []model.RechargeLotteryDrawItem
+	RechargePlanMappings []model.RechargeLotteryPlanMapping
+	RechargeProgress     []model.RechargeLotteryRedemptionProgress
 	ExcludedUserIds      []int
 	ExcludedUsersStored  bool
 }
@@ -101,6 +109,14 @@ type migrationCounts struct {
 	LotteryOpportunities int
 	QuotaLoans           int
 	QuotaLoanEvents      int
+	RechargeCampaigns    int
+	RechargePrizes       int
+	RechargeGrantBatches int
+	RechargeLedger       int
+	RechargeDrawBatches  int
+	RechargeDrawItems    int
+	RechargePlanMappings int
+	RechargeProgress     int
 	ExcludedUsers        int
 	UnresolvedRows       int
 }
@@ -194,7 +210,9 @@ func readMigrationBundle(source *gorm.DB) (migrationBundle, error) {
 	requiredTables := []string{
 		"leaderboard_entries", "sponsor_orders", "rename_card_balances", "rename_events",
 		"rename_card_orders", "lottery_draws", "lottery_periods", "lottery_opportunities",
-		"postpaid_grants", "postpaid_events", "app_settings",
+		"postpaid_grants", "postpaid_events", "app_settings", "lottery_campaigns",
+		"lottery_prizes", "lottery_grant_batches", "lottery_ledger", "lottery_draw_batches",
+		"lottery_draw_items", "lottery_plan_mappings", "lottery_redemption_progress",
 	}
 	for _, table := range requiredTables {
 		if !source.Migrator().HasTable(table) {
@@ -218,6 +236,14 @@ func readMigrationBundle(source *gorm.DB) (migrationBundle, error) {
 		{"lottery_opportunities", "rule_version asc, period_key asc, draw_rank asc", &bundle.LotteryOpportunities},
 		{"postpaid_grants", "id asc", &bundle.PostpaidGrants},
 		{"postpaid_events", "id asc", &bundle.PostpaidEvents},
+		{"lottery_campaigns", "id asc", &bundle.RechargeCampaigns},
+		{"lottery_prizes", "id asc", &bundle.RechargePrizes},
+		{"lottery_grant_batches", "id asc", &bundle.RechargeGrantBatches},
+		{"lottery_ledger", "created_at asc, id asc", &bundle.RechargeLedger},
+		{"lottery_draw_batches", "created_at asc, id asc", &bundle.RechargeDrawBatches},
+		{"lottery_draw_items", "draw_batch_id asc, ordinal asc", &bundle.RechargeDrawItems},
+		{"lottery_plan_mappings", "quota_amount asc, duration_days asc", &bundle.RechargePlanMappings},
+		{"lottery_redemption_progress", "user_id asc", &bundle.RechargeProgress},
 	}
 	for _, query := range queries {
 		if err := source.Table(query.name).Order(query.order).Find(query.value).Error; err != nil {
@@ -287,6 +313,16 @@ func validateMigrationBundle(bundle migrationBundle) error {
 	for _, event := range bundle.PostpaidEvents {
 		if event.Status == model.LeaderboardOrderProcessing {
 			processing = append(processing, "postpaid_events/"+event.Id)
+		}
+	}
+	for _, batch := range bundle.RechargeGrantBatches {
+		if batch.Status == model.RechargeLotteryBatchProcessing {
+			processing = append(processing, "lottery_grant_batches/"+batch.Id)
+		}
+	}
+	for _, draw := range bundle.RechargeDrawBatches {
+		if draw.Status == model.RechargeLotteryDrawProcessing {
+			processing = append(processing, "lottery_draw_batches/"+draw.Id)
 		}
 	}
 	if len(processing) > 0 {
@@ -441,10 +477,25 @@ func importMigrationBundle(target *gorm.DB, bundle migrationBundle, key string, 
 			{"lottery opportunities", &bundle.LotteryOpportunities, len(bundle.LotteryOpportunities)},
 			{"quota loans", &loans, len(loans)},
 			{"quota loan events", &events, len(events)},
+			{"recharge lottery campaigns", &bundle.RechargeCampaigns, len(bundle.RechargeCampaigns)},
+			{"recharge lottery prizes", &bundle.RechargePrizes, len(bundle.RechargePrizes)},
+			{"recharge lottery grant batches", &bundle.RechargeGrantBatches, len(bundle.RechargeGrantBatches)},
+			{"recharge lottery ledger", &bundle.RechargeLedger, len(bundle.RechargeLedger)},
+			{"recharge lottery draw batches", &bundle.RechargeDrawBatches, len(bundle.RechargeDrawBatches)},
+			{"recharge lottery draw items", &bundle.RechargeDrawItems, len(bundle.RechargeDrawItems)},
+			{"recharge lottery plan mappings", &bundle.RechargePlanMappings, len(bundle.RechargePlanMappings)},
+			{"recharge lottery redemption progress", &bundle.RechargeProgress, len(bundle.RechargeProgress)},
 		}
 		for _, item := range imports {
 			if item.count == 0 {
 				continue
+			}
+			if len(bundle.RechargePrizes) > 0 && tx.Dialector.Name() == "postgres" {
+				if err := tx.Exec(
+					"SELECT setval(pg_get_serial_sequence('lottery_prizes', 'id'), COALESCE((SELECT MAX(id) FROM lottery_prizes), 1), true)",
+				).Error; err != nil {
+					return fmt.Errorf("advance recharge lottery prize sequence: %w", err)
+				}
 			}
 			if err := tx.CreateInBatches(item.value, 200).Error; err != nil {
 				return fmt.Errorf("import %s: %w", item.name, err)
@@ -476,6 +527,10 @@ func (bundle migrationBundle) counts() migrationCounts {
 		RenameCardOrders: len(bundle.RenameCardOrders), LotteryDraws: len(bundle.LotteryDraws),
 		LotteryPeriods: len(bundle.LotteryPeriods), LotteryOpportunities: len(bundle.LotteryOpportunities),
 		QuotaLoans: len(bundle.PostpaidGrants), QuotaLoanEvents: len(bundle.PostpaidEvents),
+		RechargeCampaigns: len(bundle.RechargeCampaigns), RechargePrizes: len(bundle.RechargePrizes),
+		RechargeGrantBatches: len(bundle.RechargeGrantBatches), RechargeLedger: len(bundle.RechargeLedger),
+		RechargeDrawBatches: len(bundle.RechargeDrawBatches), RechargeDrawItems: len(bundle.RechargeDrawItems),
+		RechargePlanMappings: len(bundle.RechargePlanMappings), RechargeProgress: len(bundle.RechargeProgress),
 		ExcludedUsers: len(bundle.ExcludedUserIds),
 	}
 	for _, order := range bundle.SponsorOrders {
@@ -503,15 +558,28 @@ func (bundle migrationBundle) counts() migrationCounts {
 			counts.UnresolvedRows++
 		}
 	}
+	for _, batch := range bundle.RechargeGrantBatches {
+		if batch.Status == model.RechargeLotteryBatchFailed {
+			counts.UnresolvedRows++
+		}
+	}
+	for _, draw := range bundle.RechargeDrawBatches {
+		if draw.Status == model.RechargeLotteryDrawPending || draw.Status == model.RechargeLotteryDrawUnknown || draw.Status == model.RechargeLotteryDrawFailed {
+			counts.UnresolvedRows++
+		}
+	}
 	return counts
 }
 
 func printMigrationSummary(label string, hash string, counts migrationCounts) {
 	fmt.Printf("%s manifest %s\n", label, hash)
 	fmt.Printf(
-		"entries=%d sponsors=%d rename_balances=%d rename_events=%d rename_orders=%d lottery_draws=%d lottery_periods=%d lottery_opportunities=%d quota_loans=%d quota_loan_events=%d excluded_users=%d unresolved_rows=%d\n",
+		"entries=%d sponsors=%d rename_balances=%d rename_events=%d rename_orders=%d weekly_lottery_draws=%d weekly_lottery_periods=%d weekly_lottery_opportunities=%d quota_loans=%d quota_loan_events=%d recharge_campaigns=%d recharge_prizes=%d recharge_grant_batches=%d recharge_ledger=%d recharge_draw_batches=%d recharge_draw_items=%d recharge_plan_mappings=%d recharge_progress=%d excluded_users=%d unresolved_rows=%d\n",
 		counts.Entries, counts.SponsorOrders, counts.RenameCardBalances, counts.RenameEvents,
 		counts.RenameCardOrders, counts.LotteryDraws, counts.LotteryPeriods, counts.LotteryOpportunities,
-		counts.QuotaLoans, counts.QuotaLoanEvents, counts.ExcludedUsers, counts.UnresolvedRows,
+		counts.QuotaLoans, counts.QuotaLoanEvents, counts.RechargeCampaigns, counts.RechargePrizes,
+		counts.RechargeGrantBatches, counts.RechargeLedger, counts.RechargeDrawBatches,
+		counts.RechargeDrawItems, counts.RechargePlanMappings, counts.RechargeProgress,
+		counts.ExcludedUsers, counts.UnresolvedRows,
 	)
 }

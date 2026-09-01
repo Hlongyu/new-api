@@ -12,6 +12,38 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	rechargeLotteryRoute := router.Group("/lottery/api")
+	rechargeLotteryRoute.Use(middleware.RouteTag("api"))
+	rechargeLotteryRoute.Use(gzip.Gzip(gzip.DefaultCompression))
+	rechargeLotteryRoute.Use(middleware.BodyStorageCleanup())
+	rechargeLotteryRoute.Use(middleware.GlobalAPIRateLimit())
+	rechargeLotteryRoute.Use(middleware.LeaderboardMigrationReady())
+	{
+		rechargeLotteryUserRoute := rechargeLotteryRoute.Group("")
+		rechargeLotteryUserRoute.Use(middleware.UserAuth())
+		{
+			rechargeLotteryUserRoute.GET("/status", controller.GetRechargeLotteryStatus)
+			rechargeLotteryUserRoute.GET("/history", controller.GetRechargeLotteryHistory)
+			rechargeLotteryUserRoute.POST("/draw", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.DrawRechargeLottery)
+		}
+
+		rechargeLotteryAdminRoute := rechargeLotteryRoute.Group("/admin")
+		rechargeLotteryAdminRoute.Use(middleware.RootAuth())
+		{
+			rechargeLotteryAdminRoute.GET("/dashboard", controller.GetRechargeLotteryAdminDashboard)
+			rechargeLotteryAdminRoute.GET("/eligible-users", controller.GetRechargeLotteryEligibleUsers)
+			rechargeLotteryAdminRoute.POST("/redemptions/sync", middleware.SessionCookieOriginGuard(), controller.SyncRechargeLotteryRedemptions)
+			rechargeLotteryAdminRoute.POST("/campaigns", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.CreateRechargeLotteryCampaign)
+			rechargeLotteryAdminRoute.POST("/campaigns/:id/publish", middleware.SessionCookieOriginGuard(), controller.PublishRechargeLotteryCampaign)
+			rechargeLotteryAdminRoute.POST("/campaigns/:id/end", middleware.SessionCookieOriginGuard(), controller.EndRechargeLotteryCampaign)
+			rechargeLotteryAdminRoute.POST("/campaigns/:id/cancel", middleware.SessionCookieOriginGuard(), controller.CancelRechargeLotteryCampaign)
+			rechargeLotteryAdminRoute.POST("/grants", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.CreateRechargeLotteryGrant)
+			rechargeLotteryAdminRoute.POST("/grants/all", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.CreateRechargeLotteryGrantAll)
+			rechargeLotteryAdminRoute.POST("/grants/revoke", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.RevokeRechargeLotteryGrant)
+			rechargeLotteryAdminRoute.POST("/fulfillments/:id/retry", middleware.SessionCookieOriginGuard(), controller.RetryRechargeLotteryFulfillment)
+		}
+	}
+
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -307,10 +339,10 @@ func SetApiRouter(router *gin.Engine) {
 			couponRoute.POST("/:id/activate", middleware.CriticalRateLimit(), controller.ActivateSelfCoupon)
 		}
 		couponAdminRoute := apiRouter.Group("/coupon/admin")
-			couponAdminRoute.Use(middleware.AdminAuth())
-			{
-				couponAdminRoute.GET("/", controller.AdminListCoupons)
-				couponAdminRoute.GET("/users/:id", controller.AdminGetUserCoupons)
+		couponAdminRoute.Use(middleware.AdminAuth())
+		{
+			couponAdminRoute.GET("/", controller.AdminListCoupons)
+			couponAdminRoute.GET("/users/:id", controller.AdminGetUserCoupons)
 			couponAdminRoute.POST("/grants", controller.AdminIssueCoupons)
 			couponAdminRoute.POST("/:id/revoke", controller.AdminRevokeCoupon)
 		}

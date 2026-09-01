@@ -61,4 +61,5 @@ test('解析挂载路径和赞助额度换算配置', () => {
   assert.equal(config.supportActivityActiveDays, 3)
   assert.equal(config.supportActivityStartTimestamp, 1_784_217_600)
   assert.equal(config.coreLeaderboardEnabled, true)
+  assert.equal(config.coreRechargeLotteryEnabled, false)
 })

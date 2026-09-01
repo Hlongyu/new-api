@@ -9,6 +9,8 @@ This runbook moves leaderboard-owned state to Core without importing old rank re
 - rename-card balances, orders, and rename events
 - weekly-lottery periods, opportunities, and draws
 - quota-loan grants and repayment events from the old `postpaid_*` tables
+- recharge-lottery campaigns, prizes, grant batches, ticket ledger, draws,
+  fulfillment mappings, and redemption progress
 
 The migration does not import `usage_aggregates`, a rank snapshot, or a calculated tier. Core replays all available `quota_data` history and merges completed sponsorship and rename-card events at their original timestamps.
 
@@ -22,6 +24,7 @@ The importer never grants, deducts, repays, or awards quota. Imported rows descr
    503 for these APIs until the importer commits its migration marker.
 3. Put the public site into maintenance mode so no final request can bypass the cutover.
 4. Wait for at least one old postpaid sync interval after the final redemption. Verify its admin state has a recent `lastSyncAt`, no sync error, and no `processing` grant or repayment row.
+   Also verify that the recharge lottery has no `processing` grant batch or draw fulfillment.
 5. Run and verify the normal PostgreSQL plus Companion SQLite backup.
 6. Deploy the new immutable Core and App release while maintenance mode remains active. The migration gate makes the new Core leaderboard APIs return HTTP 503, and the new Companion no longer starts the legacy writers. Do not remove maintenance mode yet.
 
@@ -87,8 +90,13 @@ Verify these contracts before removing maintenance mode:
 - `/api/leaderboard/me` returns the migrated profile, rename-card balance, and open quota loans.
 - `/api/leaderboard/ranks` returns a Core-replayed rank.
 - historical sponsorship and weekly-lottery views retain their old rows.
+- `/lottery/api/status` returns the migrated recharge-lottery ticket balance and history.
+- redeeming enough code quota grants a recharge-lottery draw immediately, and a
+  draw creates its seven-day reward subscription in the same Core transaction.
 - redeeming a test code repays the oldest due open quota loan before crediting the remaining wallet quota.
 - `/leaderboard/api/me` on Companion returns HTTP 410.
-- Companion logs show neither the old usage synchronizer nor the old postpaid worker starting.
+- `/lottery/api/status` on Companion returns HTTP 410 when called directly.
+- Companion logs show neither the old usage synchronizer, postpaid worker, nor
+  recharge-lottery workers starting.
 
 Do not manually adjust user quota during import. If validation fails after the transaction commits, keep traffic stopped and restore both PostgreSQL and Companion SQLite from the same pre-cutover backup pair.

@@ -29,6 +29,10 @@ func TestImportMigrationBundlePreservesFactsWithoutWalletSideEffects(t *testing.
 		&model.QuotaLoan{},
 		&model.QuotaLoanEvent{},
 		&model.CompanionMigration{},
+		&model.RechargeLotteryCampaign{}, &model.RechargeLotteryPrize{},
+		&model.RechargeLotteryGrantBatch{}, &model.RechargeLotteryLedger{},
+		&model.RechargeLotteryDrawBatch{}, &model.RechargeLotteryDrawItem{},
+		&model.RechargeLotteryPlanMapping{}, &model.RechargeLotteryRedemptionProgress{},
 	))
 	require.NoError(t, target.Create(&model.User{Id: 42, Username: "alice", Quota: 12345}).Error)
 	require.NoError(t, target.Create(&model.LeaderboardEntry{
@@ -64,6 +68,21 @@ func TestImportMigrationBundlePreservesFactsWithoutWalletSideEffects(t *testing.
 			Status: model.LeaderboardOrderCompleted, CreatedAt: 420, UpdatedAt: 430,
 		}},
 		ExcludedUserIds: []int{42},
+		RechargeCampaigns: []model.RechargeLotteryCampaign{{
+			Id: "permanent-red-moon", Name: "赤月回响", Status: model.RechargeLotteryCampaignPublished,
+			StartsAt: 1, EndsAt: 4_102_444_800, RulesVersion: 1, IsPermanent: true, IsDefault: true,
+		}},
+		RechargePrizes: []model.RechargeLotteryPrize{{
+			Id: 1, CampaignId: "permanent-red-moon", AmountUsd: 1, Weight: 60, Rarity: "common",
+		}},
+		RechargeLedger: []model.RechargeLotteryLedger{{
+			Id: "grant-42", CampaignId: "permanent-red-moon", UserId: 42,
+			Kind: "grant", Delta: 2, ReferenceId: "migration-test", CreatedAt: 500,
+		}},
+		RechargeProgress: []model.RechargeLotteryRedemptionProgress{{
+			UserId: 42, CampaignId: "permanent-red-moon", ObservedQuota: 50_000_000,
+			RedemptionCount: 1, GrantedDraws: 1, UpdatedAt: 500,
+		}},
 	}
 
 	require.NoError(t, importMigrationBundle(target, bundle, "cutover-test", "sha256:test", 1_000))
@@ -103,6 +122,15 @@ func TestImportMigrationBundlePreservesFactsWithoutWalletSideEffects(t *testing.
 	require.NoError(t, target.First(&excluded, "user_id = ?", 42).Error)
 	assert.EqualValues(t, 1_000, excluded.CreatedAt)
 
+	var rechargeProgress model.RechargeLotteryRedemptionProgress
+	require.NoError(t, target.First(&rechargeProgress, "user_id = ?", 42).Error)
+	assert.EqualValues(t, 50_000_000, rechargeProgress.ObservedQuota)
+	assert.Equal(t, 1, rechargeProgress.GrantedDraws)
+	var rechargeBalance struct{ Balance int64 }
+	require.NoError(t, target.Model(&model.RechargeLotteryLedger{}).
+		Select("COALESCE(SUM(delta), 0) AS balance").Where("user_id = ?", 42).Scan(&rechargeBalance).Error)
+	assert.EqualValues(t, 2, rechargeBalance.Balance)
+
 	done, err := migrationAlreadyCompleted(target, "cutover-test", "sha256:test", 1_000)
 	require.NoError(t, err)
 	assert.True(t, done)
@@ -137,6 +165,10 @@ func TestReadMigrationBundleFromReadOnlySQLite(t *testing.T) {
 		&model.RenameEvent{}, &model.RenameCardOrder{}, &model.LotteryDraw{},
 		&model.LotteryPeriod{}, &model.LotteryOpportunity{}, &sourcePostpaidGrant{},
 		&sourcePostpaidEvent{}, &sourceAppSetting{},
+		&model.RechargeLotteryCampaign{}, &model.RechargeLotteryPrize{},
+		&model.RechargeLotteryGrantBatch{}, &model.RechargeLotteryLedger{},
+		&model.RechargeLotteryDrawBatch{}, &model.RechargeLotteryDrawItem{},
+		&model.RechargeLotteryPlanMapping{}, &model.RechargeLotteryRedemptionProgress{},
 	))
 	require.NoError(t, source.Create(&model.LeaderboardEntry{
 		Id: 7, UserId: 42, Username: "alice", SourceName: "Alice",

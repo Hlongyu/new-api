@@ -16,8 +16,10 @@ Persistent services
   └─ leaderboard_data
 ```
 
-The gateway sends Core API and relay routes to `new-api`, sends Companion API
-routes to `new-api-companion`, and serves the custom SPA for browser routes.
+The gateway sends Core API, relay, leaderboard, and recharge-lottery routes to
+`new-api`. Only the legacy model-status compatibility API is sent to
+`new-api-companion`; browser routes and the recharge-lottery assets are served
+by the Web image.
 
 ## Release policy
 
@@ -87,7 +89,7 @@ the previous Core/App pair and recreates all three application containers.
 Core updates restart the API process. Schedule releases that include database
 migrations or historical backfills for a maintenance window.
 
-The one-time leaderboard and quota-loan ownership migration uses the dedicated
+The one-time leaderboard, quota-loan, and recharge-lottery ownership migration uses the dedicated
 [Companion to Core cutover runbook](../docs/companion-core-cutover.md). Do not
 bring up the Core-backed frontend until that import has completed.
 
@@ -105,8 +107,8 @@ bring up the Core-backed frontend until that import has completed.
 /usr/local/sbin/new-api-backup
 ```
 
-The PostgreSQL, Redis, and Companion SQLite volumes are external. The Compose
-project does not delete them during application recreation.
+The PostgreSQL, Redis, and rollback-only Companion SQLite volumes are external.
+The Compose project does not delete them during application recreation.
 
 Install repository-owned server files as root:
 

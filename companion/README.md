@@ -1,17 +1,16 @@
 # New API Companion Backend
 
-This directory contains the custom server-side APIs used by the New API
-frontend for rankings, tiers, rename cards, sponsorships, postpaid credit,
-model status, and lottery operations.
+This directory contains the shrinking legacy Companion service. Rankings,
+tiers, rename cards, sponsorships, quota loans, and both lottery accounting
+paths are Core domains; their implementations here remain only for rollback
+and one-time migration.
 
-The service is intentionally headless. It serves JSON APIs under
-`/leaderboard/api`, `/modelstatus/api`, and `/lottery/api`; all user-facing
-pages live in `web/` and are built into the main New API application.
+The service is intentionally headless. After cutover it serves only the
+`/modelstatus/api` compatibility proxy. The old `/leaderboard/api` and
+`/lottery/api` routes return HTTP 410, and their background workers stay off.
 
 The initial monorepo import came from legacy Companion commit
-`4ef1c81668373aaf7ba6107ce040e121884a461a`. Its `public/` tree, preview
-servers, standalone Docker files, and server-side auto-update scripts were
-deliberately excluded.
+`4ef1c81668373aaf7ba6107ce040e121884a461a`.
 
 ## Local development
 

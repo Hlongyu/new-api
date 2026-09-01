@@ -30,8 +30,9 @@ The shared rc.22 browser flow. Each page exchanges the HttpOnly Refresh Cookie a
 Session ID. These values remain in page memory only. Companion API requests carry
 only `Authorization: Bearer <token>`; the backend validates it through New API
 `/api/user/self`. A 401 causes one refresh-and-retry. `X-Auth-Session` protects
-refresh rotation across tabs. Root background operations continue to use the PAT
-configured by `NEW_API_ROOT_ACCESS_TOKEN` and never expose it to the browser.
+refresh rotation across tabs. The PAT configured by
+`NEW_API_ROOT_ACCESS_TOKEN` is used only when explicitly running a legacy
+rollback mode and is never exposed to the browser.
 
 ### Legacy Leaderboard (旧排行榜)
 
@@ -41,3 +42,11 @@ When `CORE_LEADERBOARD_ENABLED=true`, its API returns HTTP 410 and neither its
 usage synchronizer nor its quota-loan repayment worker starts. Core is the
 system of record for these features; Companion must not perform their wallet
 side effects after cutover.
+
+### Legacy Recharge Lottery (旧充值抽奖)
+
+The Companion-owned recharge lottery is retained only for rollback and one-time
+migration. When `CORE_RECHARGE_LOTTERY_ENABLED=true`, its API returns HTTP 410
+and its redemption, grant, and subscription-fulfillment workers do not start.
+Core owns the lottery ledger and creates reward subscriptions directly without
+a root personal access token.

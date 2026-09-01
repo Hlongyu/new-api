@@ -39,3 +39,13 @@ _Avoid_: Postpaid settlement, borrowed token
 **Postpaid settlement**:
 The idempotent reconciliation of one API request to its actual billed quota after upstream execution.
 _Avoid_: Quota loan, wallet credit
+
+**Recharge lottery ticket**:
+An auditable lottery entitlement granted from redemption-code quota or an
+operator batch and consumed atomically by a recharge-lottery draw.
+_Avoid_: Weekly lottery opportunity
+
+**Recharge lottery reward**:
+A seven-day quota subscription created in the same Core transaction that
+consumes recharge-lottery tickets and records the draw result.
+_Avoid_: Wallet credit, weekly lottery prize

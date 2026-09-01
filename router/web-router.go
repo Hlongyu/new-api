@@ -21,10 +21,22 @@ type WebAssets struct {
 
 func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
+	lotteryIndex, lotteryIndexError := assets.BuildFS.ReadFile("web/dist/lottery/index.html")
 
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.GlobalWebRateLimit())
 	router.Use(middleware.Cache())
+	if lotteryIndexError == nil {
+		serveLotteryIndex := func(c *gin.Context) {
+			c.Header("Cache-Control", "no-cache")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", lotteryIndex)
+		}
+		router.GET("/lottery", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/lottery/")
+		})
+		router.GET("/lottery/", serveLotteryIndex)
+		router.HEAD("/lottery/", serveLotteryIndex)
+	}
 	router.Use(static.Serve("/", frontendFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")

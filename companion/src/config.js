@@ -95,6 +95,8 @@ export function loadConfig(env = process.env) {
     appDeployedAt: positiveInteger(env.APP_DEPLOYED_AT, 0),
     coreLeaderboardEnabled:
       (env.CORE_LEADERBOARD_ENABLED ?? 'false').trim() === 'true',
+    coreRechargeLotteryEnabled:
+      (env.CORE_RECHARGE_LOTTERY_ENABLED ?? 'false').trim() === 'true',
   }
 }
 

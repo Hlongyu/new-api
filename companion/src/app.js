@@ -1800,8 +1800,15 @@ export function createApplication(config, options = {}) {
           const user = await authenticateSession(req)
           await handleModelStatusApi(req, res, url, user)
         } else if (site.name === 'lottery') {
-          const user = await authenticateSession(req)
-          await lotterySite.handleApi(req, res, url, user)
+          if (config.coreRechargeLotteryEnabled) {
+            json(res, 410, {
+              success: false,
+              message: '充值抽奖功能已迁移到 Core',
+            })
+          } else {
+            const user = await authenticateSession(req)
+            await lotterySite.handleApi(req, res, url, user)
+          }
         } else if (config.coreLeaderboardEnabled) {
           json(res, 410, {
             success: false,
@@ -1856,7 +1863,7 @@ export function createApplication(config, options = {}) {
         synchronizer.start()
         postpaidService.start()
       }
-      lotterySite.start()
+      if (!config.coreRechargeLotteryEnabled) lotterySite.start()
     },
     close() {
       synchronizer.stop()
