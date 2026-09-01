@@ -404,6 +404,15 @@ func GenerateAccessToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	regenerate, err := strconv.ParseBool(c.DefaultQuery("regenerate", "true"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if existingToken := user.GetAccessToken(); !regenerate && existingToken != "" {
+		common.ApiSuccess(c, existingToken)
+		return
+	}
 	// get rand int 28-32
 	randI := common.GetRandomInt(4)
 	key, err := common.GenerateRandomKey(29 + randI)

@@ -84,10 +84,22 @@ export async function deleteUserAccount(
 }
 
 /**
+ * Get the existing system access token, generating one only when absent
+ */
+export async function getAccessToken(): Promise<ApiResponse<string>> {
+  const res = await api.get('/api/user/token', {
+    params: { regenerate: false },
+  })
+  return res.data
+}
+
+/**
  * Generate/regenerate system access token
  */
 export async function generateAccessToken(): Promise<ApiResponse<string>> {
-  const res = await api.get('/api/user/token')
+  const res = await api.get('/api/user/token', {
+    params: { regenerate: true },
+  })
   return res.data
 }
 

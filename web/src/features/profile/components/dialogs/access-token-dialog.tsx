@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { RefreshCw, Loader2 } from 'lucide-react'
+import { Refresh01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +26,7 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
 
 import { useAccessToken } from '../../hooks'
 
@@ -42,14 +44,14 @@ export function AccessTokenDialog({
   onOpenChange,
 }: AccessTokenDialogProps) {
   const { t } = useTranslation()
-  const { token, generating, generate } = useAccessToken()
+  const { token, loading, generating, load, generate } = useAccessToken()
 
-  // Auto-generate token when dialog opens if no token exists
+  // Load the existing token when the dialog opens without rotating it
   useEffect(() => {
     if (open && !token) {
-      generate()
+      load()
     }
-  }, [open, token, generate])
+  }, [open, token, load])
 
   return (
     <Dialog
@@ -74,13 +76,12 @@ export function AccessTokenDialog({
           <Button
             type='button'
             onClick={generate}
-            disabled={generating}
-            className='gap-2'
+            disabled={loading || generating}
           >
             {generating ? (
-              <Loader2 className='h-4 w-4 animate-spin' />
+              <Spinner data-icon='inline-start' />
             ) : (
-              <RefreshCw className='h-4 w-4' />
+              <HugeiconsIcon icon={Refresh01Icon} data-icon='inline-start' />
             )}
             {generating ? t('Generating...') : t('Regenerate')}
           </Button>
@@ -97,7 +98,11 @@ export function AccessTokenDialog({
               value={token}
               readOnly
               className='font-mono text-xs'
-              placeholder={t('Click "Generate" to create a token')}
+              placeholder={
+                loading
+                  ? t('Loading...')
+                  : t('Click "Generate" to create a token')
+              }
             />
             <CopyButton
               value={token}
