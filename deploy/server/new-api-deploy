@@ -330,8 +330,8 @@ if [[ "${actual_app_revision}" != "${release_revision}" ]]; then
 fi
 
 if ! docker run --rm --network none --entrypoint /bin/sh "${candidate_core_image}" \
-  -c 'test -x /new-api'; then
-  echo "candidate Core image does not contain the new-api executable" >&2
+  -c 'test -x /new-api && test -x /companion-migrate'; then
+  echo "candidate Core image does not contain the required executables" >&2
   exit 4
 fi
 if ! docker run --rm --network none --entrypoint node "${candidate_app_image}" \

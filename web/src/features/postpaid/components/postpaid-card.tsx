@@ -266,8 +266,8 @@ export function PostpaidCard(props: PostpaidCardProps) {
     )
   }
 
-  // The companion service is optional infrastructure, and postpaid needs root
-  // credentials on top of it. Either missing, the wallet renders without this.
+  // The Core deployment may disable quota loans; the wallet still renders the
+  // rest of its content when the feature is unavailable.
   const context = contextQuery.data
   if (contextQuery.error || !context || !context.configured) return null
 
@@ -316,7 +316,7 @@ export function PostpaidCard(props: PostpaidCardProps) {
 
       {owed > 0 && (
         <p className='text-muted-foreground text-[11px]'>
-          {t('Repayment is collected within about a minute of redeeming a code.')}
+          {t('Repayment is deducted immediately when you redeem a code.')}
         </p>
       )}
 

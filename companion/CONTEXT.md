@@ -32,3 +32,12 @@ only `Authorization: Bearer <token>`; the backend validates it through New API
 `/api/user/self`. A 401 causes one refresh-and-retry. `X-Auth-Session` protects
 refresh rotation across tabs. Root background operations continue to use the PAT
 configured by `NEW_API_ROOT_ACCESS_TOKEN` and never expose it to the browser.
+
+### Legacy Leaderboard (旧排行榜)
+
+The Companion-owned leaderboard, rank, sponsorship, rename-card, weekly-lottery,
+and quota-loan implementation retained only for rollback and one-time migration.
+When `CORE_LEADERBOARD_ENABLED=true`, its API returns HTTP 410 and neither its
+usage synchronizer nor its quota-loan repayment worker starts. Core is the
+system of record for these features; Companion must not perform their wallet
+side effects after cutover.

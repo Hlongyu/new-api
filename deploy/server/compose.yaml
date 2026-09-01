@@ -36,6 +36,11 @@ services:
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
       SESSION_COOKIE_TRUSTED_URL: ${SESSION_COOKIE_TRUSTED_URL:?SESSION_COOKIE_TRUSTED_URL is required}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
+      CORE_LEADERBOARD_MIGRATION_REQUIRED: ${CORE_LEADERBOARD_MIGRATION_REQUIRED:-true}
+      SPONSOR_MIN_AMOUNT: ${SPONSOR_MIN_AMOUNT:-1}
+      SPONSOR_MAX_AMOUNT: ${SPONSOR_MAX_AMOUNT:-1000}
+      LOTTERY_ENABLED: ${LOTTERY_ENABLED:-true}
+      LOTTERY_PRIZES: ${LOTTERY_PRIZES:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -119,6 +124,7 @@ services:
       NEW_API_BASE_URL: http://new-api:3000
       NEW_API_ROOT_ACCESS_TOKEN: ${NEW_API_ROOT_ACCESS_TOKEN:?NEW_API_ROOT_ACCESS_TOKEN is required}
       NEW_API_ROOT_USER_ID: ${NEW_API_ROOT_USER_ID:?NEW_API_ROOT_USER_ID is required}
+      CORE_LEADERBOARD_ENABLED: ${CORE_LEADERBOARD_ENABLED:-true}
       NEW_API_REQUEST_TIMEOUT_MS: ${NEW_API_REQUEST_TIMEOUT_MS:-12000}
       NEW_API_QUOTA_PER_UNIT: ${NEW_API_QUOTA_PER_UNIT:-500000}
       LEADERBOARD_TIME_ZONE: ${LEADERBOARD_TIME_ZONE:-Asia/Shanghai}
@@ -151,6 +157,27 @@ services:
     security_opt:
       - no-new-privileges:true
     logging: *default-logging
+    networks:
+      - backend
+
+  companion-migrate:
+    profiles: ['tools']
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
+    entrypoint: ['/companion-migrate']
+    environment:
+      SQL_DSN: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      TZ: ${TZ:-Asia/Shanghai}
+      LEADERBOARD_EXCLUDED_USER_IDS: ${LEADERBOARD_EXCLUDED_USER_IDS:-}
+    volumes:
+      - type: volume
+        source: leaderboard_data
+        target: /migration
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
     networks:
       - backend
 

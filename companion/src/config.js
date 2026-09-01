@@ -93,6 +93,8 @@ export function loadConfig(env = process.env) {
       positiveInteger(env.POSTPAID_SYNC_INTERVAL_SECONDS, 30) * 1000,
     appGitCommit: String(env.APP_GIT_COMMIT || '').trim(),
     appDeployedAt: positiveInteger(env.APP_DEPLOYED_AT, 0),
+    coreLeaderboardEnabled:
+      (env.CORE_LEADERBOARD_ENABLED ?? 'false').trim() === 'true',
   }
 }
 

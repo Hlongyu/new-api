@@ -19,3 +19,23 @@ _Avoid_: Billing cycle
 **Refresh anchor**:
 The dated local-time boundary from which all recurring quota windows are calculated in a named time zone.
 _Avoid_: Reset time
+
+**Rank score**:
+A daily contribution derived from billed quota, completed sponsorships, and completed rename-card purchases that advances a user's rank.
+_Avoid_: Experience, activity points
+
+**Rank state**:
+The user's current tier, division, score, pending score, and promotion progress produced by replaying rank scores.
+_Avoid_: Rank snapshot, leaderboard position
+
+**Leaderboard profile**:
+The user's public or anonymous leaderboard identity together with per-board participation preferences.
+_Avoid_: Leaderboard entry, rank account
+
+**Quota loan**:
+A wallet quota advance that creates an equal repayment obligation with a due date and an auditable repayment history.
+_Avoid_: Postpaid settlement, borrowed token
+
+**Postpaid settlement**:
+The idempotent reconciliation of one API request to its actual billed quota after upstream execution.
+_Avoid_: Quota loan, wallet credit

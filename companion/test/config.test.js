@@ -42,6 +42,7 @@ test('解析挂载路径和赞助额度换算配置', () => {
     SPONSOR_BADGE_ACTIVE_DAYS: '45',
     SUPPORT_ACTIVITY_ACTIVE_DAYS: '3',
     SUPPORT_ACTIVITY_START_TIMESTAMP: '1784217600',
+    CORE_LEADERBOARD_ENABLED: 'true',
   })
 
   assert.equal(config.basePath, '/leaderboard')
@@ -59,4 +60,5 @@ test('解析挂载路径和赞助额度换算配置', () => {
   assert.equal(config.sponsorBadgeActiveDays, 45)
   assert.equal(config.supportActivityActiveDays, 3)
   assert.equal(config.supportActivityStartTimestamp, 1_784_217_600)
+  assert.equal(config.coreLeaderboardEnabled, true)
 })

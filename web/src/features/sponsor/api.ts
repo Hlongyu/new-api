@@ -16,12 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
 import {
   LEADERBOARD_BASE,
   MUTATION_HEADERS,
 } from '@/features/leaderboard/constants'
 import type { LeaderboardResponse } from '@/features/leaderboard/types'
+import { api } from '@/lib/api'
 
 import type {
   SponsorAdminView,
@@ -31,7 +31,7 @@ import type {
   SponsorOrderResult,
 } from './types'
 
-/** Shape of GET /api/app/status; only the fields sponsorship needs are typed. */
+/** Shape of GET /api/leaderboard/app/status for the sponsorship slice. */
 type AppStatusPayload = {
   sponsorRules: {
     minAmount: number
@@ -49,7 +49,7 @@ type AppStatusPayload = {
 /**
  * Load the sponsorship rules together with the caller's own context.
  *
- * The amount bounds live on /api/app/status rather than /api/me, and that
+ * The amount bounds live on /api/leaderboard/app/status rather than /me, and that
  * endpoint returns the full personal payload too, so one request covers the
  * rules, the balance and the order history.
  */
@@ -70,9 +70,8 @@ export async function getSponsorContext(): Promise<SponsorContext> {
 /**
  * Submit a sponsorship.
  *
- * Interceptors are bypassed for the same reason as rename cards: the service
- * answers 202 with `success: true` while a charge is unresolved, and its error
- * messages are Chinese strings that would sidestep i18n.
+ * Interceptors remain bypassed so callers retain the existing status-specific
+ * handling and localized error mapping during the Core transition.
  */
 export async function createSponsorOrder(
   body: SponsorOrderRequest

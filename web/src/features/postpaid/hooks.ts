@@ -54,10 +54,9 @@ const GENERIC_ERROR_KEY = 'Credit could not be granted'
 /**
  * The caller's credit standing.
  *
- * Polls only while an application is mid-flight. Repayments also land
- * asynchronously, but they take a sync interval and arrive without the user
- * watching, so a standing poll would burn requests for every indebted user to
- * save them one manual refresh.
+ * Polls only while an application is mid-flight. Repayments happen in the
+ * redemption transaction, so the redemption flow's normal wallet refresh is
+ * sufficient and indebted users do not need a standing poll.
  */
 export function usePostpaidContext() {
   return useQuery({

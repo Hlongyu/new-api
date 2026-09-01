@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 // Sponsorship types
 // ----------------------------------------------------------------------------
 //
-// Sponsorships are served by the same companion service as the leaderboard,
+// Sponsorships are served by the same Core API as the leaderboard,
 // but they surface on the wallet page because they are a spend of New API
 // quota, not a ranking concern.
 
@@ -84,7 +84,7 @@ export type SponsorAdminView = {
   orders: SponsorAdminOrder[]
 }
 
-/** Slice of GET /api/app/status the wallet page needs. */
+/** Slice of GET /api/leaderboard/app/status the wallet page needs. */
 export type SponsorContext = {
   rules: SponsorRules
   userId: number

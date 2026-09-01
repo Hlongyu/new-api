@@ -4061,6 +4061,7 @@
     "Repair Channel Consistency": "チャネル整合性を修復",
     "Repair channel consistency?": "チャネル整合性を修復しますか？",
     "Repayment is collected within about a minute of redeeming a code.": "コード使用後およそ 1 分以内に自動で返済されます。",
+    "Repayment is deducted immediately when you redeem a code.": "コードを使用すると、返済額がすぐに差し引かれます。",
     "Repayment sync is not running": "返済同期が停止しています",
     "Repayment sync is reporting errors": "返済同期がエラーを報告しています",
     "Repeat the administrator password": "管理者パスワードの再入力",

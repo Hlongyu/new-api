@@ -116,6 +116,14 @@ func InitEnv() {
 	// Initialize string variables with GetEnvOrDefaultString
 	GeminiSafetySetting = GetEnvOrDefaultString("GEMINI_SAFETY_SETTING", "BLOCK_NONE")
 	CohereSafetySetting = GetEnvOrDefaultString("COHERE_SAFETY_SETTING", "NONE")
+	LeaderboardSponsorMinAmount = GetEnvOrDefault("SPONSOR_MIN_AMOUNT", 1)
+	LeaderboardSponsorMaxAmount = GetEnvOrDefault("SPONSOR_MAX_AMOUNT", 1000)
+	LeaderboardLotteryEnabled = GetEnvOrDefaultBool("LOTTERY_ENABLED", true)
+	LeaderboardLotteryPrizes = GetEnvOrDefaultString("LOTTERY_PRIZES", "")
+	LeaderboardMigrationRequired = GetEnvOrDefaultBool("CORE_LEADERBOARD_MIGRATION_REQUIRED", false)
+	if LeaderboardSponsorMaxAmount < LeaderboardSponsorMinAmount {
+		log.Fatal("SPONSOR_MAX_AMOUNT cannot be smaller than SPONSOR_MIN_AMOUNT")
+	}
 
 	// Initialize rate limit variables
 	GlobalApiRateLimitEnable = GetEnvOrDefaultBool("GLOBAL_API_RATE_LIMIT_ENABLE", true)

@@ -142,6 +142,8 @@ func Redeem(key string, userId int) (quota int, err error) {
 		return 0, errors.New("无效的 user id")
 	}
 	redemption := &Redemption{}
+	repaidQuota := 0
+	walletCredit := 0
 
 	keyCol := "`key`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
@@ -149,6 +151,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 	}
 	common.RandomSleep()
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		redeemedAt := common.GetTimestamp()
 		err := lockForUpdate(tx).Where(keyCol+" = ?", key).First(redemption).Error
 		if err != nil {
 			return errors.New("无效的兑换码")
@@ -165,7 +168,7 @@ func Redeem(key string, userId int) (quota int, err error) {
 		result := tx.Model(&Redemption{}).
 			Where("id = ? AND status = ?", redemption.Id, common.RedemptionCodeStatusEnabled).
 			Updates(map[string]interface{}{
-				"redeemed_time": common.GetTimestamp(),
+				"redeemed_time": redeemedAt,
 				"status":        common.RedemptionCodeStatusUsed,
 				"used_user_id":  userId,
 			})
@@ -175,13 +178,27 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		repaidQuota, err = ApplyQuotaLoanRepaymentForRedemptionTx(tx, userId, redemption.Id, redemption.Quota, redeemedAt)
+		if err != nil {
+			return err
+		}
+		walletCredit = redemption.Quota - repaidQuota
+		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", walletCredit)).Error
 	})
 	if err != nil {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
-	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
+	if common.RedisEnabled && walletCredit != 0 {
+		if err := cacheIncrUserQuota(userId, int64(walletCredit)); err != nil {
+			common.SysLog("failed to update user quota cache after redemption: " + err.Error())
+		}
+	}
+	content := fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id)
+	if repaidQuota > 0 {
+		content += fmt.Sprintf("，其中偿还额度借款 %s", logger.LogQuota(repaidQuota))
+	}
+	RecordLog(userId, LogTypeTopup, content)
 	return redemption.Quota, nil
 }
 

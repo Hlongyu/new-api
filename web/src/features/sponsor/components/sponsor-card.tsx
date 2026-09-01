@@ -81,7 +81,7 @@ export function SponsorCard() {
     )
   }
 
-  // The companion service is optional infrastructure; if it is unreachable the
+  // The Core feature may be disabled; if it is unreachable the
   // wallet page should still render everything else.
   if (contextQuery.error || !contextQuery.data) return null
 

@@ -36,10 +36,8 @@ import type {
 // Leaderboard APIs
 // ----------------------------------------------------------------------------
 //
-// These hit the companion leaderboard service, not New API itself. Requests go
-// through the shared `api` instance so they inherit the bearer token and the
-// 401 refresh-and-retry behaviour; the service validates that token against
-// New API's /api/user/self.
+// These are native Core APIs. Requests use the shared `api` instance so they
+// inherit the normal session and 401 refresh-and-retry behaviour.
 
 export async function getUsageBoard(
   period: LeaderboardPeriod

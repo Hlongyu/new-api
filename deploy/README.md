@@ -87,6 +87,10 @@ the previous Core/App pair and recreates all three application containers.
 Core updates restart the API process. Schedule releases that include database
 migrations or historical backfills for a maintenance window.
 
+The one-time leaderboard and quota-loan ownership migration uses the dedicated
+[Companion to Core cutover runbook](../docs/companion-core-cutover.md). Do not
+bring up the Core-backed frontend until that import has completed.
+
 ## Production layout
 
 ```text

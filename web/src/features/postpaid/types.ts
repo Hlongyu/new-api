@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 // Postpaid credit types
 // ----------------------------------------------------------------------------
 //
-// Served by the same companion service as the leaderboard, but surfaced on the
+// Served by the same Core API as the leaderboard, but surfaced on the
 // wallet page: a grant adds quota to the New API balance immediately, and the
 // debt is collected back out of that balance when the user later redeems a
 // top-up code. Both halves are wallet events, not ranking events.
@@ -60,9 +60,8 @@ export type PostpaidGrant = {
 /**
  * One repayment, triggered by a redemption code rather than by the user.
  *
- * The service polls New API for redeemed codes and subtracts the owed amount
- * from the balance, so these rows appear on their own roughly a sync interval
- * after the user redeems.
+ * Core creates this row in the same transaction that redeems the code, before
+ * any remainder is credited to the wallet.
  */
 export type PostpaidEvent = {
   id: string
@@ -79,9 +78,9 @@ export type PostpaidEvent = {
   updatedAt: number
 }
 
-/** Slice of GET /api/app/status the wallet card needs. */
+/** Slice of GET /api/leaderboard/app/status the wallet card needs. */
 export type PostpaidContext = {
-  /** False when the companion service has no root credentials; hide the card. */
+  /** False only when quota loans are disabled by the Core deployment. */
   configured: boolean
   /** Scopes the idempotency key, so a key never crosses accounts. */
   userId: number
@@ -117,7 +116,7 @@ export type PostpaidApplyResult = {
   pending: boolean
 }
 
-/** Health of the background repayment sync. Root only. */
+/** Compatibility health fields for the Core settlement path. Root only. */
 export type PostpaidSyncState = {
   configured: boolean
   running: boolean

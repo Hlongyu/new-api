@@ -27,11 +27,11 @@ import type {
 // Leaderboard constants
 // ----------------------------------------------------------------------------
 
-export const LEADERBOARD_BASE = '/leaderboard/api'
+export const LEADERBOARD_BASE = '/api/leaderboard'
 
 /**
- * The leaderboard service rejects writes that lack this header, and separately
- * requires the browser Origin to match its configured PUBLIC_URL.
+ * Retained for compatibility with in-flight requests created before the Core
+ * migration. Core relies on the authenticated session and idempotency key.
  */
 export const MUTATION_HEADERS = { 'X-Leaderboard-Request': '1' } as const
 

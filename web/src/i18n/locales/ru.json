@@ -4061,6 +4061,7 @@
     "Repair Channel Consistency": "Восстановить согласованность каналов",
     "Repair channel consistency?": "Восстановить согласованность каналов?",
     "Repayment is collected within about a minute of redeeming a code.": "Погашение списывается примерно через минуту после активации кода.",
+    "Repayment is deducted immediately when you redeem a code.": "При активации кода задолженность погашается сразу.",
     "Repayment sync is not running": "Синхронизация погашений не запущена",
     "Repayment sync is reporting errors": "Синхронизация погашений сообщает об ошибках",
     "Repeat the administrator password": "Повторите пароль администратора",

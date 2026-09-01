@@ -20,9 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 // Leaderboard types
 // ----------------------------------------------------------------------------
 //
-// Mirrors the payloads served by the companion leaderboard service mounted at
-// /leaderboard. That service is deployed separately from New API, so these
-// types are the only contract we hold — keep them in sync with its handlers.
+// Mirrors the payloads served by the Core leaderboard API mounted at
+// /api/leaderboard. Keep these types in sync with the Go handlers.
 
 /** Usage board periods. Note these differ from the built-in rankings page. */
 export type LeaderboardPeriod = 'day' | 'week' | 'month' | 'all'

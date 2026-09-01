@@ -20,8 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 // Charge idempotency keys
 // ----------------------------------------------------------------------------
 //
-// Three companion-service flows move real quota: rename cards and sponsorships
-// deduct it, postpaid credit grants it. All three dedupe on `requestKey`,
+// Three Core flows move real quota: rename cards and sponsorships deduct it,
+// postpaid credit grants it. All three dedupe on `requestKey`,
 // answering a repeated key with the original order instead of moving quota
 // twice, so a key has to survive a reload or a lost response and be replayed
 // verbatim on retry.

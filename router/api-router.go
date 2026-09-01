@@ -39,6 +39,33 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
+
+		leaderboardRoute := apiRouter.Group("/leaderboard")
+		leaderboardRoute.Use(middleware.LeaderboardMigrationReady())
+		leaderboardRoute.Use(middleware.UserAuth())
+		{
+			leaderboardRoute.GET("/leaderboard", controller.GetLeaderboardUsage)
+			leaderboardRoute.GET("/ranks", controller.GetLeaderboardRanks)
+			leaderboardRoute.GET("/me", controller.GetLeaderboardMe)
+			leaderboardRoute.PATCH("/me", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.UpdateLeaderboardMe)
+			leaderboardRoute.GET("/app/status", controller.GetLeaderboardAppStatus)
+			leaderboardRoute.POST("/rename-cards", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.BuyLeaderboardRenameCards)
+			leaderboardRoute.POST("/sponsors", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.CreateLeaderboardSponsor)
+			leaderboardRoute.POST("/postpaid/apply", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.ApplyLeaderboardQuotaLoan)
+			leaderboardRoute.GET("/lottery", controller.GetLeaderboardLottery)
+			leaderboardRoute.POST("/lottery/draw", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.DrawLeaderboardLottery)
+		}
+		leaderboardAdminRoute := apiRouter.Group("/leaderboard/admin")
+		leaderboardAdminRoute.Use(middleware.LeaderboardMigrationReady())
+		leaderboardAdminRoute.Use(middleware.RootAuth())
+		{
+			leaderboardAdminRoute.GET("/excluded-users", controller.GetLeaderboardExcludedUsers)
+			leaderboardAdminRoute.PUT("/excluded-users", middleware.SessionCookieOriginGuard(), controller.UpdateLeaderboardExcludedUsers)
+			leaderboardAdminRoute.GET("/sponsors", controller.GetLeaderboardSponsorAdmin)
+			leaderboardAdminRoute.GET("/rename-cards", controller.GetLeaderboardRenameCardAdmin)
+			leaderboardAdminRoute.GET("/postpaid", controller.GetLeaderboardQuotaLoanAdmin)
+			leaderboardAdminRoute.PATCH("/lottery/:id", middleware.SessionCookieOriginGuard(), controller.ResolveLeaderboardLottery)
+		}
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)

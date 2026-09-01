@@ -32,7 +32,7 @@ import type {
   PostpaidGrant,
 } from './types'
 
-/** Shape of GET /api/app/status; only the fields postpaid needs are typed. */
+/** Shape of GET /api/leaderboard/app/status for the quota-loan slice. */
 type AppStatusPayload = {
   user: {
     id: number
@@ -64,7 +64,7 @@ export async function getPostpaidContext(): Promise<PostpaidContext | null> {
     `${LEADERBOARD_BASE}/app/status`
   )
   const postpaid = res.data.data.user.postpaid
-  // Older deployments of the companion service omit the slice entirely.
+  // Older deployments omit the slice entirely.
   if (!postpaid) return null
 
   return {
@@ -86,10 +86,8 @@ export async function getPostpaidContext(): Promise<PostpaidContext | null> {
 /**
  * Draw down credit.
  *
- * Interceptors are bypassed for the same reason as the other companion-service
- * charges: the service answers 202 with `success: true` while the New API
- * quota increase is unresolved, which the default handler would report as
- * plain success, and its messages are Chinese strings that bypass i18n.
+ * Interceptors remain bypassed so callers retain the existing status-specific
+ * handling and localized error mapping during the Core transition.
  */
 export async function applyPostpaid(
   body: PostpaidApplyRequest
@@ -106,7 +104,7 @@ export async function applyPostpaid(
   return { grant: res.data.data, pending: res.status === 202 }
 }
 
-/** Root only. Every grant and repayment, plus the sync worker's health. */
+/** Root only. Every grant and repayment, plus settlement health. */
 export async function getPostpaidAdminView(): Promise<PostpaidAdminView> {
   const res = await api.get<LeaderboardResponse<PostpaidAdminView>>(
     `${LEADERBOARD_BASE}/admin/postpaid`

@@ -4061,6 +4061,7 @@
     "Repair Channel Consistency": "修复渠道一致性",
     "Repair channel consistency?": "修复渠道一致性？",
     "Repayment is collected within about a minute of redeeming a code.": "兑换码到账后约一分钟内自动完成抵扣。",
+    "Repayment is deducted immediately when you redeem a code.": "兑换码使用时会立即抵扣欠款。",
     "Repayment sync is not running": "还款同步未运行",
     "Repayment sync is reporting errors": "还款同步报错",
     "Repeat the administrator password": "重复输入管理员密码",

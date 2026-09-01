@@ -104,7 +104,7 @@ export type PostpaidAdminPanelProps = {
 }
 
 /**
- * Root view of every credit grant, plus the health of the repayment worker.
+ * Root view of every credit grant, plus repayment settlement health.
  *
  * Collapsed by default and fetched lazily, matching the other operator panels:
  * this is other people's debt sitting on an operator's own wallet page.

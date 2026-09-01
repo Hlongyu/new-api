@@ -1802,6 +1802,11 @@ export function createApplication(config, options = {}) {
         } else if (site.name === 'lottery') {
           const user = await authenticateSession(req)
           await lotterySite.handleApi(req, res, url, user)
+        } else if (config.coreLeaderboardEnabled) {
+          json(res, 410, {
+            success: false,
+            message: '排行榜功能已迁移到 Core',
+          })
         } else {
           const auth = await authenticate(req)
           await handleApi(req, res, url, auth)
@@ -1847,8 +1852,10 @@ export function createApplication(config, options = {}) {
     lotteryDb,
     lotterySite,
     start() {
-      synchronizer.start()
-      postpaidService.start()
+      if (!config.coreLeaderboardEnabled) {
+        synchronizer.start()
+        postpaidService.start()
+      }
       lotterySite.start()
     },
     close() {

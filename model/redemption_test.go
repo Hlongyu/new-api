@@ -11,10 +11,14 @@ import (
 )
 
 func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}))
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
 	t.Cleanup(func() {
 		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
 	})
 
 	now := common.GetTimestamp()
@@ -100,12 +104,42 @@ func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
 	}
 }
 
+func TestRedeemRepaysQuotaLoanBeforeCreditingWallet(t *testing.T) {
+	userId, key := setupRedeemFixture(t, 500)
+	now := common.GetTimestamp()
+	loan := QuotaLoan{
+		Id: "loan-redemption-test", RequestKey: "loan-request-redemption-test",
+		UserId: userId, EntryId: 1, TierKey: "bronze", TierName: "青铜",
+		CreditAmount: 1, QuotaAmount: 300, OutstandingQuota: 300,
+		Status: QuotaLoanActive, CreatedAt: now, UpdatedAt: now, DueAt: now + 86_400,
+	}
+	require.NoError(t, DB.Create(&loan).Error)
+
+	quota, err := Redeem(key, userId)
+	require.NoError(t, err)
+	assert.Equal(t, 500, quota)
+
+	var user User
+	require.NoError(t, DB.First(&user, userId).Error)
+	assert.Equal(t, 200, user.Quota)
+	require.NoError(t, DB.First(&loan, "id = ?", loan.Id).Error)
+	assert.Equal(t, 0, loan.OutstandingQuota)
+	assert.Equal(t, QuotaLoanSettled, loan.Status)
+	var event QuotaLoanEvent
+	require.NoError(t, DB.First(&event, "loan_id = ?", loan.Id).Error)
+	assert.Equal(t, 300, event.QuotaAmount)
+}
+
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Redemption{}))
+	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}))
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
 	t.Cleanup(func() {
 		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
+		require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM logs")
 	})
