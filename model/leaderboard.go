@@ -214,6 +214,7 @@ func HasCompletedCompanionMigration() (bool, error) {
 type RankQuotaRow struct {
 	UserId       int   `gorm:"column:user_id"`
 	CreatedAt    int64 `gorm:"column:created_at"`
+	SyncedAt     int64 `gorm:"column:synced_at"`
 	Quota        int64 `gorm:"column:quota"`
 	TokenUsed    int64 `gorm:"column:token_used"`
 	RequestCount int64 `gorm:"column:request_count"`
@@ -242,7 +243,7 @@ func ListLeaderboardEntries() ([]LeaderboardEntry, error) {
 func GetRankQuotaRows(userId int) ([]RankQuotaRow, error) {
 	rows := make([]RankQuotaRow, 0)
 	query := DB.Table("quota_data").
-		Select(fmt.Sprintf("user_id, created_at, SUM(quota) AS quota, SUM(%s) AS token_used, SUM(count) AS request_count", quotaDataTotalTokensExpr)).
+		Select(fmt.Sprintf("user_id, created_at, MAX(%s) AS synced_at, SUM(quota) AS quota, SUM(%s) AS token_used, SUM(count) AS request_count", quotaDataLastSyncExpr, quotaDataTotalTokensExpr)).
 		Where("use_group <> ''")
 	if userId > 0 {
 		query = query.Where("user_id = ?", userId)
@@ -254,7 +255,7 @@ func GetRankQuotaRows(userId int) ([]RankQuotaRow, error) {
 func GetLeaderboardUsageTotals(startAt int64, endAt int64) ([]LeaderboardUsageTotal, error) {
 	rows := make([]LeaderboardUsageTotal, 0)
 	err := DB.Table("quota_data").
-		Select(fmt.Sprintf("user_id, SUM(%s) AS token_used, SUM(quota) AS quota, SUM(count) AS request_count, MAX(created_at) AS updated_at", quotaDataTotalTokensExpr)).
+		Select(fmt.Sprintf("user_id, SUM(%s) AS token_used, SUM(quota) AS quota, SUM(count) AS request_count, MAX(%s) AS updated_at", quotaDataTotalTokensExpr, quotaDataLastSyncExpr)).
 		Where("use_group <> '' AND created_at >= ? AND created_at < ?", startAt, endAt).
 		Group("user_id").Find(&rows).Error
 	return rows, err

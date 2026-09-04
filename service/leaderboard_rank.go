@@ -186,7 +186,7 @@ func replayRankProgresses(userId int) (map[int]rankengine.Progress, map[int]bool
 		if row.Quota != 0 || row.TokenUsed > 0 || row.RequestCount > 0 {
 			hasUsage[row.UserId] = true
 		}
-		lastUpdatedAt = max(lastUpdatedAt, row.CreatedAt)
+		lastUpdatedAt = max(lastUpdatedAt, row.SyncedAt)
 	}
 	for _, order := range sponsors {
 		if order.CompletedAt <= 0 || order.AmountCny <= 0 {
@@ -269,7 +269,7 @@ func GetUsageBoard(period string) (*UsageBoardPayload, error) {
 	}
 
 	payload := &UsageBoardPayload{Period: period, PeriodKey: periodKey, TimeZone: leaderboardTimeZone, Entries: make([]LeaderboardRow, 0)}
-	payload.LastSyncAt = rankUpdatedAt
+	payload.LastSyncAt = max(rankUpdatedAt, model.GetQuotaDataLastSyncAt())
 	for _, entry := range entries {
 		total, ok := usageByUser[entry.UserId]
 		if !ok || (total.TokenUsed == 0 && total.Quota == 0 && total.RequestCount == 0) {
@@ -371,7 +371,10 @@ func GetTierBoard() (*TierBoardPayload, error) {
 		}
 		return ranked[left].row.Id < ranked[right].row.Id
 	})
-	payload := &TierBoardPayload{TimeZone: leaderboardTimeZone, Entries: make([]LeaderboardRow, 0, len(ranked)), LastSyncAt: lastUpdatedAt}
+	payload := &TierBoardPayload{
+		TimeZone: leaderboardTimeZone, Entries: make([]LeaderboardRow, 0, len(ranked)),
+		LastSyncAt: max(lastUpdatedAt, model.GetQuotaDataLastSyncAt()),
+	}
 	for index := range ranked {
 		ranked[index].row.Rank = index + 1
 		ranked[index].row.IsSponsor = ranked[index].row.SponsorBadge != nil

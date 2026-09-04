@@ -156,14 +156,21 @@ func TestUsageBoardCreatesProfileForCoreUsageUser(t *testing.T) {
 	now := time.Now().Unix()
 	require.NoError(t, database.Create(&model.User{Id: 77, Username: "new-user"}).Error)
 	require.NoError(t, database.Create(&model.QuotaData{
-		UserID: 77, Username: "new-user", CreatedAt: now, UseGroup: "default",
+		UserID: 77, Username: "new-user", CreatedAt: now - 120, SyncedAt: now - 60, UseGroup: "default",
 		Quota: 500_000, TokenUsed: 10, Count: 1,
 	}).Error)
+	model.SaveQuotaDataCache()
+	syncedAt := model.GetQuotaDataLastSyncAt()
+	require.Positive(t, syncedAt)
 
 	payload, err := GetUsageBoard("all")
 	require.NoError(t, err)
 	require.Len(t, payload.Entries, 1)
 	assert.Contains(t, payload.Entries[0].DisplayName, "匿名用户 ")
+	assert.Equal(t, syncedAt, payload.LastSyncAt)
+	tierPayload, err := GetTierBoard()
+	require.NoError(t, err)
+	assert.Equal(t, syncedAt, tierPayload.LastSyncAt)
 
 	entry, err := model.GetLeaderboardEntryByUserId(77)
 	require.NoError(t, err)
