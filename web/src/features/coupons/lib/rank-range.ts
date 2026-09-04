@@ -45,6 +45,14 @@ export function isCouponRankKey(value: string): value is CouponRankKey {
   return COUPON_RANK_POSITIONS.has(value as CouponRankKey)
 }
 
+export function couponRankKeyFromStoredValue(
+  value: string | null | undefined
+): CouponRankKey | undefined {
+  if (!value) return undefined
+  const tierKey = value.split(':', 1)[0] || ''
+  return isCouponRankKey(tierKey) ? tierKey : undefined
+}
+
 export function couponRankPosition(value: CouponRankKey): number {
   return COUPON_RANK_POSITIONS.get(value) ?? -1
 }

@@ -21,6 +21,7 @@ import { describe, test } from 'node:test'
 
 import {
   COUPON_RANK_OPTIONS,
+  couponRankKeyFromStoredValue,
   couponRankPosition,
   isCouponRankKey,
 } from '../rank-range'
@@ -36,5 +37,12 @@ describe('coupon rank range options', () => {
   test('rejects malformed rank keys', () => {
     assert.equal(isCouponRankKey('gold'), true)
     assert.equal(isCouponRankKey('gold:II'), false)
+  })
+
+  test('normalizes legacy division values for history display', () => {
+    assert.equal(couponRankKeyFromStoredValue('iron:IV'), 'iron')
+    assert.equal(couponRankKeyFromStoredValue('challenger'), 'challenger')
+    assert.equal(couponRankKeyFromStoredValue('unknown:I'), undefined)
+    assert.equal(couponRankKeyFromStoredValue(undefined), undefined)
   })
 })

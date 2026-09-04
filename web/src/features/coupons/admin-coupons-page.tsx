@@ -84,6 +84,7 @@ import {
 } from './lib/coupon-form'
 import {
   COUPON_RANK_OPTIONS,
+  couponRankKeyFromStoredValue,
   couponRankPosition,
   isCouponRankKey,
   type CouponRankKey,
@@ -280,28 +281,26 @@ export function AdminCouponsPage() {
         id: 'coupon',
         header: t('Coupon'),
         className: 'min-w-44',
-        cell: (coupon) => (
-          <div className='min-w-0'>
-            <div className='truncate font-medium'>{coupon.name}</div>
-            <div className='text-muted-foreground text-xs'>
-              {coupon.applicable_group}
-            </div>
-            {coupon.recipient_scope === 'rank' &&
-            coupon.rank_min &&
-            coupon.rank_max ? (
+        cell: (coupon) => {
+          const rankMin = couponRankKeyFromStoredValue(coupon.rank_min)
+          const rankMax = couponRankKeyFromStoredValue(coupon.rank_max)
+          return (
+            <div className='min-w-0'>
+              <div className='truncate font-medium'>{coupon.name}</div>
               <div className='text-muted-foreground text-xs'>
-                {t('{{min}} to {{max}}', {
-                  min:
-                    rankLabels.get(coupon.rank_min as CouponRankKey) ||
-                    coupon.rank_min,
-                  max:
-                    rankLabels.get(coupon.rank_max as CouponRankKey) ||
-                    coupon.rank_max,
-                })}
+                {coupon.applicable_group}
               </div>
-            ) : null}
-          </div>
-        ),
+              {coupon.recipient_scope === 'rank' && rankMin && rankMax ? (
+                <div className='text-muted-foreground text-xs'>
+                  {t('{{min}} to {{max}}', {
+                    min: rankLabels.get(rankMin) || coupon.rank_min,
+                    max: rankLabels.get(rankMax) || coupon.rank_max,
+                  })}
+                </div>
+              ) : null}
+            </div>
+          )
+        },
       },
       {
         id: 'ratio',
