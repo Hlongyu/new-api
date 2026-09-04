@@ -66,3 +66,14 @@ func TestCalculateFailsPromotionAfterWindowCloses(t *testing.T) {
 	assert.EqualValues(t, 0, progress.PendingScore)
 	assert.Nil(t, progress.Promotion)
 }
+
+func TestTierKeysUseMajorRankOrder(t *testing.T) {
+	position, ok := ParseTierKey("gold")
+	require.True(t, ok)
+	assert.Equal(t, 3, position)
+
+	_, ok = ParseTierKey("gold:II")
+	assert.False(t, ok)
+	_, ok = ParseTierKey("unknown")
+	assert.False(t, ok)
+}

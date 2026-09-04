@@ -92,6 +92,39 @@ func GetRankProgress(userId int) (rankengine.Progress, error) {
 	return rankengine.Calculate(nil, today), nil
 }
 
+func GetCouponRankRecipientUserIds(rankMin string, rankMax string) ([]int, error) {
+	minPosition, minValid := rankengine.ParseTierKey(rankMin)
+	maxPosition, maxValid := rankengine.ParseTierKey(rankMax)
+	if !minValid || !maxValid || minPosition > maxPosition {
+		return nil, errors.New("invalid coupon rank range")
+	}
+	progresses, _, _, err := getRankProgresses(0)
+	if err != nil {
+		return nil, err
+	}
+	userIds, err := model.GetAllUserIds()
+	if err != nil {
+		return nil, err
+	}
+	today, err := leaderboardDayKey(common.GetTimestamp())
+	if err != nil {
+		return nil, err
+	}
+	defaultProgress := rankengine.Calculate(nil, today)
+	recipients := make([]int, 0)
+	for _, userId := range userIds {
+		progress, found := progresses[userId]
+		if !found {
+			progress = defaultProgress
+		}
+		position := progress.TierIndex
+		if position >= minPosition && position <= maxPosition {
+			recipients = append(recipients, userId)
+		}
+	}
+	return recipients, nil
+}
+
 func getRankProgresses(userId int) (map[int]rankengine.Progress, map[int]bool, int64, error) {
 	rankReplayCache.Lock()
 	defer rankReplayCache.Unlock()

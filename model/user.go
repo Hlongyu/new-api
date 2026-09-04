@@ -346,6 +346,12 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
+func GetAllUserIds() ([]int, error) {
+	userIds := make([]int, 0)
+	err := DB.Model(&User{}).Order("id ASC").Pluck("id", &userIds).Error
+	return userIds, err
+}
+
 func GetAllUsers(pageInfo *common.PageInfo, sortOptions ...UserSortOptions) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()

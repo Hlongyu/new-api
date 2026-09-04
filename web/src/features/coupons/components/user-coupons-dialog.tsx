@@ -56,7 +56,7 @@ import {
   getCouponRuntimeStatus,
 } from '../lib/coupon'
 import {
-  COUPON_FORM_DEFAULTS,
+  createCouponFormDefaults,
   getCouponFormSchema,
   type CouponFormValues,
 } from '../lib/coupon-form'
@@ -83,7 +83,7 @@ export function UserCouponsDialog(props: UserCouponsDialogProps) {
   const schema = useMemo(() => getCouponFormSchema(t), [t])
   const form = useForm<CouponFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: COUPON_FORM_DEFAULTS,
+    defaultValues: createCouponFormDefaults(),
   })
   const userId = props.user?.id || 0
   const queryKey = ['coupons', 'admin', userId] as const
@@ -105,10 +105,9 @@ export function UserCouponsDialog(props: UserCouponsDialogProps) {
         name: values.name.trim(),
         applicable_group: values.applicableGroup,
         ratio_ppm: Math.round(values.ratio * 1_000_000),
-        valid_for_seconds: values.validityDays * 24 * 60 * 60,
-        active_duration_seconds: Math.round(
-          values.activeDurationHours * 60 * 60
-        ),
+        rpm_limit: values.rpmLimit,
+        activate_before: Math.floor(values.activationDeadline.getTime() / 1000),
+        active_duration_seconds: values.activeDurationMinutes * 60,
         idempotency_key: crypto.randomUUID(),
       }),
     onSuccess: async (result) => {
@@ -117,7 +116,7 @@ export function UserCouponsDialog(props: UserCouponsDialogProps) {
         return
       }
       toast.success(t('Coupon issued'))
-      form.reset(COUPON_FORM_DEFAULTS)
+      form.reset(createCouponFormDefaults())
       await queryClient.invalidateQueries({ queryKey })
     },
     onError: () => toast.error(t('Coupon operation failed')),
@@ -208,6 +207,12 @@ export function UserCouponsDialog(props: UserCouponsDialogProps) {
                               group: coupon.applicable_group,
                               ratio: formatCouponRatio(coupon.ratio_ppm),
                             })}
+                          </p>
+                          <p className='text-muted-foreground mt-1 text-xs'>
+                            {t('Requests per minute')}:{' '}
+                            {coupon.rpm_limit > 0
+                              ? coupon.rpm_limit
+                              : t('Unlimited')}
                           </p>
                           <p className='text-muted-foreground mt-1 text-xs'>
                             {status === 'active'

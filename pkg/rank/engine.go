@@ -30,6 +30,15 @@ var Tiers = []Tier{
 
 var Divisions = []string{"IV", "III", "II", "I"}
 
+func ParseTierKey(value string) (int, bool) {
+	for index, tier := range Tiers {
+		if tier.Key == value {
+			return index, true
+		}
+	}
+	return 0, false
+}
+
 type DailyScore struct {
 	Day          string
 	TokenScore   int64

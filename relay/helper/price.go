@@ -75,7 +75,7 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		return groupRatioInfo
 	}
 	if coupon != nil {
-		groupRatioInfo.ApplyCouponCap(coupon.Id, coupon.Name, coupon.Ratio(), coupon.ActiveUntil)
+		groupRatioInfo.ApplyCouponCap(coupon.Id, coupon.Name, coupon.Ratio(), coupon.ActiveUntil, coupon.IssueBatchId, coupon.RPMLimit)
 	}
 
 	return groupRatioInfo

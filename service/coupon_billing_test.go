@@ -21,6 +21,7 @@ func TestAppendBillingInfoIncludesFrozenCouponAcrossFundingSources(t *testing.T)
 			CouponName:         "GPT Pro trial",
 			CouponRatio:        0.1,
 			CouponActiveUntil:  1_800_000_000,
+			CouponRPMLimit:     10,
 		}},
 	}
 	other := map[string]interface{}{}
@@ -33,6 +34,7 @@ func TestAppendBillingInfoIncludesFrozenCouponAcrossFundingSources(t *testing.T)
 	assert.Equal(t, 42, other["coupon_id"])
 	assert.Equal(t, 1.2, other["original_group_ratio"])
 	assert.Equal(t, 0.1, other["coupon_ratio"])
+	assert.Equal(t, 10, other["coupon_rpm_limit"])
 }
 
 func TestTaskBillingOtherUsesSubmittedCouponSnapshotAfterExpiry(t *testing.T) {

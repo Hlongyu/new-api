@@ -54,19 +54,23 @@ export function couponRemainingSeconds(
 }
 
 export function formatCouponDuration(seconds: number, t: TFunction): string {
-  if (seconds < 60 * 60) {
-    return t('{{count}} minutes', {
-      count: Math.max(1, Math.round(seconds / 60)),
-    })
+  const totalMinutes = Math.max(1, Math.round(seconds / 60))
+  const days = Math.floor(totalMinutes / (24 * 60))
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) {
+    if (hours > 0 || minutes > 0) {
+      return t('{{days}}d {{hours}}h {{minutes}}m', { days, hours, minutes })
+    }
+    return t('{{count}} days', { count: days })
   }
-  if (seconds < 24 * 60 * 60) {
-    return t('{{count}} hours', {
-      count: Math.max(1, Math.round(seconds / (60 * 60))),
-    })
+  if (hours > 0) {
+    if (minutes > 0) {
+      return t('{{hours}}h {{minutes}}m', { hours, minutes })
+    }
+    return t('{{count}} hours', { count: hours })
   }
-  return t('{{count}} days', {
-    count: Math.max(1, Math.round(seconds / (24 * 60 * 60))),
-  })
+  return t('{{count}} minutes', { count: totalMinutes })
 }
 
 export function formatCouponCountdown(seconds: number, t: TFunction): string {

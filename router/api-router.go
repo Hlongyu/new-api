@@ -342,6 +342,7 @@ func SetApiRouter(router *gin.Engine) {
 		couponAdminRoute.Use(middleware.AdminAuth())
 		{
 			couponAdminRoute.GET("/", controller.AdminListCoupons)
+			couponAdminRoute.GET("/rank-recipients", controller.AdminPreviewCouponRankRecipients)
 			couponAdminRoute.GET("/users/:id", controller.AdminGetUserCoupons)
 			couponAdminRoute.POST("/grants", controller.AdminIssueCoupons)
 			couponAdminRoute.POST("/:id/revoke", controller.AdminRevokeCoupon)

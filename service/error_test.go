@@ -150,6 +150,21 @@ func TestRelayErrorHandlerKeepsInvalidJSONBodyInDebugLog(t *testing.T) {
 	require.Contains(t, logBuffer.String(), body)
 }
 
+func TestTaskErrorFromAPIErrorPreservesLocalSkipRetry(t *testing.T) {
+	apiErr := types.NewErrorWithStatusCode(
+		fmt.Errorf("coupon queue full"),
+		types.ErrorCodeCouponRPMQueueFull,
+		http.StatusTooManyRequests,
+		types.ErrOptionWithSkipRetry(),
+	)
+
+	taskErr := TaskErrorFromAPIError(apiErr)
+
+	require.True(t, taskErr.LocalError)
+	require.Equal(t, http.StatusTooManyRequests, taskErr.StatusCode)
+	require.Equal(t, string(types.ErrorCodeCouponRPMQueueFull), taskErr.Code)
+}
+
 func withDebugEnabled(t *testing.T, enabled bool) {
 	t.Helper()
 

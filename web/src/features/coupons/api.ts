@@ -21,7 +21,9 @@ import { api } from '@/lib/api'
 import type {
   Coupon,
   CouponApiResponse,
+  CouponEffectiveStatus,
   CouponPageData,
+  CouponRankRecipientPreview,
   IssueCouponsPayload,
   IssueCouponsResult,
 } from './types'
@@ -32,6 +34,16 @@ const businessErrorConfig = {
 
 export async function getSelfCoupons(): Promise<CouponApiResponse<Coupon[]>> {
   const response = await api.get('/api/coupon/self')
+  return response.data
+}
+
+export async function getCouponRankRecipientPreview(params: {
+  rank_min: string
+  rank_max: string
+}): Promise<CouponApiResponse<CouponRankRecipientPreview>> {
+  const response = await api.get('/api/coupon/admin/rank-recipients', {
+    params,
+  })
   return response.data
 }
 
@@ -68,6 +80,7 @@ export async function getAdminCoupons(params: {
   p: number
   page_size: number
   keyword?: string
+  status?: CouponEffectiveStatus
 }): Promise<CouponApiResponse<CouponPageData>> {
   const response = await api.get('/api/coupon/admin/', { params })
   return response.data

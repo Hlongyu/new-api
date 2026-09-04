@@ -158,6 +158,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+	if newAPIError = service.WaitForCouponRPM(c, priceData.GroupRatioInfo); newAPIError != nil {
+		return
+	}
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 
@@ -626,7 +629,7 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
-	if taskErr.StatusCode == http.StatusTooManyRequests {
+	if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Code != string(types.ErrorCodeCouponRPMQueueFull) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
@@ -634,6 +637,9 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	if taskErr.LocalError {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {

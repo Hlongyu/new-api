@@ -19,8 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { Controller, type UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { DatePicker } from '@/components/date-picker'
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -35,7 +37,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import type { CouponFormValues } from '../lib/coupon-form'
+import {
+  toCouponActivationDeadline,
+  type CouponFormValues,
+} from '../lib/coupon-form'
 
 export function CouponIssueFields(props: {
   form: UseFormReturn<CouponFormValues>
@@ -44,6 +49,10 @@ export function CouponIssueFields(props: {
 }) {
   const { t } = useTranslation()
   const { form, groups, idPrefix } = props
+  const firstAllowedDate = new Date()
+  firstAllowedDate.setHours(0, 0, 0, 0)
+  const lastAllowedDate = new Date(firstAllowedDate)
+  lastAllowedDate.setDate(lastAllowedDate.getDate() + 10 * 365 - 1)
 
   return (
     <FieldGroup className='grid gap-4 sm:grid-cols-2'>
@@ -109,36 +118,65 @@ export function CouponIssueFields(props: {
         <FieldError errors={[form.formState.errors.ratio]} />
       </Field>
 
-      <Field data-invalid={Boolean(form.formState.errors.validityDays)}>
-        <FieldLabel htmlFor={`${idPrefix}-validity`}>
-          {t('Activation period (days)')}
+      <Field data-invalid={Boolean(form.formState.errors.rpmLimit)}>
+        <FieldLabel htmlFor={`${idPrefix}-rpm`}>
+          {t('Requests per minute')}
         </FieldLabel>
         <Input
-          id={`${idPrefix}-validity`}
+          id={`${idPrefix}-rpm`}
           type='number'
-          min='1'
-          max='3650'
+          min='0'
+          max='60000'
           step='1'
-          aria-invalid={Boolean(form.formState.errors.validityDays)}
-          {...form.register('validityDays', { valueAsNumber: true })}
+          aria-invalid={Boolean(form.formState.errors.rpmLimit)}
+          {...form.register('rpmLimit', { valueAsNumber: true })}
         />
-        <FieldError errors={[form.formState.errors.validityDays]} />
+        <FieldDescription>{t('0 means unlimited')}</FieldDescription>
+        <FieldError errors={[form.formState.errors.rpmLimit]} />
       </Field>
 
-      <Field data-invalid={Boolean(form.formState.errors.activeDurationHours)}>
+      <Controller
+        control={form.control}
+        name='activationDeadline'
+        render={({ field, fieldState }) => (
+          <Field data-invalid={fieldState.invalid}>
+            <FieldLabel htmlFor={`${idPrefix}-activation-deadline`}>
+              {t('Activation deadline')}
+            </FieldLabel>
+            <DatePicker
+              id={`${idPrefix}-activation-deadline`}
+              selected={field.value}
+              invalid={fieldState.invalid}
+              onSelect={(date) => {
+                if (date) field.onChange(toCouponActivationDeadline(date))
+              }}
+              startMonth={firstAllowedDate}
+              endMonth={lastAllowedDate}
+              disabled={(date) =>
+                date < firstAllowedDate || date > lastAllowedDate
+              }
+            />
+            <FieldError errors={[fieldState.error]} />
+          </Field>
+        )}
+      />
+
+      <Field
+        data-invalid={Boolean(form.formState.errors.activeDurationMinutes)}
+      >
         <FieldLabel htmlFor={`${idPrefix}-duration`}>
-          {t('Active duration (hours)')}
+          {t('Active duration (minutes)')}
         </FieldLabel>
         <Input
           id={`${idPrefix}-duration`}
           type='number'
-          min={1 / 60}
-          max='8760'
-          step='any'
-          aria-invalid={Boolean(form.formState.errors.activeDurationHours)}
-          {...form.register('activeDurationHours', { valueAsNumber: true })}
+          min='1'
+          max={365 * 24 * 60}
+          step='1'
+          aria-invalid={Boolean(form.formState.errors.activeDurationMinutes)}
+          {...form.register('activeDurationMinutes', { valueAsNumber: true })}
         />
-        <FieldError errors={[form.formState.errors.activeDurationHours]} />
+        <FieldError errors={[form.formState.errors.activeDurationMinutes]} />
       </Field>
     </FieldGroup>
   )

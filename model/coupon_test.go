@@ -48,7 +48,8 @@ func TestIssueCouponsUsesReceiptBasedActivationPeriodAndIsIdempotent(t *testing.
 		Name:                  "GPT Pro 0.1x",
 		ApplicableGroup:       "gpt-pro",
 		RatioPPM:              100_000,
-		ValidForSeconds:       7 * 24 * 60 * 60,
+		RPMLimit:              20,
+		ActivateBefore:        now + 7*24*60*60 + 123,
 		ActiveDurationSeconds: 60 * 60,
 		IssuerId:              user.Id,
 		IssueBatchId:          common.GetUUID(),
@@ -59,8 +60,10 @@ func TestIssueCouponsUsesReceiptBasedActivationPeriodAndIsIdempotent(t *testing.
 	first, err := IssueCoupons(params)
 	require.NoError(t, err)
 	require.Len(t, first, 1)
-	assert.Equal(t, now+7*24*60*60, first[0].ActivateBefore)
+	assert.Equal(t, now+7*24*60*60+123, first[0].ActivateBefore)
 	assert.Equal(t, int64(60*60), first[0].ActiveDurationSeconds)
+	assert.Equal(t, 20, first[0].RPMLimit)
+	assert.Equal(t, CouponRecipientScopeSelected, first[0].RecipientScope)
 	assert.Equal(t, CouponEffectiveStatusAvailable, first[0].EffectiveStatus)
 
 	second, err := IssueCoupons(params)
@@ -108,18 +111,104 @@ func TestIssueCouponsCanTargetAllUsersInBatches(t *testing.T) {
 	assert.Equal(t, userCount, couponCount)
 }
 
+func TestIssueCouponsPersistsRankRecipientSnapshot(t *testing.T) {
+	user := setupCouponUser(t, "coupon-rank-recipient")
+	coupons, err := IssueCoupons(IssueCouponParams{
+		UserIds:               []int{user.Id},
+		RecipientScope:        CouponRecipientScopeRank,
+		RankMin:               "gold",
+		RankMax:               "diamond",
+		Name:                  "Rank trial",
+		ApplicableGroup:       "gpt-pro",
+		RatioPPM:              100_000,
+		RPMLimit:              30,
+		ValidForSeconds:       7 * 24 * 60 * 60,
+		ActiveDurationSeconds: 60 * 60,
+		IssuerId:              user.Id,
+		IssueBatchId:          common.GetUUID(),
+		IdempotencyKey:        common.GetUUID(),
+		Now:                   1_800_060_000,
+	})
+	require.NoError(t, err)
+	require.Len(t, coupons, 1)
+	assert.Equal(t, CouponRecipientScopeRank, coupons[0].RecipientScope)
+	assert.Equal(t, "gold", coupons[0].RankMin)
+	assert.Equal(t, "diamond", coupons[0].RankMax)
+	assert.Equal(t, 30, coupons[0].RPMLimit)
+
+	_, err = IssueCoupons(IssueCouponParams{
+		UserIds:        []int{user.Id},
+		RecipientScope: CouponRecipientScopeRank,
+		RankMin:        "diamond",
+		RankMax:        "gold",
+	})
+	require.EqualError(t, err, "coupon rank range is invalid")
+}
+
 func TestGetAdminCouponsSearchesRecipientAndPopulatesStatus(t *testing.T) {
 	user := setupCouponUser(t, "coupon-admin-list-recipient")
 	now := int64(1_800_075_000)
 	issued := issueCouponForTest(t, user, now, "gpt-pro", 100_000)
 
-	coupons, total, err := GetAdminCoupons(user.Username, 0, 10, now+1)
+	coupons, total, err := GetAdminCoupons(user.Username, "", 0, 10, now+1)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, total)
 	require.Len(t, coupons, 1)
 	assert.Equal(t, issued.Id, coupons[0].Id)
 	assert.Equal(t, user.Username, coupons[0].Username)
 	assert.Equal(t, CouponEffectiveStatusAvailable, coupons[0].EffectiveStatus)
+}
+
+func TestGetAdminCouponsFiltersByEffectiveStatusBeforePagination(t *testing.T) {
+	user := setupCouponUser(t, "coupon-status-filter-recipient")
+	now := int64(1_800_080_000)
+	testCases := []struct {
+		name           string
+		storedStatus   int
+		activateBefore int64
+		activeUntil    int64
+		effective      string
+	}{
+		{name: "available", storedStatus: CouponStatusUnused, activateBefore: now + 1, effective: CouponEffectiveStatusAvailable},
+		{name: "active", storedStatus: CouponStatusActive, activeUntil: now + 1, effective: CouponEffectiveStatusActive},
+		{name: "expired", storedStatus: CouponStatusUnused, activateBefore: now, effective: CouponEffectiveStatusExpired},
+		{name: "ended", storedStatus: CouponStatusActive, activeUntil: now, effective: CouponEffectiveStatusEnded},
+		{name: "revoked", storedStatus: CouponStatusRevoked, effective: CouponEffectiveStatusRevoked},
+	}
+	for _, testCase := range testCases {
+		coupon := Coupon{
+			UserId:                user.Id,
+			Name:                  testCase.name,
+			ApplicableGroup:       "gpt-pro",
+			RatioPPM:              100_000,
+			IssuedAt:              now,
+			ActivateBefore:        testCase.activateBefore,
+			ActiveDurationSeconds: 60 * 60,
+			ActiveUntil:           testCase.activeUntil,
+			Status:                testCase.storedStatus,
+			IssueBatchId:          common.GetUUID(),
+			IdempotencyKey:        common.GetUUID(),
+		}
+		require.NoError(t, DB.Create(&coupon).Error)
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.effective, func(t *testing.T) {
+			coupons, total, err := GetAdminCoupons(user.Username, testCase.effective, 0, 1, now)
+			require.NoError(t, err)
+			assert.EqualValues(t, 1, total)
+			require.Len(t, coupons, 1)
+			assert.Equal(t, testCase.name, coupons[0].Name)
+			assert.Equal(t, testCase.effective, coupons[0].EffectiveStatus)
+		})
+	}
+	allCoupons, total, err := GetAdminCoupons(user.Username, "all", 0, 10, now)
+	require.NoError(t, err)
+	assert.EqualValues(t, len(testCases), total)
+	assert.Len(t, allCoupons, len(testCases))
+
+	_, _, err = GetAdminCoupons(user.Username, "unknown", 0, 10, now)
+	require.EqualError(t, err, "coupon status filter is invalid")
 }
 
 func TestActivateCouponGrantsFullDurationAndResolvesActiveCoupon(t *testing.T) {
@@ -145,17 +234,34 @@ func TestActivateCouponGrantsFullDurationAndResolvesActiveCoupon(t *testing.T) {
 	assert.Nil(t, resolved)
 }
 
-func TestActivateCouponRejectsExpiredAndSameGroupConflict(t *testing.T) {
-	user := setupCouponUser(t, "coupon-conflict-user")
+func TestActivateCouponAllowsSameGroupAndAlwaysResolvesCheapest(t *testing.T) {
+	user := setupCouponUser(t, "coupon-cheapest-user")
 	now := int64(1_800_200_000)
-	first := issueCouponForTest(t, user, now, "gpt-pro", 100_000)
-	second := issueCouponForTest(t, user, now, "gpt-pro", 200_000)
+	expensive := issueCouponForTest(t, user, now, "gpt-pro", 200_000)
+	cheap := issueCouponForTest(t, user, now, "gpt-pro", 100_000)
 	expired := issueCouponForTest(t, user, now, "other", 300_000)
 
-	_, err := ActivateCoupon(first.Id, user.Id, now+1)
+	_, err := ActivateCoupon(expensive.Id, user.Id, now+1)
 	require.NoError(t, err)
-	_, err = ActivateCoupon(second.Id, user.Id, now+2)
-	assert.ErrorIs(t, err, ErrCouponActiveConflict)
+	resolved, err := GetActiveCoupon(user.Id, "gpt-pro", now+1)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, expensive.Id, resolved.Id)
+
+	_, err = ActivateCoupon(cheap.Id, user.Id, now+2)
+	require.NoError(t, err)
+	resolved, err = GetActiveCoupon(user.Id, "gpt-pro", now+2)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, cheap.Id, resolved.Id)
+
+	_, err = RevokeCoupon(cheap.Id, user.Id, now+3)
+	require.NoError(t, err)
+	resolved, err = GetActiveCoupon(user.Id, "gpt-pro", now+3)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, expensive.Id, resolved.Id)
+
 	_, err = ActivateCoupon(expired.Id, user.Id, expired.ActivateBefore)
 	assert.ErrorIs(t, err, ErrCouponExpired)
 }
@@ -200,6 +306,10 @@ func TestIssueCouponsRejectsOutOfRangeBillingTerms(t *testing.T) {
 	_, err := IssueCoupons(params)
 	require.Error(t, err)
 	params.RatioPPM = 100_000
+	params.RPMLimit = MaxCouponRPM + 1
+	_, err = IssueCoupons(params)
+	require.Error(t, err)
+	params.RPMLimit = MaxCouponRPM
 	params.ActiveDurationSeconds = MaxCouponActiveDurationSeconds + 1
 	_, err = IssueCoupons(params)
 	require.Error(t, err)

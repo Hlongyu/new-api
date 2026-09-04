@@ -72,6 +72,10 @@ const baseCoupon = {
   revoker_id: 0,
   revoked_at: 0,
   issue_batch_id: 'batch',
+  recipient_scope: 'selected' as const,
+  rank_min: '',
+  rank_max: '',
+  rpm_limit: 10,
   effective_status: 'available' as const,
 }
 
@@ -99,6 +103,7 @@ describe('wallet coupon item', () => {
     )
     assert.ok(activateButton)
     assert.match(container.textContent || '', /Active for/)
+    assert.match(container.textContent || '', /Requests per minute:\s*10/)
     await act(async () => activateButton.click())
     assert.deepEqual(selected, [1])
 

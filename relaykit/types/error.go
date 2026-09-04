@@ -88,6 +88,8 @@ const (
 	ErrorCodeTokenFiveHourQuotaExceeded ErrorCode = "token_five_hour_quota_exceeded"
 	ErrorCodeTokenDailyQuotaExceeded    ErrorCode = "token_daily_quota_exceeded"
 	ErrorCodeTokenWeeklyQuotaExceeded   ErrorCode = "token_weekly_quota_exceeded"
+	ErrorCodeCouponRPMQueueFull         ErrorCode = "coupon_rpm_queue_full"
+	ErrorCodeCouponRPMQueueUnavailable  ErrorCode = "coupon_rpm_queue_unavailable"
 )
 
 type NewAPIError struct {

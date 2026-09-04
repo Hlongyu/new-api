@@ -93,6 +93,12 @@ export function CouponRow(props: {
           })}
         </p>
         <div className='text-muted-foreground mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs'>
+          <span>
+            {t('Requests per minute')}:{' '}
+            {props.coupon.rpm_limit > 0
+              ? props.coupon.rpm_limit
+              : t('Unlimited')}
+          </span>
           {status === 'active' ? (
             <span className='inline-flex items-center gap-1 tabular-nums'>
               <Clock3 aria-hidden='true' />

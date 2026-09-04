@@ -19,12 +19,21 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
+import type { TFunction } from 'i18next'
+
 import type { Coupon } from '../../types'
 import {
   couponRemainingSeconds,
+  formatCouponDuration,
   formatCouponRatio,
   getCouponRuntimeStatus,
 } from '../coupon'
+
+const t = ((key: string, values?: Record<string, number>) =>
+  Object.entries(values || {}).reduce(
+    (result, [name, value]) => result.replace(`{{${name}}}`, String(value)),
+    key
+  )) as TFunction
 
 function couponFixture(overrides: Partial<Coupon> = {}): Coupon {
   return {
@@ -43,6 +52,10 @@ function couponFixture(overrides: Partial<Coupon> = {}): Coupon {
     revoker_id: 0,
     revoked_at: 0,
     issue_batch_id: 'batch',
+    recipient_scope: 'selected',
+    rank_min: '',
+    rank_max: '',
+    rpm_limit: 0,
     effective_status: 'available',
     ...overrides,
   }
@@ -52,6 +65,11 @@ describe('coupon presentation rules', () => {
   test('formats the persisted millionth ratio as an absolute multiplier', () => {
     assert.equal(formatCouponRatio(100_000), '0.1')
     assert.equal(formatCouponRatio(1_000_000), '1')
+  })
+
+  test('preserves minute precision when formatting active duration', () => {
+    assert.equal(formatCouponDuration(90 * 60, t), '1h 30m')
+    assert.equal(formatCouponDuration((24 * 60 + 15) * 60, t), '1d 0h 15m')
   })
 
   test('changes available and active coupons at their exact time boundaries', () => {

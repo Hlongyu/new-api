@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	rankengine "github.com/QuantumNous/new-api/pkg/rank"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 )
@@ -27,11 +28,16 @@ const (
 	CouponEffectiveStatusEnded     = "ended"
 	CouponEffectiveStatusRevoked   = "revoked"
 
-	couponCacheNamespace = "new-api:active_coupon:v1"
+	couponCacheNamespace = "new-api:active_coupon:v2"
 
 	MaxCouponUsers                 = 1000
+	MaxCouponRPM                   = 60_000
 	MaxCouponValidForSeconds       = int64(10 * 365 * 24 * 60 * 60)
 	MaxCouponActiveDurationSeconds = int64(365 * 24 * 60 * 60)
+
+	CouponRecipientScopeSelected = "selected"
+	CouponRecipientScopeAll      = "all"
+	CouponRecipientScopeRank     = "rank"
 )
 
 var (
@@ -60,6 +66,10 @@ type Coupon struct {
 	RevokedAt             int64  `json:"revoked_at" gorm:"bigint"`
 	IssueBatchId          string `json:"issue_batch_id" gorm:"type:char(32);index"`
 	IdempotencyKey        string `json:"-" gorm:"type:varchar(64);uniqueIndex:idx_coupon_issue_idempotency"`
+	RecipientScope        string `json:"recipient_scope" gorm:"type:varchar(16)"`
+	RankMin               string `json:"rank_min,omitempty" gorm:"type:varchar(32)"`
+	RankMax               string `json:"rank_max,omitempty" gorm:"type:varchar(32)"`
+	RPMLimit              int    `json:"rpm_limit"`
 	Username              string `json:"username,omitempty" gorm:"->;-:migration"`
 	EffectiveStatus       string `json:"effective_status" gorm:"-"`
 }
@@ -67,9 +77,14 @@ type Coupon struct {
 type IssueCouponParams struct {
 	UserIds               []int
 	AllUsers              bool
+	RecipientScope        string
+	RankMin               string
+	RankMax               string
 	Name                  string
 	ApplicableGroup       string
 	RatioPPM              int
+	RPMLimit              int
+	ActivateBefore        int64
 	ValidForSeconds       int64
 	ActiveDurationSeconds int64
 	IssuerId              int
@@ -163,28 +178,52 @@ func IssueCoupons(params IssueCouponParams) ([]Coupon, error) {
 	params.Name = strings.TrimSpace(params.Name)
 	params.ApplicableGroup = strings.TrimSpace(params.ApplicableGroup)
 	params.IdempotencyKey = strings.TrimSpace(params.IdempotencyKey)
+	params.RecipientScope = strings.TrimSpace(params.RecipientScope)
+	params.RankMin = strings.TrimSpace(params.RankMin)
+	params.RankMax = strings.TrimSpace(params.RankMax)
+	if params.Now <= 0 {
+		params.Now = GetDBTimestamp()
+	}
+	if params.ActivateBefore == 0 && params.ValidForSeconds > 0 && params.ValidForSeconds <= MaxCouponValidForSeconds {
+		params.ActivateBefore = params.Now + params.ValidForSeconds
+	}
+	if params.RecipientScope == "" {
+		if params.AllUsers {
+			params.RecipientScope = CouponRecipientScopeAll
+		} else {
+			params.RecipientScope = CouponRecipientScopeSelected
+		}
+	}
+	minRankPosition, minRankValid := rankengine.ParseTierKey(params.RankMin)
+	maxRankPosition, maxRankValid := rankengine.ParseTierKey(params.RankMax)
 	switch {
-	case params.AllUsers && len(params.UserIds) > 0:
+	case params.RecipientScope != CouponRecipientScopeSelected && params.RecipientScope != CouponRecipientScopeAll && params.RecipientScope != CouponRecipientScopeRank:
+		return nil, errors.New("coupon recipient scope is invalid")
+	case params.RecipientScope == CouponRecipientScopeAll && len(params.UserIds) > 0:
 		return nil, errors.New("coupon recipient scope is ambiguous")
-	case !params.AllUsers && (len(params.UserIds) == 0 || len(params.UserIds) > MaxCouponUsers):
+	case params.RecipientScope == CouponRecipientScopeSelected && (len(params.UserIds) == 0 || len(params.UserIds) > MaxCouponUsers):
 		return nil, errors.New("coupon recipient count is out of range")
+	case params.RecipientScope == CouponRecipientScopeRank && len(params.UserIds) == 0:
+		return nil, errors.New("no coupon recipients found")
+	case params.RecipientScope == CouponRecipientScopeRank && (!minRankValid || !maxRankValid || minRankPosition > maxRankPosition):
+		return nil, errors.New("coupon rank range is invalid")
 	case utf8.RuneCountInString(params.Name) == 0 || utf8.RuneCountInString(params.Name) > 64:
 		return nil, errors.New("coupon name is out of range")
 	case params.ApplicableGroup == "":
 		return nil, errors.New("coupon applicable group is required")
 	case params.RatioPPM <= 0 || params.RatioPPM > 1_000_000:
 		return nil, errors.New("coupon ratio is out of range")
-	case params.ValidForSeconds <= 0 || params.ValidForSeconds > MaxCouponValidForSeconds:
-		return nil, errors.New("coupon activation period is out of range")
+	case params.RPMLimit < 0 || params.RPMLimit > MaxCouponRPM:
+		return nil, errors.New("coupon RPM limit is out of range")
+	case params.ActivateBefore <= params.Now || params.ActivateBefore > params.Now+MaxCouponValidForSeconds:
+		return nil, errors.New("coupon activation deadline is out of range")
 	case params.ActiveDurationSeconds <= 0 || params.ActiveDurationSeconds > MaxCouponActiveDurationSeconds:
 		return nil, errors.New("coupon active duration is out of range")
 	case len(params.IdempotencyKey) > 64:
 		return nil, errors.New("coupon idempotency key is too long")
 	}
-	if params.Now <= 0 {
-		params.Now = GetDBTimestamp()
-	}
 	userIds := make([]int, 0, len(params.UserIds))
+	params.AllUsers = params.RecipientScope == CouponRecipientScopeAll
 	if !params.AllUsers {
 		uniqueIds := make(map[int]struct{}, len(params.UserIds))
 		for _, userId := range params.UserIds {
@@ -258,12 +297,16 @@ func IssueCoupons(params IssueCouponParams) ([]Coupon, error) {
 				ApplicableGroup:       params.ApplicableGroup,
 				RatioPPM:              params.RatioPPM,
 				IssuedAt:              params.Now,
-				ActivateBefore:        params.Now + params.ValidForSeconds,
+				ActivateBefore:        params.ActivateBefore,
 				ActiveDurationSeconds: params.ActiveDurationSeconds,
 				Status:                CouponStatusUnused,
 				IssuerId:              params.IssuerId,
 				IssueBatchId:          params.IssueBatchId,
 				IdempotencyKey:        params.IdempotencyKey,
+				RecipientScope:        params.RecipientScope,
+				RankMin:               params.RankMin,
+				RankMax:               params.RankMax,
+				RPMLimit:              params.RPMLimit,
 			})
 		}
 		return tx.CreateInBatches(&coupons, 100).Error
@@ -325,16 +368,6 @@ func ActivateCoupon(couponId, userId int, now int64) (*Coupon, error) {
 			return ErrCouponExpired
 		}
 
-		var activeCount int64
-		if err := tx.Model(&Coupon{}).
-			Where("user_id = ? AND applicable_group = ? AND status = ? AND active_until > ?", userId, coupon.ApplicableGroup, CouponStatusActive, now).
-			Count(&activeCount).Error; err != nil {
-			return err
-		}
-		if activeCount > 0 {
-			return ErrCouponActiveConflict
-		}
-
 		activeUntil := now + coupon.ActiveDurationSeconds
 		result := tx.Model(&Coupon{}).
 			Where("id = ? AND user_id = ? AND status = ? AND activated_at = 0", couponId, userId, CouponStatusUnused).
@@ -358,7 +391,7 @@ func ActivateCoupon(couponId, userId int, now int64) (*Coupon, error) {
 		return nil, err
 	}
 	coupon.PopulateEffectiveStatus(now)
-	setActiveCouponCache(coupon, now)
+	invalidateActiveCouponCache(coupon.UserId, coupon.ApplicableGroup)
 	return &coupon, nil
 }
 
@@ -395,12 +428,6 @@ func RevokeCoupon(couponId, revokerId int, now int64) (*Coupon, error) {
 	}
 	coupon.PopulateEffectiveStatus(now)
 	invalidateActiveCouponCache(coupon.UserId, coupon.ApplicableGroup)
-	key := activeCouponCacheKey(coupon.UserId, coupon.ApplicableGroup)
-	if key != "" {
-		if err := getActiveCouponCache().SetWithTTL(key, activeCouponCacheEntry{Found: false}, 15*time.Second); err != nil {
-			common.SysError("failed to cache revoked coupon state: " + err.Error())
-		}
-	}
 	return &coupon, nil
 }
 
@@ -425,7 +452,7 @@ func GetActiveCoupon(userId int, group string, now int64) (*Coupon, error) {
 
 	var coupon Coupon
 	err := DB.Where("user_id = ? AND applicable_group = ? AND status = ? AND active_until > ?", userId, group, CouponStatusActive, now).
-		Order("ratio_ppm ASC, activated_at ASC").
+		Order("ratio_ppm ASC, activated_at ASC, id ASC").
 		First(&coupon).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		_ = getActiveCouponCache().SetWithTTL(key, activeCouponCacheEntry{Found: false}, 15*time.Second)
@@ -456,12 +483,28 @@ func GetUserCoupons(userId int, now int64) ([]Coupon, error) {
 	return coupons, nil
 }
 
-func GetAdminCoupons(keyword string, startIdx, num int, now int64) ([]Coupon, int64, error) {
+func GetAdminCoupons(keyword string, effectiveStatus string, startIdx, num int, now int64) ([]Coupon, int64, error) {
 	if now <= 0 {
 		now = GetDBTimestamp()
 	}
 	keyword = strings.TrimSpace(keyword)
+	effectiveStatus = strings.TrimSpace(effectiveStatus)
 	query := DB.Table("coupons").Joins("LEFT JOIN users ON users.id = coupons.user_id")
+	switch effectiveStatus {
+	case "", "all":
+	case CouponEffectiveStatusAvailable:
+		query = query.Where("coupons.status = ? AND coupons.activate_before > ?", CouponStatusUnused, now)
+	case CouponEffectiveStatusActive:
+		query = query.Where("coupons.status = ? AND coupons.active_until > ?", CouponStatusActive, now)
+	case CouponEffectiveStatusExpired:
+		query = query.Where("coupons.status = ? AND coupons.activate_before <= ?", CouponStatusUnused, now)
+	case CouponEffectiveStatusEnded:
+		query = query.Where("coupons.status = ? AND coupons.active_until <= ?", CouponStatusActive, now)
+	case CouponEffectiveStatusRevoked:
+		query = query.Where("coupons.status = ?", CouponStatusRevoked)
+	default:
+		return nil, 0, errors.New("coupon status filter is invalid")
+	}
 	if keyword != "" {
 		pattern := "%" + keyword + "%"
 		if id, err := strconv.Atoi(keyword); err == nil {

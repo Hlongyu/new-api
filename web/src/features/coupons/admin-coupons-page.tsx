@@ -25,6 +25,7 @@ import {
   Globe2,
   Search,
   Send,
+  Trophy,
   Users,
 } from 'lucide-react'
 import { useDeferredValue, useMemo, useState } from 'react'
@@ -44,6 +45,14 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Field, FieldLabel, FieldSet, FieldLegend } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Spinner } from '@/components/ui/spinner'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -51,7 +60,16 @@ import { getGroups, getUsers, searchUsers } from '@/features/users/api'
 import type { User } from '@/features/users/types'
 import { formatTimestamp } from '@/lib/format'
 
-import { getAdminCoupons, issueCoupons, revokeCoupon } from './api'
+import {
+  getAdminCoupons,
+  getCouponRankRecipientPreview,
+  issueCoupons,
+  revokeCoupon,
+} from './api'
+import {
+  CouponHistoryFilters,
+  type CouponHistoryStatusFilter,
+} from './components/coupon-history-filters'
 import { CouponIssueFields } from './components/coupon-issue-fields'
 import {
   couponErrorKey,
@@ -60,13 +78,33 @@ import {
   getCouponRuntimeStatus,
 } from './lib/coupon'
 import {
-  COUPON_FORM_DEFAULTS,
+  createCouponFormDefaults,
   getCouponFormSchema,
   type CouponFormValues,
 } from './lib/coupon-form'
-import type { Coupon, CouponEffectiveStatus } from './types'
+import {
+  COUPON_RANK_OPTIONS,
+  couponRankPosition,
+  isCouponRankKey,
+  type CouponRankKey,
+} from './lib/rank-range'
+import type {
+  Coupon,
+  CouponEffectiveStatus,
+  CouponRecipientScope,
+} from './types'
 
-type RecipientScope = 'selected' | 'all'
+interface IssueMutationVariables {
+  values: CouponFormValues
+  recipientScope: CouponRecipientScope
+  userIds?: number[]
+  rankMin?: CouponRankKey
+  rankMax?: CouponRankKey
+}
+
+interface PendingGeneratedIssue extends IssueMutationVariables {
+  recipientScope: 'all' | 'rank'
+}
 
 function statusVariant(status: CouponEffectiveStatus): StatusVariant {
   if (status === 'active') return 'success'
@@ -78,21 +116,39 @@ function statusVariant(status: CouponEffectiveStatus): StatusVariant {
 export function AdminCouponsPage() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [scope, setScope] = useState<RecipientScope>('selected')
+  const [scope, setScope] = useState<CouponRecipientScope>('selected')
+  const [rankMin, setRankMin] = useState<CouponRankKey>('iron')
+  const [rankMax, setRankMax] = useState<CouponRankKey>('challenger')
   const [userSearch, setUserSearch] = useState('')
   const [historySearch, setHistorySearch] = useState('')
+  const [historyStatus, setHistoryStatus] =
+    useState<CouponHistoryStatusFilter>('all')
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const [historyPage, setHistoryPage] = useState(1)
-  const [pendingAllValues, setPendingAllValues] =
-    useState<CouponFormValues | null>(null)
+  const [pendingIssue, setPendingIssue] =
+    useState<PendingGeneratedIssue | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<Coupon | null>(null)
   const deferredUserSearch = useDeferredValue(userSearch.trim())
   const deferredHistorySearch = useDeferredValue(historySearch.trim())
   const schema = useMemo(() => getCouponFormSchema(t), [t])
   const form = useForm<CouponFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: COUPON_FORM_DEFAULTS,
+    defaultValues: createCouponFormDefaults(),
   })
+  const rankOptions = useMemo(
+    () =>
+      COUPON_RANK_OPTIONS.map((option) => ({
+        value: option.value,
+        label: t(option.tierLabelKey),
+      })),
+    [t]
+  )
+  const rankLabels = useMemo(
+    () => new Map(rankOptions.map((option) => [option.value, option.label])),
+    [rankOptions]
+  )
+  const rankRangeValid =
+    couponRankPosition(rankMin) <= couponRankPosition(rankMax)
 
   const groupsQuery = useQuery({
     queryKey: ['groups', 'coupon-options'],
@@ -111,12 +167,19 @@ export function AdminCouponsPage() {
     queryFn: () => getUsers({ p: 1, page_size: 1 }),
     enabled: scope === 'all',
   })
+  const rankRecipientsQuery = useQuery({
+    queryKey: ['coupons', 'rank-recipients', rankMin, rankMax],
+    queryFn: () =>
+      getCouponRankRecipientPreview({ rank_min: rankMin, rank_max: rankMax }),
+    enabled: scope === 'rank' && rankRangeValid,
+  })
   const historyQueryKey = [
     'coupons',
     'admin',
     'list',
     historyPage,
     deferredHistorySearch,
+    historyStatus,
   ] as const
   const historyQuery = useQuery({
     queryKey: historyQueryKey,
@@ -125,6 +188,7 @@ export function AdminCouponsPage() {
         p: historyPage,
         page_size: 20,
         keyword: deferredHistorySearch || undefined,
+        status: historyStatus === 'all' ? undefined : historyStatus,
       }),
     placeholderData: (previousData) => previousData,
   })
@@ -133,23 +197,21 @@ export function AdminCouponsPage() {
     mutationFn: ({
       values,
       recipientScope,
-    }: {
-      values: CouponFormValues
-      recipientScope: RecipientScope
-    }) =>
+      userIds,
+      rankMin: selectedRankMin,
+      rankMax: selectedRankMax,
+    }: IssueMutationVariables) =>
       issueCoupons({
         scope: recipientScope,
-        user_ids:
-          recipientScope === 'selected'
-            ? selectedUsers.map((user) => user.id)
-            : undefined,
+        user_ids: userIds,
+        rank_min: selectedRankMin,
+        rank_max: selectedRankMax,
         name: values.name.trim(),
         applicable_group: values.applicableGroup,
         ratio_ppm: Math.round(values.ratio * 1_000_000),
-        valid_for_seconds: values.validityDays * 24 * 60 * 60,
-        active_duration_seconds: Math.round(
-          values.activeDurationHours * 60 * 60
-        ),
+        rpm_limit: values.rpmLimit,
+        activate_before: Math.floor(values.activationDeadline.getTime() / 1000),
+        active_duration_seconds: values.activeDurationMinutes * 60,
         idempotency_key: crypto.randomUUID(),
       }),
     onSuccess: async (result) => {
@@ -161,7 +223,7 @@ export function AdminCouponsPage() {
         t('Issued {{count}} coupons', { count: result.data?.issued_count || 0 })
       )
       setSelectedUsers([])
-      setPendingAllValues(null)
+      setPendingIssue(null)
       setHistoryPage(1)
       await queryClient.invalidateQueries({
         queryKey: ['coupons', 'admin', 'list'],
@@ -191,6 +253,9 @@ export function AdminCouponsPage() {
   const userResults = usersQuery.data?.data?.items || []
   const selectedIds = new Set(selectedUsers.map((user) => user.id))
   const allUserCount = allUsersQuery.data?.data?.total || 0
+  const rankRecipientCount = rankRecipientsQuery.data?.success
+    ? rankRecipientsQuery.data.data?.count || 0
+    : 0
   const history = historyQuery.data?.data
   const historyItems = history?.items || []
   const historyPages = Math.max(1, Math.ceil((history?.total || 0) / 20))
@@ -221,6 +286,20 @@ export function AdminCouponsPage() {
             <div className='text-muted-foreground text-xs'>
               {coupon.applicable_group}
             </div>
+            {coupon.recipient_scope === 'rank' &&
+            coupon.rank_min &&
+            coupon.rank_max ? (
+              <div className='text-muted-foreground text-xs'>
+                {t('{{min}} to {{max}}', {
+                  min:
+                    rankLabels.get(coupon.rank_min as CouponRankKey) ||
+                    coupon.rank_min,
+                  max:
+                    rankLabels.get(coupon.rank_max as CouponRankKey) ||
+                    coupon.rank_max,
+                })}
+              </div>
+            ) : null}
           </div>
         ),
       },
@@ -228,6 +307,12 @@ export function AdminCouponsPage() {
         id: 'ratio',
         header: t('Ratio cap'),
         cell: (coupon) => `${formatCouponRatio(coupon.ratio_ppm)}x`,
+      },
+      {
+        id: 'rpm',
+        header: t('RPM'),
+        cell: (coupon) =>
+          coupon.rpm_limit > 0 ? coupon.rpm_limit : t('Unlimited'),
       },
       {
         id: 'issued',
@@ -272,7 +357,7 @@ export function AdminCouponsPage() {
         },
       },
     ],
-    [nowSeconds, t]
+    [nowSeconds, rankLabels, t]
   )
 
   function toggleUser(user: User) {
@@ -285,16 +370,64 @@ export function AdminCouponsPage() {
   }
 
   function submitIssue(values: CouponFormValues) {
-    if (scope === 'all') {
-      setPendingAllValues(values)
+    if (scope === 'all' || scope === 'rank') {
+      setPendingIssue({
+        values,
+        recipientScope: scope,
+        rankMin: scope === 'rank' ? rankMin : undefined,
+        rankMax: scope === 'rank' ? rankMax : undefined,
+      })
       return
     }
-    issueMutation.mutate({ values, recipientScope: 'selected' })
+    issueMutation.mutate({
+      values,
+      recipientScope: 'selected',
+      userIds: selectedUsers.map((user) => user.id),
+    })
   }
 
   const selectedRecipientsMissing =
     scope === 'selected' && selectedUsers.length === 0
   const allRecipientsMissing = scope === 'all' && allUserCount === 0
+  const rankRecipientsMissing =
+    scope === 'rank' &&
+    (!rankRangeValid ||
+      rankRecipientsQuery.isLoading ||
+      rankRecipientCount === 0)
+
+  let issueButtonLabel = t('Issue to selected users')
+  if (scope === 'all') issueButtonLabel = t('Issue to all users')
+  if (scope === 'rank') issueButtonLabel = t('Issue to rank range')
+
+  let pendingRecipientCount = 0
+  let pendingDescription = ''
+  let pendingConfirmText = t('Issue Coupon')
+  if (pendingIssue?.recipientScope === 'all') {
+    pendingRecipientCount = allUserCount
+    pendingDescription = t(
+      'This will create one coupon for each of {{count}} users.',
+      { count: pendingRecipientCount }
+    )
+    pendingConfirmText = t('Issue to all users')
+  }
+  if (pendingIssue?.recipientScope === 'rank') {
+    pendingRecipientCount = rankRecipientCount
+    pendingDescription = t(
+      'This coupon will be issued to {{count}} users in the selected rank range.',
+      { count: pendingRecipientCount }
+    )
+    pendingConfirmText = t('Issue to rank range')
+  }
+
+  let rankPreviewDescription = t(
+    'This coupon will be issued to {{count}} users in the selected rank range.',
+    { count: rankRecipientCount }
+  )
+  if (!rankRangeValid) {
+    rankPreviewDescription = t('Minimum rank cannot exceed maximum rank.')
+  } else if (rankRecipientsQuery.isLoading) {
+    rankPreviewDescription = t('Counting recipients...')
+  }
 
   return (
     <>
@@ -323,26 +456,43 @@ export function AdminCouponsPage() {
                   <div>
                     <h2 className='text-sm font-semibold'>{t('Recipients')}</h2>
                     <p className='text-muted-foreground mt-1 text-sm'>
-                      {t(
-                        'Choose specific users or issue this coupon to everyone.'
-                      )}
+                      {t('Choose specific users, a rank range, or all users.')}
                     </p>
                   </div>
                   <ToggleGroup
                     value={[scope]}
                     onValueChange={(values) => {
                       const next = values.find((value) => value !== scope)
-                      if (next === 'selected' || next === 'all') setScope(next)
+                      if (
+                        next === 'selected' ||
+                        next === 'rank' ||
+                        next === 'all'
+                      ) {
+                        setScope(next)
+                      }
                     }}
                     variant='outline'
-                    className='grid w-full grid-cols-2'
+                    className='grid w-full grid-cols-3'
                     aria-label={t('Recipients')}
                   >
-                    <ToggleGroupItem value='selected' className='w-full'>
+                    <ToggleGroupItem
+                      value='selected'
+                      className='h-auto min-h-9 w-full px-2 py-2 text-center whitespace-normal'
+                    >
                       <Users data-icon='inline-start' />
                       {t('Selected users')}
                     </ToggleGroupItem>
-                    <ToggleGroupItem value='all' className='w-full'>
+                    <ToggleGroupItem
+                      value='rank'
+                      className='h-auto min-h-9 w-full px-2 py-2 text-center whitespace-normal'
+                    >
+                      <Trophy data-icon='inline-start' />
+                      {t('Rank range')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value='all'
+                      className='h-auto min-h-9 w-full px-2 py-2 text-center whitespace-normal'
+                    >
                       <Globe2 data-icon='inline-start' />
                       {t('All users')}
                     </ToggleGroupItem>
@@ -407,6 +557,86 @@ export function AdminCouponsPage() {
                     </div>
                   )}
 
+                  {scope === 'rank' && (
+                    <div className='flex flex-col gap-3'>
+                      <div className='grid gap-3 sm:grid-cols-2'>
+                        <Field data-invalid={!rankRangeValid}>
+                          <FieldLabel htmlFor='coupon-rank-min'>
+                            {t('Minimum rank')}
+                          </FieldLabel>
+                          <Select
+                            items={rankOptions}
+                            value={rankMin}
+                            onValueChange={(value) => {
+                              if (value && isCouponRankKey(value)) {
+                                setRankMin(value)
+                              }
+                            }}
+                          >
+                            <SelectTrigger
+                              id='coupon-rank-min'
+                              aria-invalid={!rankRangeValid}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                {rankOptions.map((option) => (
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <Field data-invalid={!rankRangeValid}>
+                          <FieldLabel htmlFor='coupon-rank-max'>
+                            {t('Maximum rank')}
+                          </FieldLabel>
+                          <Select
+                            items={rankOptions}
+                            value={rankMax}
+                            onValueChange={(value) => {
+                              if (value && isCouponRankKey(value)) {
+                                setRankMax(value)
+                              }
+                            }}
+                          >
+                            <SelectTrigger
+                              id='coupon-rank-max'
+                              aria-invalid={!rankRangeValid}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                {rankOptions.map((option) => (
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                  >
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
+                      <Alert>
+                        <Trophy />
+                        <AlertTitle>{t('Rank range')}</AlertTitle>
+                        <AlertDescription>
+                          {rankPreviewDescription}
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  )}
+
                   {scope === 'all' && (
                     <Alert>
                       <Globe2 />
@@ -431,7 +661,8 @@ export function AdminCouponsPage() {
                     disabled={
                       issueMutation.isPending ||
                       selectedRecipientsMissing ||
-                      allRecipientsMissing
+                      allRecipientsMissing ||
+                      rankRecipientsMissing
                     }
                     className='w-full'
                   >
@@ -440,16 +671,14 @@ export function AdminCouponsPage() {
                     ) : (
                       <Send data-icon='inline-start' />
                     )}
-                    {scope === 'all'
-                      ? t('Issue to all users')
-                      : t('Issue to selected users')}
+                    {issueButtonLabel}
                   </Button>
                 </div>
               </section>
             </section>
 
             <section className='flex flex-col gap-4 border-t pt-6'>
-              <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
+              <div className='flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between'>
                 <div>
                   <h2 className='text-base font-semibold'>
                     {t('Coupon history')}
@@ -458,27 +687,18 @@ export function AdminCouponsPage() {
                     {t('Review issued coupons and revoke active grants.')}
                   </p>
                 </div>
-                <Field className='w-full sm:max-w-xs'>
-                  <FieldLabel
-                    htmlFor='coupon-history-search'
-                    className='sr-only'
-                  >
-                    {t('Search coupon history')}
-                  </FieldLabel>
-                  <div className='relative'>
-                    <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2' />
-                    <Input
-                      id='coupon-history-search'
-                      className='pl-8'
-                      value={historySearch}
-                      onChange={(event) => {
-                        setHistorySearch(event.target.value)
-                        setHistoryPage(1)
-                      }}
-                      placeholder={t('Search recipient, coupon, or batch')}
-                    />
-                  </div>
-                </Field>
+                <CouponHistoryFilters
+                  search={historySearch}
+                  status={historyStatus}
+                  onSearchChange={(value) => {
+                    setHistorySearch(value)
+                    setHistoryPage(1)
+                  }}
+                  onStatusChange={(value) => {
+                    setHistoryStatus(value)
+                    setHistoryPage(1)
+                  }}
+                />
               </div>
 
               {historyQuery.isLoading ? (
@@ -535,21 +755,14 @@ export function AdminCouponsPage() {
       </SectionPageLayout>
 
       <ConfirmDialog
-        open={pendingAllValues !== null}
-        onOpenChange={(open) => !open && setPendingAllValues(null)}
-        title={t('Issue coupon to all users?')}
-        desc={t('This will create one coupon for each of {{count}} users.', {
-          count: allUserCount,
-        })}
-        confirmText={t('Issue to all users')}
+        open={pendingIssue !== null}
+        onOpenChange={(open) => !open && setPendingIssue(null)}
+        title={t('Issue Coupon')}
+        desc={pendingDescription}
+        confirmText={pendingConfirmText}
         isLoading={issueMutation.isPending}
         handleConfirm={() => {
-          if (pendingAllValues) {
-            issueMutation.mutate({
-              values: pendingAllValues,
-              recipientScope: 'all',
-            })
-          }
+          if (pendingIssue) issueMutation.mutate(pendingIssue)
         }}
       />
 

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Calendar as CalendarIcon } from 'lucide-react'
+import { useState, type ComponentProps } from 'react'
 import { enUS, fr, ja, ru, vi, zhCN } from 'react-day-picker/locale'
 import { useTranslation } from 'react-i18next'
 
@@ -28,10 +29,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import dayjs from '@/lib/dayjs'
+import { cn } from '@/lib/utils'
 
 const calendarLocales = {
   en: enUS,
   zh: zhCN,
+  'zh-TW': zhCN,
   fr,
   ru,
   ja,
@@ -39,47 +42,62 @@ const calendarLocales = {
 } as const
 
 type DatePickerProps = {
+  id?: string
   selected: Date | undefined
   onSelect: (date: Date | undefined) => void
   placeholder?: string
+  disabled?: ComponentProps<typeof Calendar>['disabled']
+  startMonth?: Date
+  endMonth?: Date
+  invalid?: boolean
+  className?: string
 }
 
-export function DatePicker({
-  selected,
-  onSelect,
-  placeholder,
-}: DatePickerProps) {
+export function DatePicker(props: DatePickerProps) {
   const { t, i18n } = useTranslation()
-  const placeholderText = placeholder ?? t('Pick a date')
+  const [open, setOpen] = useState(false)
+  const placeholderText = props.placeholder ?? t('Pick a date')
   const calendarLocale =
     calendarLocales[i18n.language as keyof typeof calendarLocales] ?? enUS
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
           <Button
+            id={props.id}
+            type='button'
             variant='outline'
-            data-empty={!selected}
-            className='data-[empty=true]:text-muted-foreground w-[240px] justify-start text-start font-normal'
+            aria-invalid={props.invalid}
+            data-empty={!props.selected}
+            className={cn(
+              'data-[empty=true]:text-muted-foreground w-full justify-start text-start font-normal',
+              props.className
+            )}
           />
         }
       >
-        {selected ? (
-          dayjs(selected).format('YYYY-MM-DD')
+        {props.selected ? (
+          dayjs(props.selected).format('YYYY-MM-DD')
         ) : (
           <span>{placeholderText}</span>
         )}
-        <CalendarIcon className='ms-auto h-4 w-4 opacity-50' />
+        <CalendarIcon className='ms-auto size-4 opacity-50' />
       </PopoverTrigger>
       <PopoverContent className='w-auto p-0'>
         <Calendar
           mode='single'
           captionLayout='dropdown'
-          selected={selected}
-          onSelect={onSelect}
+          selected={props.selected}
+          onSelect={(date) => {
+            props.onSelect(date)
+            if (date) setOpen(false)
+          }}
           locale={calendarLocale}
-          disabled={(date: Date) =>
-            date > new Date() || date < new Date('1900-01-01')
+          startMonth={props.startMonth}
+          endMonth={props.endMonth}
+          disabled={
+            props.disabled ??
+            ((date: Date) => date > new Date() || date < new Date('1900-01-01'))
           }
         />
       </PopoverContent>

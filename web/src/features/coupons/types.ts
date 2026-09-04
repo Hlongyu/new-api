@@ -24,6 +24,8 @@ export type CouponEffectiveStatus =
   | 'ended'
   | 'revoked'
 
+export type CouponRecipientScope = 'selected' | 'all' | 'rank'
+
 export interface Coupon {
   id: number
   user_id: number
@@ -40,6 +42,10 @@ export interface Coupon {
   revoker_id: number
   revoked_at: number
   issue_batch_id: string
+  recipient_scope: CouponRecipientScope | ''
+  rank_min: string
+  rank_max: string
+  rpm_limit: number
   username?: string
   effective_status: CouponEffectiveStatus
 }
@@ -52,14 +58,22 @@ export interface CouponApiResponse<T = unknown> {
 }
 
 export interface IssueCouponsPayload {
-  scope: 'selected' | 'all'
+  scope: CouponRecipientScope
   user_ids?: number[]
+  rank_min?: string
+  rank_max?: string
   name: string
   applicable_group: string
   ratio_ppm: number
-  valid_for_seconds: number
+  rpm_limit: number
+  activate_before: number
+  valid_for_seconds?: number
   active_duration_seconds: number
   idempotency_key: string
+}
+
+export interface CouponRankRecipientPreview {
+  count: number
 }
 
 export interface IssueCouponsResult {

@@ -210,6 +210,13 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: err.Error(),
 		}
 	}
+	if apiErr := service.WaitForCouponRPM(c, priceData.GroupRatioInfo); apiErr != nil {
+		code := 4
+		if apiErr.StatusCode == http.StatusTooManyRequests {
+			code = 30
+		}
+		return &dto.MidjourneyResponse{Code: code, Description: apiErr.Error()}
+	}
 
 	if apiErr := service.PreConsumeBilling(c, 0, info); apiErr != nil {
 		return &dto.MidjourneyResponse{Code: 4, Description: apiErr.Error()}
@@ -505,6 +512,13 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			Code:        4,
 			Description: err.Error(),
 		}
+	}
+	if apiErr := service.WaitForCouponRPM(c, priceData.GroupRatioInfo); apiErr != nil {
+		code := 4
+		if apiErr.StatusCode == http.StatusTooManyRequests {
+			code = 30
+		}
+		return &dto.MidjourneyResponse{Code: code, Description: apiErr.Error()}
 	}
 
 	if consumeQuota {

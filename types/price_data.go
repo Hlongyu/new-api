@@ -16,9 +16,11 @@ type GroupRatioInfo struct {
 	CouponName         string
 	CouponRatio        float64
 	CouponActiveUntil  int64
+	CouponIssueBatchId string
+	CouponRPMLimit     int
 }
 
-func (info *GroupRatioInfo) ApplyCouponCap(couponId int, couponName string, couponRatio float64, activeUntil int64) bool {
+func (info *GroupRatioInfo) ApplyCouponCap(couponId int, couponName string, couponRatio float64, activeUntil int64, issueBatchId string, rpmLimit int) bool {
 	if info == nil || couponId <= 0 || couponRatio <= 0 || info.GroupRatio <= couponRatio {
 		return false
 	}
@@ -28,6 +30,8 @@ func (info *GroupRatioInfo) ApplyCouponCap(couponId int, couponName string, coup
 	info.CouponName = couponName
 	info.CouponRatio = couponRatio
 	info.CouponActiveUntil = activeUntil
+	info.CouponIssueBatchId = issueBatchId
+	info.CouponRPMLimit = rpmLimit
 	return true
 }
 

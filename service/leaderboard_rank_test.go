@@ -59,6 +59,48 @@ func TestGetRankProgressReplaysAllCoreHistory(t *testing.T) {
 	assert.EqualValues(t, 19, progress.Score)
 }
 
+func TestGetCouponRankRecipientUserIdsIncludesInclusiveRangeAndDefaultRank(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open("file:coupon-rank-recipients?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, database.AutoMigrate(
+		&model.User{}, &model.QuotaData{}, &model.SponsorOrder{}, &model.RenameCardOrder{},
+	))
+	previousDB := model.DB
+	previousQuotaPerUnit := common.QuotaPerUnit
+	model.DB = database
+	common.QuotaPerUnit = 1
+	t.Cleanup(func() {
+		model.DB = previousDB
+		common.QuotaPerUnit = previousQuotaPerUnit
+	})
+
+	require.NoError(t, database.Create(&model.User{Id: 201, Username: "default-rank", AffCode: "coupon-rank-201"}).Error)
+	require.NoError(t, database.Create(&model.User{Id: 202, Username: "iron-two", AffCode: "coupon-rank-202"}).Error)
+	require.NoError(t, database.Create(&model.User{Id: 203, Username: "bronze-four", AffCode: "coupon-rank-203"}).Error)
+	require.NoError(t, database.Create(&model.QuotaData{
+		UserID: 202, CreatedAt: time.Now().Unix(), UseGroup: "default", Quota: 45, Count: 1,
+	}).Error)
+	require.NoError(t, database.Create(&[]model.QuotaData{
+		{UserID: 203, CreatedAt: time.Now().AddDate(0, 0, -3).Unix(), UseGroup: "default", Quota: 80, Count: 1},
+		{UserID: 203, CreatedAt: time.Now().Unix(), UseGroup: "default", Quota: 5, Count: 1},
+	}).Error)
+
+	ironRecipients, err := GetCouponRankRecipientUserIds("iron", "iron")
+	require.NoError(t, err)
+	assert.Equal(t, []int{201, 202}, ironRecipients)
+
+	bronzeRecipients, err := GetCouponRankRecipientUserIds("bronze", "bronze")
+	require.NoError(t, err)
+	assert.Equal(t, []int{203}, bronzeRecipients)
+
+	ironAndBronzeRecipients, err := GetCouponRankRecipientUserIds("iron", "bronze")
+	require.NoError(t, err)
+	assert.Equal(t, []int{201, 202, 203}, ironAndBronzeRecipients)
+
+	_, err = GetCouponRankRecipientUserIds("silver", "iron")
+	require.Error(t, err)
+}
+
 func TestTierBoardHidesSponsorBadgeForAnonymousProfile(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open("file:rank-privacy?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)

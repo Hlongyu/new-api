@@ -173,6 +173,7 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		other["coupon_ratio"] = groupRatioInfo.CouponRatio
 		other["original_group_ratio"] = groupRatioInfo.OriginalGroupRatio
 		other["coupon_active_until"] = groupRatioInfo.CouponActiveUntil
+		other["coupon_rpm_limit"] = groupRatioInfo.CouponRPMLimit
 	}
 	if relayInfo.BillingSource == BillingSourceSubscription && relayInfo.SubscriptionId != 0 {
 		if relayInfo.SubscriptionId != 0 {
