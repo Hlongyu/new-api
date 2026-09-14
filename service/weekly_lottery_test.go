@@ -3,12 +3,36 @@ package service
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestLotteryDrawPayloadIncludesRewardSubscriptionAndPreservesLegacyWalletRewards(t *testing.T) {
+	for _, subscriptionId := range []int{0, 123} {
+		draw := model.LotteryDraw{Id: "draw", AmountUsd: 10, QuotaAmount: 5_000_000,
+			Status: model.LeaderboardOrderCompleted, CompletedAt: 100, SubscriptionId: subscriptionId}
+		if subscriptionId > 0 {
+			draw.SubscriptionExpiresAt = 100 + 7*86_400
+		}
+		payload := lotteryDrawPayload(draw, true)
+		encoded, err := common.Marshal(payload)
+		require.NoError(t, err)
+		var response map[string]interface{}
+		require.NoError(t, common.Unmarshal(encoded, &response))
+		assert.EqualValues(t, 10, response["amountUsd"])
+		if subscriptionId > 0 {
+			assert.EqualValues(t, 123, response["subscriptionId"])
+			assert.EqualValues(t, 100+7*86_400, response["subscriptionExpiresAt"])
+		} else {
+			assert.NotContains(t, response, "subscriptionId")
+			assert.NotContains(t, response, "subscriptionExpiresAt")
+		}
+	}
+}
 
 func TestLoadLotteryOpportunitiesUsesCurrentPrivacyAndSkipsFuturePeriods(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open("file:lottery-opportunity-privacy?mode=memory&cache=shared"), &gorm.Config{})

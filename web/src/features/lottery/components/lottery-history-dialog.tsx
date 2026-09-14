@@ -96,11 +96,26 @@ export function LotteryHistoryDialog(props: LotteryHistoryDialogProps) {
                             </span>
                           )}
                         {winner.draw?.status === 'completed' && (
-                          <Badge variant='secondary' className='shrink-0'>
-                            {t('Claimed ${{amount}}', {
-                              amount: formatAmount(winner.draw.amountUsd),
-                            })}
-                          </Badge>
+                          <div className='flex shrink-0 flex-col items-end gap-1'>
+                            <Badge variant='secondary'>
+                              {winner.draw.subscriptionId
+                                ? t('7-day subscription · ${{amount}}', {
+                                    amount: formatAmount(winner.draw.amountUsd),
+                                  })
+                                : t('Claimed ${{amount}}', {
+                                    amount: formatAmount(winner.draw.amountUsd),
+                                  })}
+                            </Badge>
+                            {!!winner.draw.subscriptionExpiresAt && (
+                              <span className='text-muted-foreground text-[10px]'>
+                                {t('Expires {{time}}', {
+                                  time: new Date(
+                                    winner.draw.subscriptionExpiresAt * 1000
+                                  ).toLocaleString(),
+                                })}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </li>
                     ))}

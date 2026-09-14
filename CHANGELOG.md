@@ -1,5 +1,23 @@
 # Changelog
 
+## [custom-v1.0.9] - 2026-09-14
+
+### Changed
+
+- Weekly leaderboard lottery claims now grant a standalone reward subscription that expires seven days after claiming, instead of increasing wallet balance.
+- Weekly lottery pages show the subscription reward, expiry time, and a link to view reward subscriptions in the wallet.
+
+### Added
+
+- Draw records now link to the issued subscription and retain the reward amount, quota, completion time, and subscription expiry for auditing.
+- Regression coverage for subscription spending and expiry, duplicate claims, failed-draw retries, transaction rollback, and legacy reward display.
+
+### Compatibility
+
+- Existing completed wallet rewards remain unchanged and are not converted or reissued. Pending opportunities grant subscriptions when claimed after the update.
+- Subscription issuance and the completed draw are committed in one transaction; repeated claims do not issue another subscription or extend its expiry.
+- The new draw columns use the existing additive GORM migration path for SQLite, MySQL, and PostgreSQL.
+
 ## [custom-v1.0.6] - 2026-08-31
 
 ### Added

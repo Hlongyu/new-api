@@ -17,6 +17,9 @@ const (
 	QuotaLoanActive  = "active"
 	QuotaLoanSettled = "settled"
 	QuotaLoanOverdue = "overdue"
+
+	WeeklyLotterySubscriptionDays   = 7
+	WeeklyLotterySubscriptionSource = "weekly_lottery_reward"
 )
 
 type LeaderboardEntry struct {
@@ -111,21 +114,23 @@ type RenameCardOrder struct {
 func (RenameCardOrder) TableName() string { return "rename_card_orders" }
 
 type LotteryDraw struct {
-	Id                  string  `json:"id" gorm:"type:varchar(64);primaryKey"`
-	RuleVersion         int     `json:"rule_version" gorm:"uniqueIndex:idx_lottery_period_rank,priority:1;not null"`
-	PeriodKey           string  `json:"period_key" gorm:"type:varchar(16);uniqueIndex:idx_lottery_period_rank,priority:2;not null"`
-	DrawRank            int     `json:"draw_rank" gorm:"uniqueIndex:idx_lottery_period_rank,priority:3;not null"`
-	UserId              int     `json:"user_id" gorm:"index;not null"`
-	EntryId             int     `json:"entry_id" gorm:"index;not null"`
-	DisplayNameSnapshot string  `json:"display_name_snapshot" gorm:"type:varchar(128);not null"`
-	AmountUsd           float64 `json:"amount_usd" gorm:"type:decimal(20,8);not null"`
-	QuotaAmount         int     `json:"quota_amount" gorm:"not null"`
-	Status              string  `json:"status" gorm:"type:varchar(16);index;not null"`
-	ErrorMessage        string  `json:"error_message" gorm:"type:text;not null"`
-	OperatorUserId      int     `json:"operator_user_id" gorm:"not null"`
-	CreatedAt           int64   `json:"created_at" gorm:"type:bigint;not null"`
-	UpdatedAt           int64   `json:"updated_at" gorm:"type:bigint;not null"`
-	CompletedAt         int64   `json:"completed_at" gorm:"type:bigint;not null"`
+	Id                    string  `json:"id" gorm:"type:varchar(64);primaryKey"`
+	RuleVersion           int     `json:"rule_version" gorm:"uniqueIndex:idx_lottery_period_rank,priority:1;not null"`
+	PeriodKey             string  `json:"period_key" gorm:"type:varchar(16);uniqueIndex:idx_lottery_period_rank,priority:2;not null"`
+	DrawRank              int     `json:"draw_rank" gorm:"uniqueIndex:idx_lottery_period_rank,priority:3;not null"`
+	UserId                int     `json:"user_id" gorm:"index;not null"`
+	EntryId               int     `json:"entry_id" gorm:"index;not null"`
+	DisplayNameSnapshot   string  `json:"display_name_snapshot" gorm:"type:varchar(128);not null"`
+	AmountUsd             float64 `json:"amount_usd" gorm:"type:decimal(20,8);not null"`
+	QuotaAmount           int     `json:"quota_amount" gorm:"not null"`
+	SubscriptionId        int     `json:"subscription_id" gorm:"index;default:0;not null"`
+	SubscriptionExpiresAt int64   `json:"subscription_expires_at" gorm:"type:bigint;default:0;not null"`
+	Status                string  `json:"status" gorm:"type:varchar(16);index;not null"`
+	ErrorMessage          string  `json:"error_message" gorm:"type:text;not null"`
+	OperatorUserId        int     `json:"operator_user_id" gorm:"not null"`
+	CreatedAt             int64   `json:"created_at" gorm:"type:bigint;not null"`
+	UpdatedAt             int64   `json:"updated_at" gorm:"type:bigint;not null"`
+	CompletedAt           int64   `json:"completed_at" gorm:"type:bigint;not null"`
 }
 
 func (LotteryDraw) TableName() string { return "lottery_draws" }

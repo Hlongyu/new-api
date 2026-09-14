@@ -20,20 +20,22 @@ type LotteryPrize struct {
 }
 
 type LotteryDrawPayload struct {
-	Id           string  `json:"id,omitempty"`
-	RuleVersion  int     `json:"ruleVersion,omitempty"`
-	PeriodKey    string  `json:"periodKey,omitempty"`
-	Rank         int     `json:"rank,omitempty"`
-	AmountUsd    float64 `json:"amountUsd"`
-	QuotaAmount  int     `json:"quotaAmount,omitempty"`
-	Status       string  `json:"status"`
-	DisplayName  string  `json:"displayName,omitempty"`
-	CreatedAt    int64   `json:"createdAt,omitempty"`
-	UpdatedAt    int64   `json:"updatedAt,omitempty"`
-	CompletedAt  int64   `json:"completedAt"`
-	ErrorMessage string  `json:"errorMessage,omitempty"`
-	UserId       int     `json:"userId,omitempty"`
-	UserName     string  `json:"userName,omitempty"`
+	Id                    string  `json:"id,omitempty"`
+	RuleVersion           int     `json:"ruleVersion,omitempty"`
+	PeriodKey             string  `json:"periodKey,omitempty"`
+	Rank                  int     `json:"rank,omitempty"`
+	AmountUsd             float64 `json:"amountUsd"`
+	QuotaAmount           int     `json:"quotaAmount,omitempty"`
+	SubscriptionId        int     `json:"subscriptionId,omitempty"`
+	SubscriptionExpiresAt int64   `json:"subscriptionExpiresAt,omitempty"`
+	Status                string  `json:"status"`
+	DisplayName           string  `json:"displayName,omitempty"`
+	CreatedAt             int64   `json:"createdAt,omitempty"`
+	UpdatedAt             int64   `json:"updatedAt,omitempty"`
+	CompletedAt           int64   `json:"completedAt"`
+	ErrorMessage          string  `json:"errorMessage,omitempty"`
+	UserId                int     `json:"userId,omitempty"`
+	UserName              string  `json:"userName,omitempty"`
 }
 
 type LotteryOpportunityPayload struct {
@@ -459,6 +461,7 @@ func lotteryDrawPayload(draw model.LotteryDraw, includeError bool) LotteryDrawPa
 	payload := LotteryDrawPayload{
 		RuleVersion: draw.RuleVersion, PeriodKey: draw.PeriodKey, Rank: draw.DrawRank,
 		AmountUsd: draw.AmountUsd, QuotaAmount: draw.QuotaAmount, Status: draw.Status,
+		SubscriptionId: draw.SubscriptionId, SubscriptionExpiresAt: draw.SubscriptionExpiresAt,
 		DisplayName: draw.DisplayNameSnapshot, CreatedAt: draw.CreatedAt,
 		UpdatedAt: draw.UpdatedAt, CompletedAt: draw.CompletedAt,
 	}

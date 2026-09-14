@@ -58,7 +58,12 @@ import { LotteryHistoryDialog } from './lottery-history-dialog'
 function statusBadge(opportunity: LotteryOpportunity) {
   if (!opportunity.draw) return null
   if (opportunity.draw.status === 'completed') {
-    return { variant: 'secondary' as const, key: 'Claimed ${{amount}}' }
+    return {
+      variant: 'secondary' as const,
+      key: opportunity.draw.subscriptionId
+        ? '7-day subscription · ${{amount}}'
+        : 'Claimed ${{amount}}',
+    }
   }
   if (opportunity.draw.status === 'unknown') {
     return { variant: 'warning' as const, key: 'Needs review' }
@@ -230,6 +235,17 @@ export function LotteryCard({ onAwarded }: LotteryCardProps) {
       </CardHeader>
 
       <CardContent className='space-y-4'>
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Rewards are issued as subscriptions valid for 7 days after claiming.'
+          )}{' '}
+          <a
+            href='/wallet'
+            className='text-primary underline underline-offset-4'
+          >
+            {t('View reward subscriptions')}
+          </a>
+        </p>
         {showCompleted && drawResult && (
           <Alert className='border-emerald-500/35 bg-emerald-500/5'>
             <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} />
@@ -239,7 +255,13 @@ export function LotteryCard({ onAwarded }: LotteryCardProps) {
               })}
             </AlertTitle>
             <AlertDescription>
-              {t('Added to your account balance.')}
+              {drawResult.subscriptionId && drawResult.subscriptionExpiresAt
+                ? t('Reward subscription issued. Expires {{time}}.', {
+                    time: new Date(
+                      drawResult.subscriptionExpiresAt * 1000
+                    ).toLocaleString(),
+                  })
+                : t('Added to your account balance.')}
             </AlertDescription>
           </Alert>
         )}

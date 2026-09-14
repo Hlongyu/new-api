@@ -34,6 +34,8 @@ export type LotteryDraw = {
   rank?: number
   amountUsd: number
   quotaAmount?: number
+  subscriptionId?: number
+  subscriptionExpiresAt?: number
   status: LotteryDrawStatus
   displayName?: string
   createdAt?: number
@@ -53,7 +55,14 @@ export type LotteryOpportunity = {
   amountUsd?: number
   requestCount?: number
   isMe: boolean
-  draw: Pick<LotteryDraw, 'status' | 'amountUsd' | 'completedAt'> | null
+  draw: Pick<
+    LotteryDraw,
+    | 'status'
+    | 'amountUsd'
+    | 'completedAt'
+    | 'subscriptionId'
+    | 'subscriptionExpiresAt'
+  > | null
 }
 
 export type LotteryNextDraw = {

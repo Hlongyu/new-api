@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"math"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -495,8 +496,10 @@ func ListLotteryDraws(ruleVersion int) ([]LotteryDraw, error) {
 }
 
 func DrawLotteryPrize(opportunity LotteryOpportunity, amountUsd float64, quotaAmount int, now int64) (*LotteryDraw, error) {
+	if amountUsd <= 0 || math.IsNaN(amountUsd) || math.IsInf(amountUsd, 0) || quotaAmount <= 0 || quotaAmount > common.MaxQuota {
+		return nil, errors.New("invalid weekly lottery reward")
+	}
 	var saved LotteryDraw
-	var walletDelta int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var user User
 		if err := lockForUpdate(tx).Where("id = ?", opportunity.UserId).First(&user).Error; err != nil {
@@ -541,20 +544,27 @@ func DrawLotteryPrize(opportunity LotteryOpportunity, amountUsd float64, quotaAm
 			}
 			saved = draw
 		}
-		if err := tx.Model(&User{}).Where("id = ?", opportunity.UserId).
-			Update("quota", gorm.Expr("quota + ?", quotaAmount)).Error; err != nil {
+		// The draw and its seven-day reward must commit together. The user lock
+		// and unique period/rank prevent replayed requests from issuing twice.
+		subscription := UserSubscription{
+			UserId: opportunity.UserId, PlanId: 0, AmountTotal: int64(quotaAmount),
+			StartTime: now, EndTime: now + WeeklyLotterySubscriptionDays*86_400,
+			Status: "active", Source: WeeklyLotterySubscriptionSource,
+			Title: "周榜抽奖 7 天奖励订阅", PriceAmount: 0, Currency: "USD",
+			AllowWalletOverflow: true, AdminNote: "weekly_lottery_draw:" + saved.Id,
+		}
+		if err := tx.Create(&subscription).Error; err != nil {
 			return err
 		}
-		walletDelta = quotaAmount
-		return nil
+		saved.SubscriptionId = subscription.Id
+		saved.SubscriptionExpiresAt = subscription.EndTime
+		return tx.Model(&saved).Updates(map[string]interface{}{
+			"subscription_id":         saved.SubscriptionId,
+			"subscription_expires_at": saved.SubscriptionExpiresAt,
+		}).Error
 	})
 	if err != nil {
 		return nil, err
-	}
-	if common.RedisEnabled && walletDelta != 0 {
-		if err := cacheIncrUserQuota(opportunity.UserId, int64(walletDelta)); err != nil {
-			common.SysLog("failed to update user quota cache after lottery draw: " + err.Error())
-		}
 	}
 	return &saved, nil
 }

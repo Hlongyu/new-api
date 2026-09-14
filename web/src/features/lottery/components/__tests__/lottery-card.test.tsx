@@ -67,6 +67,7 @@ const { LotteryCard } = await import('../lottery-card')
 const i18n = createInstance()
 await i18n.use(initReactI18next).init({
   lng: 'en',
+  interpolation: { escapeValue: false },
   resources: { en: { translation: {} } },
 })
 
@@ -205,54 +206,80 @@ describe('weekly lottery card', () => {
 
   after(() => domWindow.close())
 
-  test('draws an eligible weekly reward with the mutation header', async () => {
-    let awarded = 0
-    apiClient.get = async (...args) => {
-      const [url] = args
-      assert.equal(url, '/api/leaderboard/lottery')
-      return { data: { success: true, data: eligiblePayload } }
-    }
-    apiClient.post = async (...args) => {
-      const [url, body, rawConfig] = args
-      assert.equal(url, '/api/leaderboard/lottery/draw')
-      assert.deepEqual(body, {})
-      assert.ok(rawConfig && typeof rawConfig === 'object')
-      const config = rawConfig as { headers: Record<string, string> }
-      assert.equal(config.headers['X-Leaderboard-Request'], '1')
-      return {
-        status: 201,
-        data: {
-          success: true,
-          data: {
-            id: 'draw-1',
-            periodKey: '2026-07-27',
-            rank: 1,
-            amountUsd: 5,
-            status: 'completed',
-            completedAt: 1_776_009_700,
-          },
-        },
+  for (const subscriptionReward of [true, false]) {
+    test(`claims ${subscriptionReward ? 'subscription' : 'legacy wallet'} reward and shows its destination`, async () => {
+      let awarded = 0
+      apiClient.get = async (...args) => {
+        const [url] = args
+        assert.equal(url, '/api/leaderboard/lottery')
+        return { data: { success: true, data: eligiblePayload } }
       }
-    }
+      apiClient.post = async (...args) => {
+        const [url, body, rawConfig] = args
+        assert.equal(url, '/api/leaderboard/lottery/draw')
+        assert.deepEqual(body, {})
+        assert.ok(rawConfig && typeof rawConfig === 'object')
+        const config = rawConfig as { headers: Record<string, string> }
+        assert.equal(config.headers['X-Leaderboard-Request'], '1')
+        return {
+          status: 201,
+          data: {
+            success: true,
+            data: {
+              id: 'draw-1',
+              periodKey: '2026-07-27',
+              rank: 1,
+              amountUsd: 5,
+              status: 'completed',
+              completedAt: 1_776_009_700,
+              ...(subscriptionReward
+                ? { subscriptionId: 123, subscriptionExpiresAt: 1_776_614_500 }
+                : {}),
+            },
+          },
+        }
+      }
 
-    const container = await renderCard(() => {
-      awarded += 1
-    })
-    const drawButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent?.includes('Draw now')
-    )
-    assert.ok(drawButton)
-
-    await act(async () => {
-      drawButton.dispatchEvent(
-        new domWindow.MouseEvent('click', { bubbles: true }) as unknown as Event
+      const container = await renderCard(() => {
+        awarded += 1
+      })
+      const drawButton = [...container.querySelectorAll('button')].find(
+        (button) => button.textContent?.includes('Draw now')
       )
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    })
+      assert.ok(drawButton)
+      assert.match(container.textContent, /valid for 7 days after claiming/)
+      assert.equal(
+        container.querySelector('a')?.getAttribute('href'),
+        '/wallet'
+      )
 
-    assert.equal(awarded, 1)
-    assert.match(container.textContent, /You won \$5/)
-  })
+      await act(async () => {
+        drawButton.dispatchEvent(
+          new domWindow.MouseEvent('click', {
+            bubbles: true,
+          }) as unknown as Event
+        )
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      assert.equal(awarded, 1)
+      assert.match(container.textContent, /You won \$5/)
+      if (subscriptionReward) {
+        assert.match(container.textContent, /Reward subscription issued/)
+        assert.ok(
+          container.textContent.includes(
+            new Date(1_776_614_500 * 1000).toLocaleString()
+          )
+        )
+        assert.doesNotMatch(
+          container.textContent,
+          /Added to your account balance/
+        )
+      } else {
+        assert.match(container.textContent, /Added to your account balance/)
+      }
+    })
+  }
 
   test('remains visible when the lottery is disabled', async () => {
     apiClient.get = async () => ({
@@ -323,5 +350,48 @@ describe('weekly lottery card', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     assert.match(document.body.textContent, /Spent \$10/)
+  })
+
+  test('shows the subscription reward and expiry in history after reopening the page', async () => {
+    const period = eligiblePayload.weeklyHistory[0]
+    const winner = period.winners[0]
+    apiClient.get = async () => ({
+      data: {
+        success: true,
+        data: {
+          ...eligiblePayload,
+          weeklyHistory: [
+            {
+              ...period,
+              winners: [
+                {
+                  ...winner,
+                  draw: {
+                    ...winner.draw,
+                    subscriptionId: 123,
+                    subscriptionExpiresAt: 1_776_614_500,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+    const container = await renderCard()
+    const historyButton = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent?.includes('View weekly history')
+    )
+    assert.ok(historyButton)
+    await act(async () => historyButton.click())
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog)
+    assert.match(dialog.textContent ?? '', /7-day subscription · \$5/)
+    assert.ok(
+      dialog.textContent?.includes(
+        new Date(1_776_614_500 * 1000).toLocaleString()
+      )
+    )
+    assert.doesNotMatch(dialog.textContent ?? '', /Claimed \$5/)
   })
 })
