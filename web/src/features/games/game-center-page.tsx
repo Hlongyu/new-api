@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Gamepad2, Play } from 'lucide-react'
+import { ExternalLink, Gamepad2, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Main } from '@/components/layout'
@@ -82,6 +82,43 @@ export function GameCenterPage() {
                 >
                   <Play data-icon='inline-start' aria-hidden='true' />
                   {t('Start Game')}
+                </Button>
+              </CardFooter>
+            </Card>
+            <Card className='gap-0 overflow-hidden py-0'>
+              <div className='aspect-4/3 overflow-hidden bg-black'>
+                <img
+                  src='/game-assets/d2r.png'
+                  alt=''
+                  width={1254}
+                  height={1254}
+                  loading='lazy'
+                  decoding='async'
+                  className='size-full object-contain'
+                />
+              </div>
+              <CardHeader className='p-5'>
+                <CardTitle className='text-lg'>{t('ECLIPSE II')}</CardTitle>
+                <CardDescription>
+                  {t(
+                    'Explore dark worlds, battle monsters, and collect epic loot.'
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardFooter className='mt-auto justify-end p-4'>
+                <Button
+                  size='lg'
+                  render={
+                    <a
+                      href='https://d2r.xxcd.top'
+                      target='_blank'
+                      rel='noopener noreferrer'
+                    />
+                  }
+                >
+                  <ExternalLink data-icon='inline-start' aria-hidden='true' />
+                  {t('Start Game')}
+                  <span className='sr-only'> ({t('Open in new tab')})</span>
                 </Button>
               </CardFooter>
             </Card>

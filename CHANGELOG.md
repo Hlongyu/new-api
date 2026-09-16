@@ -1,5 +1,26 @@
 # Changelog
 
+## [custom-v1.0.10] - 2026-09-16
+
+### Added
+
+- Added monthly wallet-consumption rebates with administrator calculation, review, and explicit issuance from subscription management. Eligible spending above $700 earns 5% of the whole month's wallet consumption; spending above $1,400 earns 10% instead. Approved rebates grant a one-year subscription without periodic quota resets.
+- Added current-month wallet, subscription, and total consumption to the personal wallet, plus a searchable, paginated administrator view that includes users with no consumption.
+- Added the ECLIPSE II game to the Game Center with its supplied artwork and an external launch link to https://d2r.xxcd.top in a new tab. Added translations for all seven supported locales.
+
+### Changed
+
+- Administrator quota grants now issue a one-year subscription instead of modifying wallet balance. The quota-grant action no longer accepts subtraction or balance overrides.
+- Subscription views now distinguish monthly rebates, weekly lottery rewards, administrator grants, and purchased plans.
+
+### Compatibility
+
+- Monthly consumption uses net funding amounts from primary-database postpaid settlement records and Beijing calendar-month boundaries. Subscription spending and violation charges do not earn rebates; historical consumption without funding-split records is not backfilled.
+- Rebate approval rechecks the reviewed bill revision and current consumption. Issuance is transactional and idempotent; later refunds or adjustments flag discrepancies for manual review rather than automatically issuing or reclaiming quota. Ambiguous legacy Midjourney refunds block issuance pending review.
+- Background reconciliation does not issue rewards automatically. Existing issued rebate snapshots remain available for auditing.
+- Added the monthly rebate table and settlement start-time index through the existing migration paths.
+- ECLIPSE II remains independently hosted with its own accounts and saves; the new entry does not integrate game authentication or billing.
+
 ## [custom-v1.0.9] - 2026-09-14
 
 ### Changed
