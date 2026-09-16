@@ -41,6 +41,7 @@ import {
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { SubscriptionOrigin } from '@/features/subscriptions/components/subscription-origin'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
 import type {
   PlanRecord,
@@ -270,7 +271,9 @@ export function SubscriptionPlansCard({
                   const remainAmount =
                     totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
                   const planTitle =
-                    planTitleMap.get(subscription?.plan_id) || ''
+                    subscription?.title ||
+                    planTitleMap.get(subscription?.plan_id) ||
+                    ''
                   const remainDays = getRemainingDays(sub)
                   const usagePercent = getUsagePercent(sub)
                   const now = Date.now() / 1000
@@ -333,6 +336,10 @@ export function SubscriptionPlansCard({
                           </span>
                         )}
                       </div>
+                      <SubscriptionOrigin
+                        subscription={subscription}
+                        fallbackTitle={planTitle}
+                      />
                       <div className='text-muted-foreground mt-1.5'>
                         {endTimeLabel}{' '}
                         {new Date(

@@ -17,17 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { MonthlyRebatesDialog } from '@/features/monthly-rebates'
 
 import { useSubscriptions } from './subscriptions-provider'
 
 export function SubscriptionsPrimaryButtons() {
   const { t } = useTranslation()
+  const [rebatesOpen, setRebatesOpen] = useState(false)
   const { setOpen, complianceConfirmed } = useSubscriptions()
   return (
     <div className='flex gap-2'>
+      <Button size='sm' variant='outline' onClick={() => setRebatesOpen(true)}>
+        {t('Monthly rebates')}
+      </Button>
+      <MonthlyRebatesDialog open={rebatesOpen} onOpenChange={setRebatesOpen} />
       <Button
         size='sm'
         onClick={() => setOpen('create')}

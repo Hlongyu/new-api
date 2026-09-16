@@ -227,6 +227,9 @@ func SetApiRouter(router *gin.Engine) {
 		subscriptionAdminRoute := apiRouter.Group("/subscription/admin")
 		subscriptionAdminRoute.Use(middleware.AdminAuth())
 		{
+			subscriptionAdminRoute.GET("/rebates", controller.AdminListMonthlyRebates)
+			subscriptionAdminRoute.POST("/rebates/recalculate", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.AdminRecalculateMonthlyRebates)
+			subscriptionAdminRoute.POST("/rebates/:id/issue", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.AdminIssueMonthlyRebate)
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
@@ -373,6 +376,8 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		dataRoute := apiRouter.Group("/data")
+		dataRoute.GET("/monthly-consumption", middleware.AdminAuth(), controller.AdminGetMonthlyConsumption)
+		dataRoute.GET("/monthly-consumption/self", middleware.UserAuth(), controller.GetSelfMonthlyConsumption)
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)

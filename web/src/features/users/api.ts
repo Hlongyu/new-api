@@ -129,7 +129,7 @@ export async function manageUser(
 }
 
 /**
- * Adjust user quota atomically (add/subtract/override)
+ * Grant an equal subscription quota valid for one year.
  */
 export async function adjustUserQuota(
   payload: ManageUserQuotaPayload

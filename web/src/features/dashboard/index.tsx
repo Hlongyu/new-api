@@ -77,6 +77,12 @@ const PERFORMANCE_MODEL_FALLBACK_KEYS = [
   'secondary-model',
 ] as const
 
+const LazyMonthlyConsumption = lazy(() =>
+  import('@/features/monthly-consumption/admin-monthly-consumption').then(
+    (module) => ({ default: module.AdminMonthlyConsumption })
+  )
+)
+
 const LazyLogStatCards = lazy(() =>
   import('./components/models/log-stat-cards').then((m) => ({
     default: m.LogStatCards,
@@ -208,6 +214,7 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
   flow: {
     titleKey: 'Flow',
   },
+  consumption: { titleKey: 'Consumption data' },
   users: {
     titleKey: 'User Analytics',
   },
@@ -270,7 +277,9 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (!['users', 'consumption'].includes(section) || isAdmin)
       ),
     [isAdmin]
   )
@@ -416,6 +425,11 @@ export function Dashboard() {
                 </Suspense>
               </FadeIn>
             </>
+          )}
+          {activeSection === 'consumption' && isAdmin && (
+            <Suspense fallback={<ModelChartsFallback />}>
+              <LazyMonthlyConsumption />
+            </Suspense>
           )}
           {activeSection === 'users' && (
             <FadeIn>

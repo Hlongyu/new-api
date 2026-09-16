@@ -210,7 +210,7 @@ type PostpaidSettlement struct {
 	ActualQuota       int    `json:"actual_quota" gorm:"not null;default:0"`
 	SubscriptionQuota int    `json:"subscription_quota" gorm:"not null;default:0"`
 	WalletQuota       int    `json:"wallet_quota" gorm:"not null;default:0"`
-	StartedAt         int64  `json:"started_at" gorm:"type:bigint;not null"`
+	StartedAt         int64  `json:"started_at" gorm:"type:bigint;not null;index:idx_postpaid_started_at"`
 	CreatedAt         int64  `json:"created_at" gorm:"type:bigint;not null"`
 	UpdatedAt         int64  `json:"updated_at" gorm:"type:bigint;not null"`
 }

@@ -1177,45 +1177,29 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleCommonUser
 	case "add_quota":
-		switch req.Mode {
-		case "add":
-			if req.Value <= 0 {
-				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
-				return
-			}
-			if err := model.IncreaseUserQuota(user.Id, req.Value, true); err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			recordManageAuditFor(c, user.Id, "user.quota_add", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
-			})
-		case "subtract":
-			if req.Value <= 0 {
-				common.ApiErrorI18n(c, i18n.MsgUserQuotaChangeZero)
-				return
-			}
-			if err := model.DecreaseUserQuota(user.Id, req.Value, true); err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			recordManageAuditFor(c, user.Id, "user.quota_subtract", map[string]interface{}{
-				"quota": logger.LogQuota(req.Value),
-			})
-		case "override":
-			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
-				common.ApiError(c, err)
-				return
-			}
-			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
-				"from": logger.LogQuota(oldQuota),
-				"to":   logger.LogQuota(req.Value),
-			})
-		default:
+		if req.Mode != "add" || req.Value <= 0 || req.Value > common.MaxQuota {
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 			return
 		}
+		now := time.Unix(model.GetDBTimestamp(), 0).UTC()
+		subscription, err := model.CreateCustomUserSubscription(user.Id, model.CustomSubscriptionGrant{
+			Title:               "管理员赠送额度",
+			StartTime:           now.Unix(),
+			EndTime:             now.AddDate(1, 0, 0).Unix(),
+			AmountTotal:         int64(req.Value),
+			ResetIntervalUnit:   model.SubscriptionResetNever,
+			AllowWalletOverflow: true,
+			GrantedBy:           c.GetInt("id"),
+		})
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		recordManageAuditFor(c, user.Id, "user.subscription_grant", map[string]interface{}{
+			"quota":           logger.LogQuota(req.Value),
+			"subscription_id": subscription.Id,
+			"end_time":        subscription.EndTime,
+		})
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"message": "",

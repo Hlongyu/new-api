@@ -159,3 +159,51 @@ func TestManageUserDeleteReturnsImmediatelyAndUnknownActionFails(t *testing.T) {
 	assert.EqualValues(t, 1, unchanged.AuthVersion)
 	assert.Equal(t, common.UserStatusEnabled, unchanged.Status)
 }
+
+func TestManageUserQuotaGrantsOneYearSubscriptionWithoutChangingWallet(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.UserSubscription{}))
+	user := model.User{Username: "grant-user", Role: common.RoleCommonUser, Quota: 1234, Group: "default"}
+	require.NoError(t, db.Create(&user).Error)
+	recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"add","value":500000}`, user.Id))
+	require.Contains(t, recorder.Body.String(), `"success":true`)
+	var subscription model.UserSubscription
+	require.NoError(t, db.Where("user_id = ?", user.Id).First(&subscription).Error)
+	assert.EqualValues(t, 500000, subscription.AmountTotal)
+	assert.Zero(t, subscription.AmountUsed)
+	assert.Equal(t, time.Unix(subscription.StartTime, 0).UTC().AddDate(1, 0, 0).Unix(), subscription.EndTime)
+	assert.Equal(t, model.SubscriptionResetNever, subscription.ResetIntervalUnit)
+	assert.Zero(t, subscription.NextResetTime)
+	assert.Equal(t, "active", subscription.Status)
+	assert.Equal(t, 9999, subscription.GrantedBy)
+	assert.True(t, subscription.AllowWalletOverflow)
+	assert.Empty(t, subscription.UpgradeGroup)
+	require.NoError(t, db.First(&user, user.Id).Error)
+	assert.Equal(t, 1234, user.Quota)
+	assert.Equal(t, "default", user.Group)
+}
+
+func TestManageUserQuotaRejectsRemovedModesAndInvalidAmounts(t *testing.T) {
+	for _, tc := range []struct {
+		name, mode string
+		value      int
+	}{
+		{"subtract", "subtract", 100}, {"override", "override", 100},
+		{"missing mode", "", 100}, {"zero", "add", 0}, {"negative", "add", -1},
+		{"overflow", "add", 2147483648},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			require.NoError(t, db.AutoMigrate(&model.UserSubscription{}))
+			user := model.User{Username: "invalid-grant", Role: common.RoleCommonUser, Quota: 1234}
+			require.NoError(t, db.Create(&user).Error)
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":%q,"value":%d}`, user.Id, tc.mode, tc.value))
+			assert.Contains(t, recorder.Body.String(), `"success":false`)
+			require.NoError(t, db.First(&user, user.Id).Error)
+			assert.Equal(t, 1234, user.Quota)
+			var count int64
+			require.NoError(t, db.Model(&model.UserSubscription{}).Count(&count).Error)
+			assert.Zero(t, count)
+		})
+	}
+}
