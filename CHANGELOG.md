@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added monthly wallet-consumption rebates with administrator calculation, review, and explicit issuance from subscription management. Eligible spending above $700 earns 5% of the whole month's wallet consumption; spending above $1,400 earns 10% instead. Approved rebates grant a one-year subscription without periodic quota resets.
+- Added monthly wallet-consumption rebates with administrator calculation, review, and explicit issuance from subscription management. Eligible spending above $750 earns 5% of the whole month's wallet consumption; spending above $1,500 earns 10% instead. Approved rebates grant a one-year subscription without periodic quota resets.
 - Added current-month wallet, subscription, and total consumption to the personal wallet, plus a searchable, paginated administrator view that includes users with no consumption.
 - Added the ECLIPSE II game to the Game Center with its supplied artwork and an external launch link to https://d2r.xxcd.top in a new tab. Added translations for all seven supported locales.
 

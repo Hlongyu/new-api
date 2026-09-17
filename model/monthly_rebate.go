@@ -73,9 +73,9 @@ func CalculateMonthlyRebate(walletQuota int64, quotaPerUSD float64) (int, int, e
 	amount := decimal.NewFromInt(walletQuota)
 	unit := decimal.NewFromFloat(quotaPerUSD)
 	rate := 0
-	if amount.GreaterThan(unit.Mul(decimal.NewFromInt(1400))) {
+	if amount.GreaterThan(unit.Mul(decimal.NewFromInt(1500))) {
 		rate = 10
-	} else if amount.GreaterThan(unit.Mul(decimal.NewFromInt(700))) {
+	} else if amount.GreaterThan(unit.Mul(decimal.NewFromInt(750))) {
 		rate = 5
 	}
 	quota, clamp := common.QuotaFromDecimalChecked(amount.Mul(decimal.NewFromInt(int64(rate))).Div(decimal.NewFromInt(100)))

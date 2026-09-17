@@ -45,12 +45,12 @@ func TestCalculateMonthlyRebateWholeMonthStrictThresholds(t *testing.T) {
 		rate, quota int
 	}{
 		{"none", 0, 0, 0},
-		{"exact lower threshold", 350000000, 0, 0},
-		{"one quota over lower threshold", 350000001, 5, 17500000},
+		{"exact lower threshold", 375000000, 0, 0},
+		{"one quota over lower threshold", 375000001, 5, 18750000},
 		{"middle tier", 500000000, 5, 25000000},
-		{"exact upper threshold", 700000000, 5, 35000000},
-		{"one quota over upper threshold", 700000001, 10, 70000000},
-		{"upper tier", 750000000, 10, 75000000},
+		{"exact upper threshold", 750000000, 5, 37500000},
+		{"one quota over upper threshold", 750000001, 10, 75000000},
+		{"upper tier", 800000000, 10, 80000000},
 		{"monthly base exceeds int32", 3000000000, 10, 300000000},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,7 +89,7 @@ func TestMonthlyRebateOnlyWalletConsumptionAndExactlyOneManualIssuance(t *testin
 	start, end, err := MonthlyRebateWindow("2026-09", now)
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&[]PostpaidSettlement{
-		{RequestId: "wallet", UserId: 1, WalletQuota: 500000000, StartedAt: start.Unix()},
+		{RequestId: "wallet", UserId: 1, WalletQuota: 550000000, StartedAt: start.Unix()},
 		{RequestId: "hybrid", UserId: 1, WalletQuota: 250000000, SubscriptionQuota: 500000000, StartedAt: start.Unix() + 1},
 		{RequestId: "subscription", UserId: 1, SubscriptionQuota: 500000000, StartedAt: start.Unix() + 2},
 		{RequestId: "before", UserId: 1, WalletQuota: 500000000, StartedAt: start.Unix() - 1},
@@ -101,19 +101,19 @@ func TestMonthlyRebateOnlyWalletConsumptionAndExactlyOneManualIssuance(t *testin
 	assert.Equal(t, 1, processed)
 	var bill MonthlyRebate
 	require.NoError(t, db.First(&bill).Error)
-	assert.EqualValues(t, 750000000, bill.WalletQuota)
+	assert.EqualValues(t, 800000000, bill.WalletQuota)
 	assert.Equal(t, MonthlyRebatePending, bill.Status)
 	var count int64
 	require.NoError(t, db.Model(&UserSubscription{}).Count(&count).Error)
 	assert.Zero(t, count, "calculation must never issue a reward")
 	granted, err := IssueMonthlyRebate(bill.Id, bill.Revision, 99, now)
 	require.NoError(t, err)
-	assert.Equal(t, 75000000, granted.IssuedQuota)
+	assert.Equal(t, 80000000, granted.IssuedQuota)
 	assert.Equal(t, 99, granted.IssuedBy)
 	require.Positive(t, granted.SubscriptionId)
 	var subscription UserSubscription
 	require.NoError(t, db.First(&subscription, granted.SubscriptionId).Error)
-	assert.EqualValues(t, 75000000, subscription.AmountTotal)
+	assert.EqualValues(t, 80000000, subscription.AmountTotal)
 	assert.Equal(t, now.AddDate(1, 0, 0).Unix(), subscription.EndTime)
 	assert.Equal(t, MonthlyRebateSubscriptionSource, subscription.Source)
 	assert.Equal(t, SubscriptionResetNever, subscription.ResetIntervalUnit)
@@ -138,7 +138,7 @@ func TestMonthlyRebateOnlyWalletConsumptionAndExactlyOneManualIssuance(t *testin
 	require.Len(t, rows, 1)
 	assert.Equal(t, "deleted", rows[0].SubscriptionStatus)
 	assert.EqualValues(t, 1, summary.Issued)
-	assert.EqualValues(t, 75000000, summary.IssuedQuota)
+	assert.EqualValues(t, 80000000, summary.IssuedQuota)
 	require.NoError(t, db.Model(&UserSubscription{}).Count(&count).Error)
 	assert.Zero(t, count)
 }
@@ -148,13 +148,13 @@ func TestMonthlyRebateRequiresReviewAfterRefundAndPreservesIssuedSnapshot(t *tes
 	now := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC)
 	start, _, err := MonthlyRebateWindow("2026-09", now)
 	require.NoError(t, err)
-	settlement := PostpaidSettlement{RequestId: "refundable", UserId: 1, WalletQuota: 750000000, StartedAt: start.Unix()}
+	settlement := PostpaidSettlement{RequestId: "refundable", UserId: 1, WalletQuota: 800000000, StartedAt: start.Unix()}
 	require.NoError(t, db.Create(&settlement).Error)
 	_, err = RecalculateMonthlyRebates("2026-09", now)
 	require.NoError(t, err)
 	var bill MonthlyRebate
 	require.NoError(t, db.First(&bill).Error)
-	// The admin reviewed 1500 USD, but a refund now reduces it to 1000 USD.
+	// The admin reviewed 1600 USD, but a refund now reduces it to 1000 USD.
 	require.NoError(t, db.Model(&settlement).Update("wallet_quota", 500000000).Error)
 	changed, err := IssueMonthlyRebate(bill.Id, bill.Revision, 99, now)
 	require.ErrorIs(t, err, ErrMonthlyRebateChanged)

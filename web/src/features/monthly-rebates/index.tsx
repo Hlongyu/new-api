@@ -105,7 +105,7 @@ export function MonthlyRebatesDialog(props: Props) {
         }}
         title={t('Monthly rebates')}
         description={t(
-          'Beijing calendar months. Wallet API consumption above 700 earns 5%; above 1,400 earns 10% on the whole month. Subscription consumption and violation fees are excluded.'
+          'Beijing calendar months. Wallet API consumption above 750 earns 5%; above 1,500 earns 10% on the whole month. Subscription consumption and violation fees are excluded.'
         )}
         contentClassName='sm:max-w-6xl'
         bodyClassName='space-y-4'
