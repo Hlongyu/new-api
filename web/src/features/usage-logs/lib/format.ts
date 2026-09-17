@@ -218,6 +218,7 @@ export function formatModelName(log: UsageLog): {
   name: string
   isMapped: boolean
   actualModel?: string
+  responseModel?: string
 } {
   const other = parseLogOther(log.other)
   const isMapped = !!(
@@ -228,6 +229,7 @@ export function formatModelName(log: UsageLog): {
 
   return {
     name: log.model_name,
+    responseModel: other?.response_model_name || undefined,
     isMapped,
     actualModel: isMapped ? other.upstream_model_name : undefined,
   }

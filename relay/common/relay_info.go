@@ -99,6 +99,7 @@ type RelayInfo struct {
 	UsePrice               bool
 	RelayMode              int
 	OriginModelName        string
+	ResponseModelName      string // Model reported by the upstream response, independent of mapping and billing.
 	RequestURLPath         string
 	RequestHeaders         map[string]string
 	ShouldIncludeUsage     bool
@@ -194,7 +195,16 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
+// RecordResponseModel preserves a model reported by an earlier stream event when
+// later events omit it. It must only receive upstream data, never a fallback.
+func (info *RelayInfo) RecordResponseModel(model string) {
+	if model = strings.TrimSpace(model); model != "" {
+		info.ResponseModelName = model
+	}
+}
+
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.ResponseModelName = ""
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)

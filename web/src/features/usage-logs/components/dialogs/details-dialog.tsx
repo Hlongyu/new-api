@@ -1068,6 +1068,27 @@ export function DetailsDialog(props: DetailsDialogProps) {
           </DetailSection>
         )}
 
+        {other?.response_model_name && (
+          <DetailRow
+            label={t('Upstream Response Model')}
+            value={
+              <div className='flex min-w-0 flex-col items-start gap-1'>
+                <span className='font-mono break-all'>
+                  {other.response_model_name}
+                </span>
+                {other.response_model_name !== props.log.model_name && (
+                  <StatusBadge
+                    label={t('Response model differs from request')}
+                    variant='orange'
+                    size='sm'
+                    copyable={false}
+                  />
+                )}
+              </div>
+            }
+          />
+        )}
+
         {/* Token breakdown (for consume/error types with token data) */}
         {isDisplayableType(props.log.type) && other && (
           <TokenBreakdown log={props.log} other={other} />

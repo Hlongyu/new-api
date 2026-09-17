@@ -31,6 +31,7 @@ import { cn } from '@/lib/utils'
 interface ModelBadgeProps {
   modelName: string
   actualModel?: string
+  responseModel?: string
   className?: string
 }
 
@@ -156,40 +157,73 @@ function ModelBadgeContent(props: ModelBadgeProps) {
 export function ModelBadge(props: ModelBadgeProps) {
   const { t } = useTranslation()
 
-  if (!props.actualModel) {
+  const responseModelDiffers =
+    !!props.responseModel && props.responseModel !== props.modelName
+
+  if (!props.actualModel && !responseModelDiffers) {
     return <ModelBadgeContent {...props} />
   }
 
   return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <button type='button' className='inline-flex items-center gap-1' />
-        }
-      >
-        <ModelBadgeContent {...props} />
-        <Route className='text-muted-foreground size-3 shrink-0' />
-      </PopoverTrigger>
-      <PopoverContent className='w-72'>
-        <div className='space-y-2'>
-          <div className='flex items-start justify-between gap-3'>
-            <span className='text-muted-foreground text-xs'>
-              {t('Request Model:')}
-            </span>
-            <span className='truncate font-mono text-xs font-medium'>
-              {props.modelName}
-            </span>
+    <div className='flex flex-col items-start gap-1'>
+      <Popover>
+        <PopoverTrigger
+          render={
+            <button type='button' className='inline-flex items-center gap-1' />
+          }
+        >
+          <ModelBadgeContent {...props} />
+          <Route className='text-muted-foreground size-3 shrink-0' />
+        </PopoverTrigger>
+        <PopoverContent className='w-72'>
+          <div className='space-y-2'>
+            <div className='flex items-start justify-between gap-3'>
+              <span className='text-muted-foreground text-xs'>
+                {t('Request Model:')}
+              </span>
+              <span className='truncate font-mono text-xs font-medium'>
+                {props.modelName}
+              </span>
+            </div>
+            {props.actualModel && (
+              <div className='flex items-start justify-between gap-3'>
+                <span className='text-muted-foreground text-xs'>
+                  {t('Actual Model:')}
+                </span>
+                <span className='truncate font-mono text-xs font-medium'>
+                  {props.actualModel}
+                </span>
+              </div>
+            )}
+            {props.responseModel && (
+              <div className='flex items-start justify-between gap-3'>
+                <span className='text-muted-foreground shrink-0 text-xs'>
+                  {t('Upstream Response Model')}
+                </span>
+                <span className='min-w-0 font-mono text-xs font-medium break-all'>
+                  {props.responseModel}
+                </span>
+              </div>
+            )}
           </div>
-          <div className='flex items-start justify-between gap-3'>
-            <span className='text-muted-foreground text-xs'>
-              {t('Actual Model:')}
-            </span>
-            <span className='truncate font-mono text-xs font-medium'>
-              {props.actualModel}
-            </span>
-          </div>
+        </PopoverContent>
+      </Popover>
+      {responseModelDiffers && (
+        <div className='flex max-w-72 flex-col gap-0.5 text-xs'>
+          <StatusBadge
+            label={t('Response model differs from request')}
+            variant='orange'
+            size='sm'
+            copyable={false}
+          />
+          <span
+            className='text-muted-foreground font-mono break-all'
+            aria-label={t('Upstream Response Model')}
+          >
+            {props.responseModel}
+          </span>
         </div>
-      </PopoverContent>
-    </Popover>
+      )}
+    </div>
   )
 }

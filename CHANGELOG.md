@@ -1,5 +1,22 @@
 # Changelog
 
+## [custom-v1.0.12] - 2026-09-17
+
+### Added
+
+- Record the model reported by upstream Chat Completions and Responses APIs, including streaming, buffered streaming, and conversions between the two protocols.
+- Show the upstream response model in request-log details for both administrators and users. When it differs from the requested model, show the returned model and a difference indicator directly in the log list.
+- Added translations for all seven supported locales and regression coverage for model capture, omitted stream fields, channel retries, user-log visibility, and matching/mismatching model display.
+
+### Changed
+
+- Matching response models preserve the original model badge without an extra icon or popover. Existing channel-mapping indicators remain available.
+
+### Compatibility
+
+- The response model is stored separately in log metadata; request models, channel mappings, and billing behavior are unchanged. No database schema migration is required.
+- Earlier logs and responses without a model remain supported without inferring a response model. Historical logs are not backfilled.
+
 ## [custom-v1.0.10] - 2026-09-16
 
 ### Added
