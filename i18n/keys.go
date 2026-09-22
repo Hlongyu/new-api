@@ -339,3 +339,9 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// User request admission limits.
+const (
+	MsgRequestConcurrencyExceeded = "request_limit.concurrency_exceeded"
+	MsgRequestLimitUnavailable    = "request_limit.unavailable"
+)
