@@ -15,7 +15,7 @@ func setupRechargeLotteryFixture(t *testing.T) *gorm.DB {
 	database, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, database.AutoMigrate(
-		&User{}, &Redemption{}, &UserSubscription{}, &CompanionMigration{},
+		&User{}, &Redemption{}, &AccountingRedemption{}, &UserSubscription{}, &CompanionMigration{},
 		&QuotaLoan{}, &QuotaLoanEvent{},
 		&RechargeLotteryCampaign{}, &RechargeLotteryPrize{},
 		&RechargeLotteryGrantBatch{}, &RechargeLotteryLedger{},

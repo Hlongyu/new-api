@@ -11,7 +11,8 @@ import (
 )
 
 func TestSearchRedemptionsFiltersAndPaginates(t *testing.T) {
-	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}))
+	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}, &AccountingRedemption{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&AccountingRedemption{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
@@ -132,7 +133,8 @@ func TestRedeemRepaysQuotaLoanBeforeCreditingWallet(t *testing.T) {
 
 func setupRedeemFixture(t *testing.T, quota int) (userId int, key string) {
 	t.Helper()
-	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}))
+	require.NoError(t, DB.AutoMigrate(&Redemption{}, &QuotaLoan{}, &QuotaLoanEvent{}, &AccountingRedemption{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&AccountingRedemption{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Unscoped().Delete(&Redemption{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoanEvent{}).Error)
 	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&QuotaLoan{}).Error)
@@ -212,4 +214,21 @@ func TestRedeemConcurrentSingleSuccess(t *testing.T) {
 	var user User
 	require.NoError(t, DB.First(&user, "id = ?", userId).Error)
 	assert.Equal(t, 300, user.Quota, "quota must be credited exactly once")
+}
+
+func TestRedeemAccountingReceiptSurvivesCodeChangesAndDuplicateAttempt(t *testing.T) {
+	userId, key := setupRedeemFixture(t, 500)
+	_, err := Redeem(key, userId)
+	require.NoError(t, err)
+	_, err = Redeem(key, userId)
+	require.Error(t, err)
+	var code Redemption
+	require.NoError(t, DB.Where("used_user_id = ?", userId).First(&code).Error)
+	require.NoError(t, DB.Model(&code).Update("quota", 900).Error)
+	require.NoError(t, code.Delete())
+	var receipts []AccountingRedemption
+	require.NoError(t, DB.Where("user_id = ?", userId).Find(&receipts).Error)
+	require.Len(t, receipts, 1)
+	assert.EqualValues(t, 500, receipts[0].Quota)
+	assert.Equal(t, code.Id, receipts[0].RedemptionId)
 }

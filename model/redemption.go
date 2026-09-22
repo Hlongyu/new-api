@@ -185,6 +185,12 @@ func Redeem(key string, userId int) (quota int, err error) {
 		if err := ApplyRechargeLotteryRedemptionTx(tx, userId, redemption.Quota, redemption.Id, redeemedAt); err != nil {
 			return err
 		}
+		if err := tx.Create(&AccountingRedemption{
+			RedemptionId: redemption.Id, UserId: userId, Quota: int64(redemption.Quota),
+			RepaidQuota: int64(repaidQuota), CreatedAt: redeemedAt,
+		}).Error; err != nil {
+			return err
+		}
 		walletCredit = redemption.Quota - repaidQuota
 		return tx.Model(&User{}).Where("id = ?", userId).Update("quota", gorm.Expr("quota + ?", walletCredit)).Error
 	})

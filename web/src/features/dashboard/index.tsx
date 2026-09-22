@@ -77,6 +77,12 @@ const PERFORMANCE_MODEL_FALLBACK_KEYS = [
   'secondary-model',
 ] as const
 
+const LazyMonthlyAccounting = lazy(() =>
+  import('@/features/monthly-accounting/monthly-accounting').then((module) => ({
+    default: module.MonthlyAccounting,
+  }))
+)
+
 const LazyMonthlyConsumption = lazy(() =>
   import('@/features/monthly-consumption/admin-monthly-consumption').then(
     (module) => ({ default: module.AdminMonthlyConsumption })
@@ -428,7 +434,10 @@ export function Dashboard() {
           )}
           {activeSection === 'consumption' && isAdmin && (
             <Suspense fallback={<ModelChartsFallback />}>
-              <LazyMonthlyConsumption />
+              <div className='space-y-8'>
+                <LazyMonthlyAccounting />
+                <LazyMonthlyConsumption />
+              </div>
             </Suspense>
           )}
           {activeSection === 'users' && (
