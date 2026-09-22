@@ -62,6 +62,7 @@ import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
+import { GroupRatioWebhook } from './group-ratio-webhook'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 
 type GroupFormValues = {
@@ -445,6 +446,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
           </SettingsForm>
         )}
       </Form>
+      <GroupRatioWebhook />
     </div>
   )
 })

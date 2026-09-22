@@ -1,8 +1,10 @@
 package model
 
 import (
+	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -189,6 +191,8 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	optionWriteMutex.Lock()
+	defer optionWriteMutex.Unlock()
 	options, _ := AllOption()
 	for _, option := range options {
 		err := updateOptionMap(option.Key, option.Value)
@@ -207,6 +211,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if isGroupRatioOption(key) {
+		return ratio_setting.CheckGroupRatio(value)
+	}
 	if key == setting.UserRequestLimitsOptionKey {
 		_, err := setting.ParseUserRequestLimits(value)
 		return err
@@ -224,7 +231,7 @@ func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
-	if key == setting.UserRequestLimitsOptionKey {
+	if key == setting.UserRequestLimitsOptionKey || isGroupRatioOption(key) {
 		return UpdateOptionsBulk(map[string]string{key: value})
 	}
 	// Save to database first
@@ -242,12 +249,30 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+var optionWriteMutex sync.Mutex
+
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
 // transaction, then dispatches them through updateOptionMap in one pass. If
 // any DB write fails the whole transaction rolls back and no in-memory state
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
+	optionWriteMutex.Lock()
+	defer optionWriteMutex.Unlock()
+	normalized := make(map[string]string, len(values)+1)
+	for k, v := range values {
+		normalized[k] = v
+	}
+	values = normalized
+	if alias, ok := values[groupRatioAlias]; ok {
+		if canonical, exists := values["GroupRatio"]; exists && canonical != alias {
+			return errors.New("conflicting group ratio options")
+		}
+		values["GroupRatio"] = alias
+	}
+	if raw, ok := values["GroupRatio"]; ok {
+		values[groupRatioAlias] = raw
+	}
 	if len(values) == 0 {
 		return nil
 	}
@@ -257,6 +282,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 		}
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		if raw, ok := values["GroupRatio"]; ok {
+			if err := persistGroupRatioEvent(tx, raw); err != nil {
+				return err
+			}
+		}
 		for k, v := range values {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {

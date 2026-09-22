@@ -256,6 +256,10 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute.Use(middleware.RootAuth())
 		{
 			optionRoute.GET("/", controller.GetOptions)
+			optionRoute.GET("/group-ratio-webhook", controller.GetGroupRatioWebhook)
+			optionRoute.PUT("/group-ratio-webhook", controller.SaveGroupRatioWebhook)
+			optionRoute.GET("/group-ratio-webhook/deliveries", controller.ListGroupRatioWebhookDeliveries)
+			optionRoute.POST("/group-ratio-webhook/deliveries/:id/retry", controller.RetryGroupRatioWebhook)
 			optionRoute.PUT("/", controller.UpdateOption)
 			optionRoute.POST("/payment_compliance", controller.ConfirmPaymentCompliance)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
