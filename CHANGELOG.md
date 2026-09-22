@@ -1,5 +1,24 @@
 # Changelog
 
+## [custom-v1.0.13] - 2026-09-22
+
+### Added
+
+- Added administrator monthly accounting with immutable redemption receipts, monthly wallet-balance snapshots, and paginated per-user snapshot details. Reports distinguish consumption income from booked income and apply a one-time opening-balance reversal to October 2026 without changing user balances.
+- Added per-user concurrent-request and rolling-window rate limits under System Settings → Security. Policies follow the user's group, with a default request pool and optional isolated Key-group pools; multiple Keys in the same pool share that user's limits.
+- Added translations for all seven supported locales and regression coverage for monthly accounting, request-limit configuration and enforcement, and editing users with negative balances.
+
+### Fixed
+
+- Administrators can now save group and profile changes for users with negative wallet balances. The read-only balance no longer fails non-negative form validation, and profile updates do not submit or overwrite wallet balances.
+
+### Compatibility
+
+- Monthly accounting starts at midnight Beijing time on October 1, 2026; the November 1 snapshot completes the first October report. Upgrade all nodes and complete database migrations before the cutover, keep a primary node running, and disable delayed batch balance updates. New receipt, snapshot, and snapshot-detail tables use the existing migration paths; historical receipts and missed snapshots are not backfilled.
+- Accounting assumes paid redemption codes are the source of wallet funding and one displayed balance unit represents CNY 1. Missing, late, or otherwise flagged snapshots require review; TOKENS display mode does not create financial snapshots. See [monthly accounting](docs/monthly-accounting.md) for the income formula and reconciliation requirements.
+- Existing model rate limits remain active until the new request-limit policy is first saved. Saving the new policy replaces those legacy limits; saving an empty policy explicitly disables the new limits. Other API/IP limits remain independent.
+- Request limits use local counters without Redis and require shared Redis across multiple instances. Exceeded limits return HTTP 429; an unavailable shared counter returns HTTP 503. Streaming requests retain concurrency slots until completion, while asynchronous tasks occupy slots only during HTTP handling. See [user request limits](docs/user-request-limits.md) for pool selection and deployment details.
+
 ## [custom-v1.0.12] - 2026-09-17
 
 ### Added
