@@ -24,9 +24,9 @@ func TestMonthlyRecapMergesGroupsAndEnforcesSelfScope(t *testing.T) {
 	start, end, err := model.BeijingConsumptionWindow("2025-01")
 	require.NoError(t, err)
 	logs := []model.Log{
-		{UserId: 1, Group: "gpt-pro", ModelName: "a", CreatedAt: start.Unix(), Type: model.LogTypeConsume, PromptTokens: 100, CompletionTokens: 20, Quota: 25, Other: `{"cache_tokens":40,"group_ratio":0.25}`},
-		{UserId: 1, Group: "gpt优惠", ModelName: "a", CreatedAt: start.Unix() + 86400, Type: model.LogTypeConsume, PromptTokens: 200, CompletionTokens: 30, Quota: 40, Other: `{"cache_tokens":100,"group_ratio":0.1}`},
-		{UserId: 1, Group: "gpt-pro", ModelName: "b", CreatedAt: start.Unix() + 172800, Type: model.LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 10, Other: `{"claude":true,"cache_tokens":20,"cache_creation_tokens":5,"group_ratio":0.5}`},
+		{UserId: 1, Group: "gpt-pro", ModelName: "a", CreatedAt: start.Unix(), Type: model.LogTypeConsume, PromptTokens: 100, CompletionTokens: 20, Quota: 25, Other: `{"cache_tokens":40,"group_ratio":0.25,"model_ratio":1,"completion_ratio":0,"cache_ratio":1}`},
+		{UserId: 1, Group: "gpt优惠", ModelName: "a", CreatedAt: start.Unix() + 86400, Type: model.LogTypeConsume, PromptTokens: 200, CompletionTokens: 30, Quota: 40, Other: `{"cache_tokens":100,"group_ratio":0.1,"model_ratio":2,"completion_ratio":0,"cache_ratio":1}`},
+		{UserId: 1, Group: "gpt-pro", ModelName: "b", CreatedAt: start.Unix() + 172800, Type: model.LogTypeConsume, PromptTokens: 10, CompletionTokens: 5, Quota: 10, Other: `{"claude":true,"cache_tokens":20,"cache_creation_tokens":5,"group_ratio":0.5,"model_ratio":1,"completion_ratio":2,"cache_ratio":0,"cache_creation_ratio":0}`},
 		{UserId: 1, Group: "gpt-pro", CreatedAt: start.Unix() + 172800, Type: model.LogTypeError},
 		{UserId: 2, Group: "gpt-pro", ModelName: "private-model", CreatedAt: start.Unix(), Type: model.LogTypeConsume, Quota: 999999},
 		{UserId: 1, Group: "other", ModelName: "excluded-model", CreatedAt: start.Unix(), Type: model.LogTypeConsume, Quota: 999999},
@@ -71,7 +71,7 @@ func TestMonthlyRecapMergesGroupsAndEnforcesSelfScope(t *testing.T) {
 	assert.NotContains(t, recorder.Body.String(), "private-model")
 }
 
-func TestMonthlyRecapDisclosesMissingHistoryAndDoesNotPriceZeroDiscounts(t *testing.T) {
+func TestMonthlyRecapDisclosesMissingHistoryAndMissingPrices(t *testing.T) {
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	db := setupModelListControllerTestDB(t)
@@ -339,4 +339,52 @@ func TestMonthlyRecapSnapshotRejectsStaleLeaseWriter(t *testing.T) {
 	got, err := model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) { t.Fatal("must read the winner's saved result"); return "", nil })
 	require.NoError(t, err)
 	assert.Equal(t, "new-result", got)
+}
+
+func TestMonthlyRecapLegacySnapshotGetsHonorOnlyOnRebuild(t *testing.T) {
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
+	start, end, err := model.BeijingConsumptionWindow("2025-01")
+	require.NoError(t, err)
+	legacy := service.MonthlyRecap{Period: "2025-01", RuleVersion: 1, RecapMetrics: service.RecapMetrics{Requests: 1, PricedRequests: 1, Quota: 14, OriginalQuota: 100}}
+	payload, err := common.Marshal(legacy)
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.MonthlyRecapSnapshot{UserID: 1, Period: "2025-01", RuleVersion: 1, Payload: string(payload)}).Error)
+	saved, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, end, false)
+	require.NoError(t, err)
+	assert.Nil(t, saved.Honor)
+	require.NoError(t, db.Create(&model.Log{UserId: 1, Group: "gpt-pro", CreatedAt: start.Unix(), Type: model.LogTypeConsume, Quota: 14, PromptTokens: 100, Other: `{"group_ratio":0.14,"model_ratio":1}`}).Error)
+	rebuilt, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, end, true)
+	require.NoError(t, err)
+	require.NotNil(t, rebuilt.Honor)
+	assert.Equal(t, "awarded", rebuilt.Honor.Status)
+	require.NoError(t, db.Migrator().DropTable(&model.Log{}))
+	saved, err = service.GetSavedMonthlyRecap(context.Background(), 1, start, end, end.Add(time.Hour), false)
+	require.NoError(t, err)
+	assert.Equal(t, rebuilt.Honor, saved.Honor)
+}
+
+func TestMonthlyRecapFreeUsageContributesToOriginalPrice(t *testing.T) {
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
+	start, end, err := model.BeijingConsumptionWindow("2025-01")
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 1, Group: "gpt-pro", CreatedAt: start.Unix(), Type: model.LogTypeConsume, PromptTokens: 100, Quota: 25, Other: `{"model_ratio":1,"group_ratio":0.25}`},
+		{UserId: 1, Group: "gpt优惠", CreatedAt: start.Unix(), Type: model.LogTypeConsume, PromptTokens: 100, Quota: 0, Other: `{"model_ratio":1,"group_ratio":0}`},
+	}).Error)
+	recap, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, end, false)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, recap.PricedRequests)
+	assert.EqualValues(t, 200, recap.OriginalQuota)
+	assert.EqualValues(t, 25, recap.Quota)
+	assert.Equal(t, 2, recap.PricingVersion)
+	require.NotNil(t, recap.Honor)
+	assert.Equal(t, "value_connoisseur", recap.Honor.Code)
+	require.NotNil(t, recap.Honor.EffectiveRatio)
+	assert.Equal(t, 0.125, *recap.Honor.EffectiveRatio)
 }

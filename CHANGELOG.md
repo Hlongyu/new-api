@@ -1,5 +1,26 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added eight monthly honor titles and five achievement badges. Each complete recap awards one main title and up to two badges using recorded usage, with decisions and supporting metrics persisted in the snapshot. Value Connoisseur takes priority when the unrounded monthly multiplier is strictly below 0.15 against a 0.25 baseline.
+- Added honor details to the recap and the main title to downloadable keepsake posters, with translations for all seven locales. See [monthly recap rules](docs/monthly-recap.md).
+
+### Changed
+
+- Aligned monthly recaps with the main application's page layout, typography, cards, and theme variables. Light and dark modes now follow the site theme, with compact desktop columns and a single-column mobile layout.
+
+### Fixed
+
+- Calculate the estimated 1.0-rate reference price directly from historical base unit prices and token usage, including cache reads/writes and recorded tool fees, instead of dividing charged quota by the group ratio. Zero-rate requests now contribute to the reference price when historical pricing is available.
+- Use recorded expression tiers, legacy token-price ratios, or per-call prices without consulting current price settings. Group discounts and request speed multipliers are excluded from the base reference price. Ambiguous tiers, unavailable dynamic prices, and unsupported usage details remain explicitly unpriced.
+
+### Compatibility
+
+- Existing snapshots are preserved and display a legacy-pricing notice. Administrators must explicitly recalculate them to apply `pricing_version=2` and evaluate honors; rebuilding requires retained logs. No database schema change or balance adjustment is involved.
+- Verified pricing boundaries, free usage, cache and tool charges, snapshot persistence, honor priorities, and frontend rendering/export behavior. Frontend type checks, lint, production build, and the backend build passed.
+
 ## [custom-v1.0.15] - 2026-09-30
 
 ### Changed

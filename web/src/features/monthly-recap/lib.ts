@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
+
 import type { MonthlyRecap } from './types'
 
 export function beijingMonth(date = new Date()): string {
@@ -106,6 +108,7 @@ export function recapPoster(
   name: string,
   labels: {
     title: string
+    honor?: string
     requests: string
     days: string
     favorite: string
@@ -121,22 +124,59 @@ export function recapPoster(
       .replaceAll("'", '&apos;')
   const favorite = data.models[0]?.name ?? '—'
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1440" viewBox="0 0 1080 1440" role="img" aria-label="${escape(labels.title)}">
-  <rect width="1080" height="1440" fill="#12261f"/>
-  <g fill="none" stroke="#c6ef82" stroke-opacity=".22" stroke-width="2">
+  <rect width="1080" height="1440" fill="#fafafa"/>
+  <g fill="none" stroke="#27272a" stroke-opacity=".22" stroke-width="2">
   ${[260, 290, 320, 350, 380, 410].map((r) => `<circle cx="880" cy="270" r="${r}"/>`).join('')}</g>
-  <g font-family="Arial, sans-serif" fill="#f4f3e9">
+  <g font-family="Arial, sans-serif" fill="#18181b">
   <text x="80" y="105" font-size="25" letter-spacing="5">new-api / MONTHLY RECAP</text>
   <text x="80" y="245" font-size="100" font-weight="700">${escape(data.period)}</text>
   <text x="80" y="330" font-size="38">${escape(name.slice(0, 24))}</text>
   <text x="80" y="440" font-size="48">${escape(labels.title)}</text>
-  <text x="70" y="690" font-size="145" fill="#c6ef82" font-weight="700">${data.requests.toLocaleString('en-US')}</text>
+  <text x="70" y="690" font-size="145" fill="#27272a" font-weight="700">${data.requests.toLocaleString('en-US')}</text>
   <text x="80" y="755" font-size="32">${escape(labels.requests)}</text>
-  <path d="M80 825H1000" stroke="#f4f3e9" stroke-opacity=".3"/>
+  <path d="M80 825H1000" stroke="#18181b" stroke-opacity=".3"/>
   <text x="80" y="940" font-size="70">${data.active_days}</text>
   <text x="80" y="995" font-size="29">${escape(labels.days)}</text>
   <text x="80" y="1120" font-size="45">${escape(favorite.slice(0, 35))}</text>
   <text x="80" y="1175" font-size="29">${escape(labels.favorite)}</text>
+  ${labels.honor ? `<text x="80" y="1250" font-size="32" fill="#27272a">${escape(labels.honor)}</text>` : ''}
   <text x="80" y="1310" font-size="23">${escape(labels.scope)}</text>
   <text x="80" y="1360" font-size="20" opacity=".7">new-api · QuantumNous</text>
   </g></svg>`
+}
+
+export function recapHonorTitle(
+  code: string | undefined,
+  t: TFunction
+): string {
+  switch (code) {
+    case 'value_connoisseur':
+      return t('Value Connoisseur')
+    case 'evergreen':
+      return t('Monthly Evergreen')
+    case 'explorer':
+      return t('Model Explorer')
+    case 'trusted_partner':
+      return t('Trusted Partner')
+    case 'night_owl':
+      return t('Night Wanderer')
+    case 'morning_companion':
+      return t('Morning Companion')
+    case 'practitioner':
+      return t('Idea Practitioner')
+    case 'spark_collector':
+      return t('Spark Collector')
+    case 'full_attendance':
+      return t('Every Day Together')
+    case 'fortnight':
+      return t('Fourteen Days Unbroken')
+    case 'thousand_echoes':
+      return t('A Thousand Echoes')
+    case 'context_harmony':
+      return t('Context Harmony')
+    case 'versatile':
+      return t('Versatile Explorer')
+    default:
+      return ''
+  }
 }

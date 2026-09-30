@@ -293,3 +293,64 @@ test('admin confirms a rebuild with the displayed month and user before refreshi
   assert.equal(writes, 1)
   assert.ok(reads >= 2)
 })
+
+test('honors display saved award evidence and explain legacy or ineligible snapshots', async () => {
+  const variants = [
+    { honor: undefined, expected: 'This snapshot predates honors.' },
+    {
+      honor: {
+        rule_version: 1,
+        status: 'awarded',
+        code: 'value_connoisseur',
+        baseline: 0.25,
+        threshold: 0.15,
+        effective_ratio: 0.14,
+        savings_fraction: 0.44,
+      },
+      expected: '44%',
+    },
+    {
+      honor: {
+        rule_version: 1,
+        status: 'awarded',
+        code: 'explorer',
+        deep_models: 4,
+        badges: ['thousand_echoes'],
+        baseline: 0.25,
+        threshold: 0.15,
+        effective_ratio: 0.15,
+      },
+      expected: 'Model Explorer',
+    },
+    {
+      honor: {
+        rule_version: 1,
+        status: 'unavailable',
+        baseline: 0.25,
+        threshold: 0.15,
+      },
+      expected: 'Complete monthly usage records are needed',
+    },
+  ]
+  let selected = variants[0]
+  api.defaults.adapter = async (config) => ({
+    config,
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    data: { success: true, data: { ...recapFixture, honor: selected.honor } },
+  })
+  const page = await renderPage()
+  for (const variant of variants) {
+    selected = variant
+    await act(async () => {
+      await client?.invalidateQueries({ queryKey: ['monthly-recap'] })
+    })
+    const chapter = page.querySelector('#honor')
+    assert.ok(chapter?.textContent?.includes(variant.expected))
+    assert.equal(
+      !!chapter?.querySelector('.recap-honor-seal'),
+      variant.honor?.status === 'awarded'
+    )
+  }
+})

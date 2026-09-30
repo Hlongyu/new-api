@@ -41,7 +41,26 @@ export interface RecapUser {
   display_name: string
 }
 
+export interface RecapHonor {
+  active_days?: number
+  longest_streak?: number
+  deep_models?: number
+  dominant_model?: string
+  dominant_share?: number
+  night_share?: number
+  morning_share?: number
+  badges?: string[]
+  rule_version: number
+  status: 'awarded' | 'unavailable'
+  code?: string
+  baseline: number
+  threshold: number
+  effective_ratio?: number
+  savings_fraction?: number
+}
 export interface MonthlyRecap extends RecapMetrics {
+  honor?: RecapHonor
+  pricing_version?: number
   subject?: RecapUser
   period: string
   as_of: number

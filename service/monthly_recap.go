@@ -23,7 +23,8 @@ type RecapMetrics struct {
 }
 
 type RecapModel struct {
-	Name string `json:"name"`
+	ActiveDays int    `json:"active_days"`
+	Name       string `json:"name"`
 	RecapMetrics
 }
 
@@ -35,13 +36,15 @@ type RecapDay struct {
 }
 
 type MonthlyRecap struct {
-	RuleVersion int                     `json:"rule_version"`
-	Subject     *model.MonthlyRecapUser `json:"subject,omitempty"`
-	Period      string                  `json:"period"`
-	AsOf        int64                   `json:"as_of"`
-	InProgress  bool                    `json:"in_progress"`
-	Groups      []string                `json:"groups"`
-	QuotaPerUSD float64                 `json:"quota_per_usd"`
+	PricingVersion int                     `json:"pricing_version,omitempty"`
+	Honor          *RecapHonor             `json:"honor,omitempty"`
+	RuleVersion    int                     `json:"rule_version"`
+	Subject        *model.MonthlyRecapUser `json:"subject,omitempty"`
+	Period         string                  `json:"period"`
+	AsOf           int64                   `json:"as_of"`
+	InProgress     bool                    `json:"in_progress"`
+	Groups         []string                `json:"groups"`
+	QuotaPerUSD    float64                 `json:"quota_per_usd"`
 	RecapMetrics
 	Models            []RecapModel `json:"models"`
 	Days              []RecapDay   `json:"days"`
@@ -54,15 +57,16 @@ type MonthlyRecap struct {
 	UnreadableUsage   int64        `json:"unreadable_usage"`
 }
 
-// OriginalQuota is a historical estimate before the group discount, preserving
-// request multipliers and tool charges. Unknown/zero discounts are not treated
-// as free original pricing. Only aggregate metrics are returned to the caller.
+// OriginalQuota sums historical base unit prices against normalized usage,
+// independently of paid charges. Only aggregate metrics are returned.
 func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, end, now time.Time) (*MonthlyRecap, error) {
 	result := &MonthlyRecap{Period: start.Format("2006-01"), AsOf: now.Unix(), InProgress: now.Before(end), Groups: groups, QuotaPerUSD: common.QuotaPerUnit, Models: []RecapModel{}, Days: []RecapDay{}}
 	for day := start; day.Before(end); day = day.AddDate(0, 0, 1) {
 		result.Days = append(result.Days, RecapDay{Date: day.Format("2006-01-02")})
 	}
 	models := make(map[string]*RecapModel)
+	modelDays := make(map[string]map[int]bool)
+	priceCache := make(map[string]recapPriceExpression)
 	// Compare only closed hourly buckets: the current bucket can be flushed
 	// after the log read and must not look like missing historical records.
 	historyEnd := min(end.Unix(), now.Truncate(time.Hour).Unix())
@@ -75,17 +79,7 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 		if log.CreatedAt < historyEnd {
 			retainedHistorical++
 		}
-		var other struct {
-			InputTotal    int64    `json:"input_tokens_total"`
-			CacheRead     int64    `json:"cache_tokens"`
-			CacheWrite    int64    `json:"cache_write_tokens"`
-			CacheCreation int64    `json:"cache_creation_tokens"`
-			Cache5m       int64    `json:"cache_creation_tokens_5m"`
-			Cache1h       int64    `json:"cache_creation_tokens_1h"`
-			Claude        bool     `json:"claude"`
-			Semantic      string   `json:"usage_semantic"`
-			GroupRatio    *float64 `json:"group_ratio"`
-		}
+		var other recapLogMetadata
 		parsed := log.Other != "" && common.UnmarshalJsonStr(log.Other, &other) == nil
 		if !parsed {
 			result.UnreadableUsage++
@@ -103,6 +97,8 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 			entry = &RecapModel{Name: log.ModelName}
 			models[log.ModelName] = entry
 		}
+		original, priced := recapOriginalQuota(other, input, output, read, write, priceCache)
+		priced = priced && parsed
 		for _, metrics := range []*RecapMetrics{&result.RecapMetrics, &entry.RecapMetrics} {
 			metrics.Requests++
 			metrics.InputTokens += input
@@ -110,15 +106,16 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 			metrics.CacheReadTokens += read
 			metrics.CacheWriteTokens += write
 			metrics.Quota += int64(log.Quota)
-			if parsed && other.GroupRatio != nil && *other.GroupRatio > 0 && log.Quota >= 0 {
-				original := float64(log.Quota) / *other.GroupRatio
-				if !math.IsNaN(original) && !math.IsInf(original+metrics.OriginalQuota, 0) {
-					metrics.OriginalQuota += original
-					metrics.PricedRequests++
-				}
+			if priced && !math.IsInf(original+metrics.OriginalQuota, 0) {
+				metrics.OriginalQuota += original
+				metrics.PricedRequests++
 			}
 		}
 		at := time.Unix(log.CreatedAt, 0).In(start.Location())
+		if modelDays[log.ModelName] == nil {
+			modelDays[log.ModelName] = make(map[int]bool)
+		}
+		modelDays[log.ModelName][at.Day()] = true
 		day := &result.Days[at.Day()-1]
 		day.Requests++
 		day.Tokens += input + output
@@ -141,6 +138,7 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 		result.LongestStreak = max(result.LongestStreak, streak)
 	}
 	for _, entry := range models {
+		entry.ActiveDays = len(modelDays[entry.Name])
 		result.Models = append(result.Models, *entry)
 	}
 	sort.Slice(result.Models, func(i, j int) bool {
@@ -154,6 +152,7 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 		return nil, err
 	}
 	result.HistoryIncomplete = recorded > retainedHistorical
+	result.Honor = EvaluateMonthlyRecapHonor(result)
 	return result, nil
 }
 
@@ -170,6 +169,7 @@ func GetSavedMonthlyRecap(ctx context.Context, userID int, start, end, now time.
 			return "", err
 		}
 		recap.RuleVersion = version
+		recap.PricingVersion = 2
 		data, err := common.Marshal(recap)
 		return string(data), err
 	})

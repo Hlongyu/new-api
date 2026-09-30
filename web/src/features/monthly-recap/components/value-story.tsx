@@ -21,9 +21,16 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 
-import { downloadRecap, recapCSV, recapPoster, recapRatio } from '../lib'
+import {
+  downloadRecap,
+  recapCSV,
+  recapPoster,
+  recapRatio,
+  recapHonorTitle,
+} from '../lib'
 import type { MonthlyRecap } from '../types'
 import { Chapter } from './chapter'
+import { HonorStory } from './honor-story'
 
 export function ValueStory(props: { data: MonthlyRecap; name: string }) {
   const { t, i18n } = useTranslation()
@@ -70,7 +77,7 @@ export function ValueStory(props: { data: MonthlyRecap; name: string }) {
         </div>
         <p className='recap-footnote'>
           {t(
-            'Estimated from historical charges before group discounts, including speed and tool fees. USD credit equivalents, not cash payments or an invoice.'
+            'Calculated from historical base unit prices and token usage, plus recorded tool fees. Group discounts and request multipliers are excluded. USD credit equivalents, not cash payments.'
           )}
         </p>
         {!hasOriginal && (
@@ -113,15 +120,19 @@ export function ValueStory(props: { data: MonthlyRecap; name: string }) {
           </div>
         </details>
       </Chapter>
+      <HonorStory data={data} />
       <Chapter
         id='keepsake'
-        number='05'
+        number='06'
         label={t('One month. Your signature.')}
       >
         <h2 id='keepsake-heading'>{t('Keep this chapter.')}</h2>
         <div className='recap-keepsake'>
           <p className='recap-eyebrow'>new-api / {data.period}</p>
           <h3>{props.name}</h3>
+          {data.honor?.status === 'awarded' && (
+            <p>{recapHonorTitle(data.honor?.code, t)}</p>
+          )}
           <p className='recap-keepsake-number'>
             {number.format(data.requests)}
           </p>
@@ -145,6 +156,10 @@ export function ValueStory(props: { data: MonthlyRecap; name: string }) {
               downloadRecap(
                 recapPoster(data, props.name, {
                   title: t('Your monthly recap'),
+                  honor:
+                    data.honor?.status === 'awarded'
+                      ? recapHonorTitle(data.honor.code, t)
+                      : undefined,
                   requests: t('Requests'),
                   days: t('Active days'),
                   favorite: t('Most used model'),

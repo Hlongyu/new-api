@@ -50,6 +50,7 @@ test('CSV exports exact counts and protects model names against formula executio
 test('keepsake escapes names and excludes billing data', () => {
   const poster = recapPoster(recapFixture, '<script>alert(1)</script>', {
     title: 'Recap',
+    honor: '<Value Connoisseur>',
     requests: 'Requests',
     days: 'Days',
     favorite: 'Favorite',
@@ -58,6 +59,7 @@ test('keepsake escapes names and excludes billing data', () => {
   assert.ok(!poster.includes('<script>'))
   assert.ok(poster.includes('&lt;script&gt;'))
   assert.ok(poster.includes('gpt-test'))
+  assert.ok(poster.includes('&lt;Value Connoisseur&gt;'))
   assert.ok(!poster.includes('original_quota'))
   assert.ok(!poster.includes('$'))
 })

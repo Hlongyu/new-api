@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { Button } from '@/components/ui/button'
 import {
   Empty,
@@ -83,11 +84,13 @@ export function MonthlyRecapPage() {
     timeZone: 'UTC',
   }).format(new Date(`${month}-01T00:00:00Z`))
   return (
-    <main id='main' className='monthly-recap' key={month}>
-      <header className='recap-toolbar'>
+    <SectionPageLayout>
+      <SectionPageLayout.Title>
         <span className='recap-wordmark'>
           new-api <span>/ {t('Monthly recap')}</span>
         </span>
+      </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
         <div className='recap-month-control'>
           <Button
             variant='ghost'
@@ -128,122 +131,147 @@ export function MonthlyRecapPage() {
             →
           </Button>
         </div>
-      </header>
-      {isAdmin && user && (
-        <AdminRecapBrowser
-          viewerId={user.id}
-          selected={selectedUser}
-          onSelect={setSelectedUser}
-        />
-      )}
-      <div className='recap-notice'>
-        {t('Recaps open next month and are saved on first viewing.')}
-        {isAdmin && user && (
-          <RebuildRecap
-            key={`${targetId ?? user.id}-${month}`}
-            userId={targetId ?? user.id}
-            month={month}
-            name={
-              selectedUser?.display_name ||
-              selectedUser?.username ||
-              user.display_name ||
-              user.username
-            }
-          />
-        )}
-      </div>
-      {query.isPending && (
-        <div className='recap-state' role='status'>
-          <p>{t('Putting your month together…')}</p>
-          <Skeleton className='mt-8 h-20 w-3/4' />
-          <Skeleton className='mt-4 h-10 w-1/2' />
-        </div>
-      )}
-      {query.isError && (
-        <div className='recap-state' role='alert'>
-          <h1>{t('Could not load your recap')}</h1>
-          <p>{t('Please try again.')}</p>
-          <Button onClick={() => void query.refetch()}>{t('Retry')}</Button>
-        </div>
-      )}
-      {data && (data.history_incomplete || data.unreadable_usage > 0) && (
-        <div className='recap-notice' role='status'>
-          {t(
-            'Some historical details are missing. This recap covers retained records only.'
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <div className='monthly-recap' key={month}>
+          {isAdmin && user && (
+            <AdminRecapBrowser
+              viewerId={user.id}
+              selected={selectedUser}
+              onSelect={setSelectedUser}
+            />
+          )}
+          <div className='recap-notice'>
+            {t('Recaps open next month and are saved on first viewing.')}
+            {isAdmin && user && (
+              <RebuildRecap
+                key={`${targetId ?? user.id}-${month}`}
+                userId={targetId ?? user.id}
+                month={month}
+                name={
+                  selectedUser?.display_name ||
+                  selectedUser?.username ||
+                  user.display_name ||
+                  user.username
+                }
+              />
+            )}
+          </div>
+          {query.isPending && (
+            <div className='recap-state' role='status'>
+              <p>{t('Putting your month together…')}</p>
+              <Skeleton className='mt-8 h-20 w-3/4' />
+              <Skeleton className='mt-4 h-10 w-1/2' />
+            </div>
+          )}
+          {query.isError && (
+            <div className='recap-state' role='alert'>
+              <h1>{t('Could not load your recap')}</h1>
+              <p>{t('Please try again.')}</p>
+              <Button onClick={() => void query.refetch()}>{t('Retry')}</Button>
+            </div>
+          )}
+          {data && data.pricing_version !== 2 && (
+            <div className='recap-notice' role='status'>
+              {t(
+                'This saved recap uses an earlier price calculation. An administrator can recalculate it using historical unit prices.'
+              )}
+            </div>
+          )}
+          {data && (data.history_incomplete || data.unreadable_usage > 0) && (
+            <div className='recap-notice' role='status'>
+              {t(
+                'Some historical details are missing. This recap covers retained records only.'
+              )}
+            </div>
+          )}
+          {data && data.requests === 0 && (
+            <Empty className='recap-state'>
+              <EmptyHeader>
+                <EmptyTitle>{t('A new chapter is waiting.')}</EmptyTitle>
+                <EmptyDescription>
+                  {t(
+                    'No recorded usage in the selected groups this month. Try another month.'
+                  )}
+                </EmptyDescription>
+              </EmptyHeader>
+              <p>
+                {dateLabel} · {data.groups.join(' + ')}
+              </p>
+            </Empty>
+          )}
+          {data && data.requests > 0 && (
+            <>
+              <section className='recap-hero' aria-labelledby='recap-title'>
+                <div className='recap-hero-copy'>
+                  <p className='recap-eyebrow'>
+                    {dateLabel}{' '}
+                    <span>
+                      —{' '}
+                      {data.in_progress
+                        ? t('Month in progress')
+                        : t('Monthly recap')}
+                    </span>
+                  </p>
+                  <p className='recap-greeting'>
+                    {t('For {{name}}', { name })}
+                  </p>
+                  <h1 id='recap-title'>{t('A month of possibilities.')}</h1>
+                  <p className='recap-hero-description'>
+                    {t('Your models. Your rhythm. Your story.')}
+                  </p>
+                  <a className='recap-start' href='#models'>
+                    {t('Play your month')} <span aria-hidden='true'>↗</span>
+                  </a>
+                </div>
+                <div
+                  className='recap-record recap-record-hero'
+                  aria-hidden='true'
+                >
+                  <div>
+                    <span>{month.slice(0, 4)}</span>
+                    <strong>{month.slice(5)}</strong>
+                    <span>new-api</span>
+                  </div>
+                </div>
+                <div className='recap-hero-meta'>
+                  <span>{data.groups.join(' + ')}</span>
+                  <span>
+                    {t('Updated {{time}}', {
+                      time: new Intl.DateTimeFormat(
+                        toIntlLocale(i18n.language),
+                        {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          timeZone: 'Asia/Shanghai',
+                        }
+                      ).format(new Date(data.as_of * 1000)),
+                    })}{' '}
+                    · {t('Beijing time')}
+                  </span>
+                </div>
+              </section>
+              <nav
+                className='recap-chapter-nav'
+                aria-label={t('Recap chapters')}
+              >
+                <a href='#models'>{t('Models')}</a>
+                <a href='#rhythm'>{t('Activity')}</a>
+                <a href='#tokens'>{t('Tokens')}</a>
+                <a href='#value'>{t('Consumption')}</a>
+                <a href='#honor'>{t('Your monthly honor')}</a>
+                <a href='#keepsake'>{t('Keepsake')}</a>
+              </nav>
+              <div className='recap-report'>
+                <UsageStory data={data} />
+                <ValueStory data={data} name={name} />
+              </div>
+            </>
           )}
         </div>
-      )}
-      {data && data.requests === 0 && (
-        <Empty className='recap-state'>
-          <EmptyHeader>
-            <EmptyTitle>{t('A new chapter is waiting.')}</EmptyTitle>
-            <EmptyDescription>
-              {t(
-                'No recorded usage in the selected groups this month. Try another month.'
-              )}
-            </EmptyDescription>
-          </EmptyHeader>
-          <p>
-            {dateLabel} · {data.groups.join(' + ')}
-          </p>
-        </Empty>
-      )}
-      {data && data.requests > 0 && (
-        <>
-          <section className='recap-hero' aria-labelledby='recap-title'>
-            <div className='recap-hero-copy'>
-              <p className='recap-eyebrow'>
-                {dateLabel}{' '}
-                <span>
-                  —{' '}
-                  {data.in_progress
-                    ? t('Month in progress')
-                    : t('Monthly recap')}
-                </span>
-              </p>
-              <p className='recap-greeting'>{t('For {{name}}', { name })}</p>
-              <h1 id='recap-title'>{t('A month of possibilities.')}</h1>
-              <p className='recap-hero-description'>
-                {t('Your models. Your rhythm. Your story.')}
-              </p>
-              <a className='recap-start' href='#models'>
-                {t('Play your month')} <span aria-hidden='true'>↗</span>
-              </a>
-            </div>
-            <div className='recap-record recap-record-hero' aria-hidden='true'>
-              <div>
-                <span>{month.slice(0, 4)}</span>
-                <strong>{month.slice(5)}</strong>
-                <span>new-api</span>
-              </div>
-            </div>
-            <div className='recap-hero-meta'>
-              <span>{data.groups.join(' + ')}</span>
-              <span>
-                {t('Updated {{time}}', {
-                  time: new Intl.DateTimeFormat(toIntlLocale(i18n.language), {
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    timeZone: 'Asia/Shanghai',
-                  }).format(new Date(data.as_of * 1000)),
-                })}{' '}
-                · {t('Beijing time')}
-              </span>
-            </div>
-          </section>
-          <nav className='recap-chapter-nav' aria-label={t('Recap chapters')}>
-            <a href='#models'>{t('Models')}</a>
-            <a href='#rhythm'>{t('Activity')}</a>
-            <a href='#tokens'>{t('Tokens')}</a>
-            <a href='#value'>{t('Consumption')}</a>
-            <a href='#keepsake'>{t('Keepsake')}</a>
-          </nav>
-          <UsageStory data={data} />
-          <ValueStory data={data} name={name} />
-        </>
-      )}
-    </main>
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
   )
 }
