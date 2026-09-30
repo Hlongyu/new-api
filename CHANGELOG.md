@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [custom-v1.0.16] - 2026-09-30
 
 ### Added
 
