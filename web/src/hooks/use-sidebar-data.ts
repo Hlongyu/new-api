@@ -107,6 +107,11 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
+            title: t('Monthly recap'),
+            url: '/monthly-recap',
+            icon: Activity,
+          },
+          {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,

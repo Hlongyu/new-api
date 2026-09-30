@@ -380,6 +380,9 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		dataRoute := apiRouter.Group("/data")
+		dataRoute.GET("/monthly-recap", middleware.AdminAuth(), middleware.CriticalRateLimit(), controller.AdminGetMonthlyRecap)
+		dataRoute.GET("/monthly-recap/users", middleware.AdminAuth(), controller.AdminListMonthlyRecapUsers)
+		dataRoute.GET("/monthly-recap/self", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.GetSelfMonthlyRecap)
 		dataRoute.GET("/monthly-accounting", middleware.AdminAuth(), controller.AdminGetMonthlyAccounting)
 		dataRoute.GET("/monthly-accounting/users", middleware.AdminAuth(), controller.AdminGetAccountingSnapshotUsers)
 		dataRoute.GET("/monthly-consumption", middleware.AdminAuth(), controller.AdminGetMonthlyConsumption)
