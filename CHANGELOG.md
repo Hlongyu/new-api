@@ -1,5 +1,21 @@
 # Changelog
 
+## [custom-v1.0.14] - 2026-09-30
+
+### Added
+
+- Added a personal monthly usage recap combining the `gpt-pro` and `gpt优惠` groups by Beijing calendar month. The story-style page includes model preferences, input/output and cache tokens, daily and hourly activity, active days, consecutive-day streaks, and recorded consumption.
+- Added historical 1.0-rate cost estimates and an aggregate effective multiplier, with per-model details, CSV export, and a downloadable keepsake poster that excludes spending amounts.
+- Added administrator user search and pagination for viewing individual users' monthly recaps. Ordinary users can access only their own recap.
+- Added root-managed group-ratio webhooks with optional HMAC-SHA256 signing, persisted delivery records, automatic retries, and manual retry of failed deliveries. See [group-ratio webhooks](docs/webhooks/group-ratio.md).
+- Added translations for all seven supported locales and regression coverage for recap calculations, access control, user selection, exports, and webhook behavior.
+
+### Compatibility
+
+- Recaps use retained request logs and their recorded group ratios; historical 1.0-rate amounts are site-price estimates, not independently verified provider list prices. Incomplete history or unpriced requests suppress the overall effective multiplier. The current month remains provisional, and deleted logs are not backfilled.
+- Monthly recaps require no new database tables. Webhook delivery records use the existing additive migration paths for SQLite, MySQL, and PostgreSQL. Webhook receivers must handle duplicate and out-of-order events.
+- Monthly honor titles, including the proposed below-0.15 multiplier award against a 0.25 baseline, are not included in this release.
+
 ## [custom-v1.0.13] - 2026-09-22
 
 ### Added
