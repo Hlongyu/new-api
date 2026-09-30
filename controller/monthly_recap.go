@@ -15,11 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetSelfMonthlyRecap(c *gin.Context) { getMonthlyRecap(c, false) }
+func GetSelfMonthlyRecap(c *gin.Context) { getMonthlyRecap(c, false, false) }
 
-func AdminGetMonthlyRecap(c *gin.Context) { getMonthlyRecap(c, true) }
+func AdminGetMonthlyRecap(c *gin.Context) { getMonthlyRecap(c, true, false) }
 
-func getMonthlyRecap(c *gin.Context, admin bool) {
+func AdminRebuildMonthlyRecap(c *gin.Context) { getMonthlyRecap(c, true, true) }
+
+func getMonthlyRecap(c *gin.Context, admin, rebuild bool) {
 	userID := c.GetInt("id")
 	if userID <= 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "authentication required"})
@@ -39,9 +41,11 @@ func getMonthlyRecap(c *gin.Context, admin bool) {
 		userID = selectedID
 	}
 	now := time.Now()
-	period := c.DefaultQuery("month", now.In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("2006-01"))
+	beijingNow := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
+	latest := time.Date(beijingNow.Year(), beijingNow.Month(), 1, 0, 0, 0, 0, beijingNow.Location()).AddDate(0, -1, 0)
+	period := c.DefaultQuery("month", latest.Format("2006-01"))
 	start, end, err := model.BeijingConsumptionWindow(period)
-	if err != nil || start.After(now) {
+	if err != nil || now.Before(end) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid recap month"})
 		return
 	}
@@ -59,7 +63,7 @@ func getMonthlyRecap(c *gin.Context, admin bool) {
 			return
 		}
 	}
-	result, err := service.GetMonthlyRecap(ctx, userID, []string{"gpt-pro", "gpt优惠"}, start, end, now)
+	result, err := service.GetSavedMonthlyRecap(ctx, userID, start, end, now, rebuild)
 	if err != nil {
 		common.ApiError(c, err)
 		return

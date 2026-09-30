@@ -1,5 +1,24 @@
 # Changelog
 
+## [custom-v1.0.15] - 2026-09-30
+
+### Changed
+
+- Monthly recaps now open only after the Beijing calendar month ends and default to the previous month. Both the page and API reject current and future months.
+- The first request calculates and persists a complete recap by user, month, and rule version. Later requests read the saved snapshot, shared by the user and administrators, rather than rescanning logs. Empty and incomplete recaps are also saved with their existing completeness indicators.
+
+### Added
+
+- Added administrator-only recap recalculation with a confirmation identifying the user and month. A successful rebuild replaces the snapshot; failed rebuilds preserve the previous result.
+- Added database leases to coordinate first-time calculations across instances, recover interrupted builds, and prevent stale calculations from overwriting another worker's result.
+- Added translations for all seven locales, snapshot lifecycle and access-control regression tests, and coverage for month selection and the rebuild confirmation flow. See [monthly recaps](docs/monthly-recap.md).
+
+### Compatibility
+
+- Added `monthly_recap_snapshots` through the standard and fast startup migration paths for SQLite, MySQL, and PostgreSQL. Snapshots are generated on demand; no automatic historical backfill is performed.
+- First calculation and explicit recalculation depend on retained logs. Deleted logs cannot be recovered, and late-arriving records require an administrator rebuild to appear in an existing snapshot. Rebuilding after log cleanup can reduce the reported usage.
+- Honor titles remain outside this release.
+
 ## [custom-v1.0.14] - 2026-09-30
 
 ### Added

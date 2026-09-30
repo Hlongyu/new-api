@@ -20,7 +20,7 @@ func TestMonthlyRecapMergesGroupsAndEnforcesSelfScope(t *testing.T) {
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}))
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
 	start, end, err := model.BeijingConsumptionWindow("2025-01")
 	require.NoError(t, err)
 	logs := []model.Log{
@@ -75,7 +75,7 @@ func TestMonthlyRecapDisclosesMissingHistoryAndDoesNotPriceZeroDiscounts(t *test
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}))
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
 	start, _, err := model.BeijingConsumptionWindow("2025-02")
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&[]model.Log{
@@ -110,6 +110,7 @@ func TestMonthlyRecapRejectsInvalidMonthsAndMissingAuthentication(t *testing.T) 
 		{"invalid month", "2025-13", 1, http.StatusBadRequest},
 		{"noncanonical", "2025-1", 1, http.StatusBadRequest},
 		{"future", "9999-01", 1, http.StatusBadRequest},
+		{"current month", time.Now().In(time.FixedZone("Beijing", 8*3600)).Format("2006-01"), 1, http.StatusBadRequest},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -126,7 +127,7 @@ func TestMonthlyRecapDoesNotTreatCurrentHourlySyncAsMissingHistory(t *testing.T)
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}))
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
 	start, end, err := model.BeijingConsumptionWindow("2025-03")
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&model.Log{UserId: 1, Group: "gpt-pro", CreatedAt: start.Unix(), Type: model.LogTypeConsume, Other: `{ "group_ratio": 0.25 }`}).Error)
@@ -144,7 +145,7 @@ func TestAdminMonthlyRecapSelectsUserAndReturnsOnlyThatUsersUsage(t *testing.T) 
 	oldDB, oldLogDB := model.DB, model.LOG_DB
 	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
 	db := setupModelListControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}))
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
 	require.NoError(t, db.Create(&[]model.User{{Id: 1, Username: "admin", AffCode: "a"}, {Id: 2, Username: "alice", DisplayName: "Alice", AffCode: "b", Email: "private@example.com", Password: "private-password"}}).Error)
 	start, _, err := model.BeijingConsumptionWindow("2025-01")
 	require.NoError(t, err)
@@ -248,4 +249,94 @@ func TestAdminMonthlyRecapUserDirectorySearchesAndPaginatesWithoutSecrets(t *tes
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/data/monthly-recap?month=2025-01&user_id=999", nil)
 	AdminGetMonthlyRecap(c)
 	assert.Equal(t, http.StatusNotFound, recorder.Code)
+}
+
+func TestMonthlyRecapSnapshotPersistsAndAdminRebuildReplacesIt(t *testing.T) {
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}, &model.QuotaData{}, &model.MonthlyRecapSnapshot{}))
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "alice", AffCode: "alice"}).Error)
+	start, end, err := model.BeijingConsumptionWindow("2025-01")
+	require.NoError(t, err)
+	now := end.Add(time.Hour)
+	_, err = service.GetSavedMonthlyRecap(context.Background(), 1, start, end, end.Add(-time.Second), false)
+	require.Error(t, err)
+	var unopened int64
+	require.NoError(t, db.Model(&model.MonthlyRecapSnapshot{}).Count(&unopened).Error)
+	assert.Zero(t, unopened)
+	log := model.Log{UserId: 1, Group: "gpt-pro", CreatedAt: start.Unix(), Type: model.LogTypeConsume, Quota: 25, Other: `{"group_ratio":0.25}`}
+	require.NoError(t, db.Create(&log).Error)
+	first, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, now, false)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, first.Requests)
+	require.NoError(t, db.Where("id = ?", log.Id).Delete(&model.Log{}).Error)
+	saved, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, now.Add(time.Hour), false)
+	require.NoError(t, err)
+	assert.Equal(t, first, saved, "deleted logs must not change a persisted recap")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Set("id", 1)
+	c.Set("role", common.RoleCommonUser)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/data/monthly-recap/rebuild?month=2025-01&user_id=1", nil)
+	AdminRebuildMonthlyRecap(c)
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Set("id", 1)
+	c.Set("role", common.RoleAdminUser)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/data/monthly-recap/rebuild?month=2025-01&user_id=1", nil)
+	AdminRebuildMonthlyRecap(c)
+	var response struct {
+		Success bool                 `json:"success"`
+		Data    service.MonthlyRecap `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success, recorder.Body.String())
+	assert.Zero(t, response.Data.Requests)
+	saved, err = service.GetSavedMonthlyRecap(context.Background(), 1, start, end, now, false)
+	require.NoError(t, err)
+	assert.Zero(t, saved.Requests, "empty results are persisted too")
+	require.NoError(t, db.Migrator().DropTable(&model.Log{}))
+	_, err = service.GetSavedMonthlyRecap(context.Background(), 1, start, end, now, true)
+	require.Error(t, err)
+	afterFailure, err := service.GetSavedMonthlyRecap(context.Background(), 1, start, end, now, false)
+	require.NoError(t, err)
+	assert.Equal(t, saved, afterFailure, "failed rebuild must preserve saved result")
+	var count int64
+	require.NoError(t, db.Model(&model.MonthlyRecapSnapshot{}).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+}
+
+func TestMonthlyRecapSnapshotLeaseRecoveryAndFirstBuildFailure(t *testing.T) {
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.MonthlyRecapSnapshot{}))
+	require.NoError(t, db.Create(&model.MonthlyRecapSnapshot{UserID: 1, Period: "2025-01", RuleVersion: 1, LeaseToken: "interrupted", LeaseUntil: time.Now().Add(-time.Minute).Unix()}).Error)
+	_, err := model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) { return "", fmt.Errorf("source unavailable") })
+	require.Error(t, err)
+	got, err := model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) { return `{"requests":5}`, nil })
+	require.NoError(t, err)
+	assert.Equal(t, `{"requests":5}`, got)
+	got, err = model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) { t.Fatal("saved snapshot must not be recomputed"); return "", nil })
+	require.NoError(t, err)
+	assert.Equal(t, `{"requests":5}`, got)
+}
+
+func TestMonthlyRecapSnapshotRejectsStaleLeaseWriter(t *testing.T) {
+	oldDB, oldLogDB := model.DB, model.LOG_DB
+	t.Cleanup(func() { model.DB, model.LOG_DB = oldDB, oldLogDB })
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.MonthlyRecapSnapshot{}))
+	_, err := model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) {
+		require.NoError(t, db.Model(&model.MonthlyRecapSnapshot{}).Where("user_id = ?", 1).Updates(map[string]interface{}{"lease_token": "new-owner", "payload": "new-result"}).Error)
+		return "stale-result", nil
+	})
+	require.Error(t, err)
+	got, err := model.LoadMonthlyRecapSnapshot(context.Background(), 1, "2025-01", 1, false, func() (string, error) { t.Fatal("must read the winner's saved result"); return "", nil })
+	require.NoError(t, err)
+	assert.Equal(t, "new-result", got)
 }

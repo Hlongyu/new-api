@@ -35,6 +35,7 @@ import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { AdminRecapBrowser } from './components/admin-browser'
+import { RebuildRecap } from './components/rebuild-recap'
 import { UsageStory } from './components/usage-story'
 import { ValueStory } from './components/value-story'
 import { beijingMonth, shiftMonth } from './lib'
@@ -48,7 +49,7 @@ export function MonthlyRecapPage() {
   const isAdmin = (user?.role ?? 0) >= ROLE.ADMIN
   const [selectedUser, setSelectedUser] = useState<RecapUser | null>(null)
   const targetId = isAdmin ? selectedUser?.id : undefined
-  const currentMonth = beijingMonth()
+  const currentMonth = shiftMonth(beijingMonth(), -1)
   const [month, setMonth] = useState(currentMonth)
   const query = useQuery({
     queryKey: ['monthly-recap', user?.id, isAdmin, targetId ?? 'self', month],
@@ -135,6 +136,22 @@ export function MonthlyRecapPage() {
           onSelect={setSelectedUser}
         />
       )}
+      <div className='recap-notice'>
+        {t('Recaps open next month and are saved on first viewing.')}
+        {isAdmin && user && (
+          <RebuildRecap
+            key={`${targetId ?? user.id}-${month}`}
+            userId={targetId ?? user.id}
+            month={month}
+            name={
+              selectedUser?.display_name ||
+              selectedUser?.username ||
+              user.display_name ||
+              user.username
+            }
+          />
+        )}
+      </div>
       {query.isPending && (
         <div className='recap-state' role='status'>
           <p>{t('Putting your month together…')}</p>

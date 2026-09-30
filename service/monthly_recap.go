@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sort"
 	"time"
@@ -34,6 +35,7 @@ type RecapDay struct {
 }
 
 type MonthlyRecap struct {
+	RuleVersion int                     `json:"rule_version"`
 	Subject     *model.MonthlyRecapUser `json:"subject,omitempty"`
 	Period      string                  `json:"period"`
 	AsOf        int64                   `json:"as_of"`
@@ -153,4 +155,30 @@ func GetMonthlyRecap(ctx context.Context, userID int, groups []string, start, en
 	}
 	result.HistoryIncomplete = recorded > retainedHistorical
 	return result, nil
+}
+
+// GetSavedMonthlyRecap freezes closed months on first access. The rule version
+// identifies the aggregation and group scope used by the persisted payload.
+func GetSavedMonthlyRecap(ctx context.Context, userID int, start, end, now time.Time, rebuild bool) (*MonthlyRecap, error) {
+	if now.Before(end) {
+		return nil, errors.New("recaps become available next month")
+	}
+	const version = 1
+	payload, err := model.LoadMonthlyRecapSnapshot(ctx, userID, start.Format("2006-01"), version, rebuild, func() (string, error) {
+		recap, err := GetMonthlyRecap(ctx, userID, []string{"gpt-pro", "gpt优惠"}, start, end, now)
+		if err != nil {
+			return "", err
+		}
+		recap.RuleVersion = version
+		data, err := common.Marshal(recap)
+		return string(data), err
+	})
+	if err != nil {
+		return nil, err
+	}
+	var recap MonthlyRecap
+	if err := common.UnmarshalJsonStr(payload, &recap); err != nil {
+		return nil, err
+	}
+	return &recap, nil
 }

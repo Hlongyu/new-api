@@ -58,6 +58,7 @@ const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { useAuthStore } = await import('@/stores/auth-store')
 const { api } = await import('@/lib/api')
 const { MonthlyRecapPage } = await import('../index')
+const { beijingMonth, shiftMonth } = await import('../lib')
 notifyManager.setScheduler(queueMicrotask)
 const originalAdapter = api.defaults.adapter
 const i18n = createInstance()
@@ -125,7 +126,9 @@ test('empty month keeps month navigation and explains the missing records', asyn
   const page = await renderPage()
   await waitForText('A new chapter is waiting.')
   assert.ok(page.textContent?.includes('Some historical details are missing.'))
-  assert.ok(page.querySelector('input[type="month"]'))
+  const monthInput = page.querySelector<HTMLInputElement>('input[type="month"]')
+  assert.equal(monthInput?.value, shiftMonth(beijingMonth(), -1))
+  assert.equal(monthInput?.max, shiftMonth(beijingMonth(), -1))
   assert.equal(
     page
       .querySelector('button[aria-label="Next month"]')
@@ -197,6 +200,7 @@ test('ordinary user has no admin picker and only requests their own recap', asyn
     null
   )
   assert.deepEqual(paths, ['/api/data/monthly-recap/self'])
+  assert.ok(!page.textContent?.includes('Recalculate recap'))
 })
 
 test('admin selects another user then returns to their own recap without mixing cached data', async () => {
@@ -249,4 +253,43 @@ test('admin selects another user then returns to their own recap without mixing 
   await act(async () => own.click())
   assert.ok(page.textContent?.includes('For recap-test'))
   assert.ok(!page.textContent?.includes('For Alice'))
+})
+
+test('admin confirms a rebuild with the displayed month and user before refreshing the saved recap', async () => {
+  let writes = 0
+  let reads = 0
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'post') {
+      writes++
+      assert.equal(config.url, '/api/data/monthly-recap/rebuild')
+      assert.equal(config.params.user_id, 1)
+      assert.equal(config.params.month, shiftMonth(beijingMonth(), -1))
+    } else {
+      reads++
+    }
+    return {
+      config,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      data: { success: true, data: recapFixture },
+    }
+  }
+  const page = await renderPage(10)
+  const open = [...page.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent === 'Recalculate recap'
+  )
+  assert.ok(open)
+  await act(async () => open.click())
+  assert.equal(writes, 0)
+  const dialog = document.querySelector('[role="alertdialog"]')
+  assert.ok(dialog)
+  assert.ok(dialog.textContent?.includes('recap-test'))
+  const confirm = [
+    ...dialog.querySelectorAll<HTMLButtonElement>('button'),
+  ].find((button) => button.textContent === 'Recalculate recap')
+  assert.ok(confirm)
+  await act(async () => confirm.click())
+  assert.equal(writes, 1)
+  assert.ok(reads >= 2)
 })
