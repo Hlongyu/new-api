@@ -80,11 +80,21 @@ export const TIER_BADGE_PREFIX: Record<TierKey, string> = {
 }
 
 /**
- * Board rows only carry the localised label (for example "黄金 I"), never a
+ * Board rows only carry the localised label (for example "荣耀黄金 I"), never a
  * `tierKey`. This maps the service's Chinese tier names back onto our keys.
  * It is data interchange, not UI copy, so it must not go through i18n.
  */
 export const TIER_NAME_TO_KEY: Record<string, TierKey> = {
+  坚韧黑铁: 'iron',
+  英勇青铜: 'bronze',
+  不屈白银: 'silver',
+  荣耀黄金: 'gold',
+  华贵铂金: 'platinum',
+  璀璨钻石: 'diamond',
+  超凡大师: 'master',
+  傲世宗师: 'grandmaster',
+  最强王者: 'challenger',
+  // Accept legacy labels from cached responses and historical records.
   黑铁: 'iron',
   青铜: 'bronze',
   白银: 'silver',

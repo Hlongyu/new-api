@@ -23,7 +23,7 @@ import { resolveTierBadge, showsTierBadge } from '../rank-badge'
 
 describe('resolveTierBadge', () => {
   test('resolves a Chinese board label to its badge asset', () => {
-    const badge = resolveTierBadge({ label: '黄金 I' })
+    const badge = resolveTierBadge({ label: '荣耀黄金 I' })
     assert.deepEqual(badge, {
       src: '/rank-badges/04-huangjin-i.png',
       tierKey: 'gold',
@@ -34,23 +34,30 @@ describe('resolveTierBadge', () => {
 
   test('resolves every tier and division the service can emit', () => {
     const cases: [string, string][] = [
-      ['黑铁 IV', '/rank-badges/01-heitie-iv.png'],
-      ['青铜 III', '/rank-badges/02-qingtong-iii.png'],
-      ['白银 II', '/rank-badges/03-baiyin-ii.png'],
-      ['铂金 I', '/rank-badges/05-bojin-i.png'],
-      ['钻石 IV', '/rank-badges/06-zuanshi-iv.png'],
-      ['大师 III', '/rank-badges/07-dashi-iii.png'],
-      ['宗师 II', '/rank-badges/08-zongshi-ii.png'],
-      ['王者 I', '/rank-badges/09-wangzhe-i.png'],
+      ['坚韧黑铁 IV', '/rank-badges/01-heitie-iv.png'],
+      ['英勇青铜 III', '/rank-badges/02-qingtong-iii.png'],
+      ['不屈白银 II', '/rank-badges/03-baiyin-ii.png'],
+      ['华贵铂金 I', '/rank-badges/05-bojin-i.png'],
+      ['璀璨钻石 IV', '/rank-badges/06-zuanshi-iv.png'],
+      ['超凡大师 III', '/rank-badges/07-dashi-iii.png'],
+      ['傲世宗师 II', '/rank-badges/08-zongshi-ii.png'],
+      ['最强王者 I', '/rank-badges/09-wangzhe-i.png'],
     ]
     for (const [label, src] of cases) {
       assert.equal(resolveTierBadge({ label })?.src, src, label)
     }
   })
 
+  test('resolves legacy two-character labels to the same badge', () => {
+    assert.deepEqual(
+      resolveTierBadge({ label: '黄金 I' }),
+      resolveTierBadge({ label: '荣耀黄金 I' })
+    )
+  })
+
   test('prefers structured fields over the label when both are present', () => {
     const badge = resolveTierBadge({
-      label: '黄金 I',
+      label: '荣耀黄金 I',
       tierKey: 'silver',
       division: 'IV',
     })
@@ -60,7 +67,7 @@ describe('resolveTierBadge', () => {
 
   test('collapses irregular whitespace in the label', () => {
     assert.equal(
-      resolveTierBadge({ label: '  黄金   I ' })?.src,
+      resolveTierBadge({ label: '  荣耀黄金   I ' })?.src,
       '/rank-badges/04-huangjin-i.png'
     )
   })
@@ -71,9 +78,9 @@ describe('resolveTierBadge', () => {
   })
 
   test('returns null for malformed or missing input', () => {
-    assert.equal(resolveTierBadge({ label: '黄金' }), null)
-    assert.equal(resolveTierBadge({ label: '黄金 V' }), null)
-    assert.equal(resolveTierBadge({ label: '黄金 I 额外' }), null)
+    assert.equal(resolveTierBadge({ label: '荣耀黄金' }), null)
+    assert.equal(resolveTierBadge({ label: '荣耀黄金 V' }), null)
+    assert.equal(resolveTierBadge({ label: '荣耀黄金 I 额外' }), null)
     assert.equal(resolveTierBadge({ label: '' }), null)
     assert.equal(resolveTierBadge({ label: null }), null)
     assert.equal(resolveTierBadge({}), null)

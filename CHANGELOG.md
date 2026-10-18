@@ -1,5 +1,16 @@
 # Changelog
 
+## [custom-v1.0.17] - 2026-10-18
+
+### Changed
+
+- Updated all nine leaderboard tier names to four-character Chinese titles: 坚韧黑铁, 英勇青铜, 不屈白银, 荣耀黄金, 华贵铂金, 璀璨钻石, 超凡大师, 傲世宗师, and 最强王者. Updated backend rank labels, Simplified and Traditional Chinese translations, and rank progression descriptions.
+
+### Compatibility
+
+- Continue recognizing legacy two-character tier labels when resolving badge artwork from cached responses or historical records. Tier keys, divisions, scoring, and promotion rules remain unchanged.
+- Rank engine tests, frontend badge tests, TypeScript checks, and lint passed.
+
 ## [custom-v1.0.16] - 2026-09-30
 
 ### Added

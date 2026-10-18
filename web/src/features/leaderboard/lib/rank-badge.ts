@@ -29,7 +29,7 @@ import type { TierDivision, TierKey } from '../types'
 // ----------------------------------------------------------------------------
 //
 // The leaderboard service exposes a tier two different ways:
-//   - board rows carry only `rankLabel`, a Chinese string like "黄金 I"
+//   - board rows carry only `rankLabel`, a Chinese string like "荣耀黄金 I"
 //   - the personal payload carries structured `tierKey` + `division`
 //
 // Both have to land on the same artwork, so this resolves either form. When a
@@ -53,7 +53,7 @@ function isTierDivision(value: string): value is TierDivision {
 }
 
 /**
- * Split a service label such as "黄金 I" into its tier and division.
+ * Split a service label such as "荣耀黄金 I" into its tier and division.
  *
  * Whitespace is collapsed defensively: the label is assembled server-side from
  * a template, so a stray double space must not break the badge.

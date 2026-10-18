@@ -16,14 +16,14 @@ func TestCalculateCombinesDailyScoreSources(t *testing.T) {
 	assert.EqualValues(t, 4, progress.RenameScore)
 	assert.EqualValues(t, 5, progress.SponsorScore)
 	assert.EqualValues(t, 18, progress.TotalScore)
-	assert.Equal(t, "黑铁 IV", progress.Label)
+	assert.Equal(t, "坚韧黑铁 IV", progress.Label)
 	assert.EqualValues(t, 18, progress.Score)
 }
 
 func TestCalculateAdvancesDivisionsBeforePromotion(t *testing.T) {
 	progress := Calculate([]DailyScore{{Day: "2026-07-18", TokenScore: 45}}, "2026-07-18")
 
-	assert.Equal(t, "黑铁 II", progress.Label)
+	assert.Equal(t, "坚韧黑铁 II", progress.Label)
 	assert.EqualValues(t, 5, progress.Score)
 	assert.Nil(t, progress.Promotion)
 }
@@ -32,7 +32,7 @@ func TestCalculatePromotionStartsWithoutCountingEntryDay(t *testing.T) {
 	progress := Calculate([]DailyScore{{Day: "2026-07-18", TokenScore: 80}}, "2026-07-18")
 
 	require.NotNil(t, progress.Promotion)
-	assert.Equal(t, "黑铁 I", progress.Label)
+	assert.Equal(t, "坚韧黑铁 I", progress.Label)
 	assert.Equal(t, 0, progress.Promotion.CheckedDays)
 	assert.False(t, progress.Promotion.TodayCounts)
 }
@@ -43,7 +43,7 @@ func TestCalculatePromotionSucceedsOnFinalDay(t *testing.T) {
 		{Day: "2026-07-21", TokenScore: 5},
 	}, "2026-07-21")
 
-	assert.Equal(t, "青铜 IV", progress.Label)
+	assert.Equal(t, "英勇青铜 IV", progress.Label)
 	assert.EqualValues(t, 5, progress.Score)
 	assert.Nil(t, progress.Promotion)
 }
@@ -61,7 +61,7 @@ func TestCalculateDoesNotFailPromotionBeforeTodayCloses(t *testing.T) {
 func TestCalculateFailsPromotionAfterWindowCloses(t *testing.T) {
 	progress := Calculate([]DailyScore{{Day: "2026-07-18", TokenScore: 80}}, "2026-07-22")
 
-	assert.Equal(t, "黑铁 I", progress.Label)
+	assert.Equal(t, "坚韧黑铁 I", progress.Label)
 	assert.EqualValues(t, 10, progress.Score)
 	assert.EqualValues(t, 0, progress.PendingScore)
 	assert.Nil(t, progress.Promotion)

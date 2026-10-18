@@ -17,15 +17,15 @@ type Tier struct {
 }
 
 var Tiers = []Tier{
-	{Key: "iron", Name: "黑铁", SegmentScore: 20, PromotionWindowDays: 3, PromotionRequiredDays: 1, ActiveScoreRequired: 5},
-	{Key: "bronze", Name: "青铜", SegmentScore: 30, PromotionWindowDays: 3, PromotionRequiredDays: 1, ActiveScoreRequired: 8},
-	{Key: "silver", Name: "白银", SegmentScore: 45, PromotionWindowDays: 5, PromotionRequiredDays: 2, ActiveScoreRequired: 8},
-	{Key: "gold", Name: "黄金", SegmentScore: 65, PromotionWindowDays: 5, PromotionRequiredDays: 2, ActiveScoreRequired: 10},
-	{Key: "platinum", Name: "铂金", SegmentScore: 90, PromotionWindowDays: 7, PromotionRequiredDays: 3, ActiveScoreRequired: 10},
-	{Key: "diamond", Name: "钻石", SegmentScore: 120, PromotionWindowDays: 7, PromotionRequiredDays: 3, ActiveScoreRequired: 15},
-	{Key: "master", Name: "大师", SegmentScore: 160, PromotionWindowDays: 10, PromotionRequiredDays: 4, ActiveScoreRequired: 15},
-	{Key: "grandmaster", Name: "宗师", SegmentScore: 220, PromotionWindowDays: 10, PromotionRequiredDays: 5, ActiveScoreRequired: 20},
-	{Key: "challenger", Name: "王者", SegmentScore: 300},
+	{Key: "iron", Name: "坚韧黑铁", SegmentScore: 20, PromotionWindowDays: 3, PromotionRequiredDays: 1, ActiveScoreRequired: 5},
+	{Key: "bronze", Name: "英勇青铜", SegmentScore: 30, PromotionWindowDays: 3, PromotionRequiredDays: 1, ActiveScoreRequired: 8},
+	{Key: "silver", Name: "不屈白银", SegmentScore: 45, PromotionWindowDays: 5, PromotionRequiredDays: 2, ActiveScoreRequired: 8},
+	{Key: "gold", Name: "荣耀黄金", SegmentScore: 65, PromotionWindowDays: 5, PromotionRequiredDays: 2, ActiveScoreRequired: 10},
+	{Key: "platinum", Name: "华贵铂金", SegmentScore: 90, PromotionWindowDays: 7, PromotionRequiredDays: 3, ActiveScoreRequired: 10},
+	{Key: "diamond", Name: "璀璨钻石", SegmentScore: 120, PromotionWindowDays: 7, PromotionRequiredDays: 3, ActiveScoreRequired: 15},
+	{Key: "master", Name: "超凡大师", SegmentScore: 160, PromotionWindowDays: 10, PromotionRequiredDays: 4, ActiveScoreRequired: 15},
+	{Key: "grandmaster", Name: "傲世宗师", SegmentScore: 220, PromotionWindowDays: 10, PromotionRequiredDays: 5, ActiveScoreRequired: 20},
+	{Key: "challenger", Name: "最强王者", SegmentScore: 300},
 }
 
 var Divisions = []string{"IV", "III", "II", "I"}
