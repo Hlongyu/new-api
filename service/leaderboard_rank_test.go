@@ -55,7 +55,7 @@ func TestGetRankProgressReplaysAllCoreHistory(t *testing.T) {
 	assert.EqualValues(t, 10, progress.SponsorScore)
 	assert.EqualValues(t, 6, progress.RenameScore)
 	assert.EqualValues(t, 19, progress.TotalScore)
-	assert.Equal(t, "黑铁 IV", progress.Label)
+	assert.Equal(t, "坚韧黑铁 IV", progress.Label)
 	assert.EqualValues(t, 19, progress.Score)
 }
 
