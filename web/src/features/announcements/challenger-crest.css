@@ -1,0 +1,549 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+@property --crest-burn {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: -30;
+}
+
+.challenger-crest {
+  position: relative;
+  isolation: isolate;
+  width: 192px;
+  height: 192px;
+  margin: 42px auto;
+  pointer-events: none;
+}
+.challenger-crest-assembling {
+  animation: crest-impact-recoil 6.6s cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.challenger-crest-image {
+  position: relative;
+  z-index: 3;
+  opacity: 0;
+  filter: drop-shadow(0 6px 12px rgb(202 151 64 / 22%));
+}
+.challenger-crest-static .challenger-crest-image {
+  opacity: 1;
+}
+.challenger-crest-assembling .challenger-crest-image {
+  animation: crest-complete 0.15s linear 5.55s both;
+}
+.challenger-crest-previous-image,
+.challenger-crest-fragment,
+.challenger-crest-old-energy,
+.challenger-crest-shine {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.challenger-crest-previous-image {
+  transform: scale(0.9);
+}
+.challenger-crest-assembling .challenger-crest-previous-image {
+  mask-image: radial-gradient(
+    ellipse at 50% 57%,
+    transparent calc(var(--crest-burn) * 1%),
+    #000 calc((var(--crest-burn) + 24) * 1%)
+  );
+  animation: crest-old-dissolve 2.7s linear both;
+}
+.challenger-crest-old-energy {
+  z-index: 2;
+  transform: scale(0.9);
+  background: linear-gradient(0deg, #b084fa, #fff1dc 50%, #d4bbff);
+  mask: var(--previous-crest-art) center / contain no-repeat;
+  mix-blend-mode: screen;
+  animation: crest-old-ignite 2.7s ease-in-out both;
+}
+.challenger-crest-forging {
+  position: absolute;
+  width: 182%;
+  height: 148%;
+  left: -41%;
+  top: -24%;
+  overflow: visible;
+  z-index: 2;
+}
+.crest-energy-thread,
+.crest-energy-haze {
+  fill: none;
+  stroke: #f9e1ad;
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-dasharray: 0.5 0.5;
+  stroke-dashoffset: 1;
+  animation: crest-energy-flow 1.4s ease-in-out var(--trail-delay) both;
+}
+.crest-energy-haze {
+  stroke: #bd94ee;
+  stroke-width: 5;
+}
+.crest-forging-metal {
+  animation: crest-metal-life 1.25s linear var(--trail-delay) both;
+}
+.challenger-crest-fragment {
+  z-index: 3;
+  background: var(--crest-art) center / contain no-repeat;
+  transform-origin: 50% 66%;
+  animation:
+    crest-feather-grow 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) var(--part-delay)
+      both,
+    crest-fragment-hide 1ms linear 5.7s forwards;
+}
+.challenger-crest-core {
+  animation:
+    crest-core-forge 1.4s ease-out var(--part-delay) both,
+    crest-fragment-hide 1ms linear 5.7s forwards;
+}
+.challenger-crest-crown {
+  animation:
+    crest-crown-forge 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) var(--part-delay) both,
+    crest-fragment-hide 1ms linear 5.7s forwards;
+}
+.challenger-crest-aura {
+  position: absolute;
+  inset: -36px;
+  z-index: -1;
+  background: radial-gradient(ellipse, rgb(170 120 240 / 28%), transparent 66%);
+  animation: crest-aura 7.7s ease-in-out both;
+}
+.challenger-crest-charge {
+  position: absolute;
+  inset: 24%;
+  z-index: 4;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    #fffdf0 0%,
+    #f8d89d 7%,
+    rgb(197 150 245 / 65%) 19%,
+    transparent 65%
+  );
+  animation: crest-energy-core 4.4s ease-in-out both;
+}
+.challenger-crest-beam {
+  position: absolute;
+  top: -12px;
+  bottom: 42%;
+  left: 44%;
+  width: 12%;
+  z-index: 5;
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 216 143 / 55%) 25%,
+    #fffcdf 48% 52%,
+    rgb(255 216 143 / 55%) 75%,
+    transparent
+  );
+  mask-image: linear-gradient(transparent, #000 22% 85%, transparent);
+  animation: crest-beam-strike 0.75s ease-out 5.12s both;
+}
+.challenger-crest-flare {
+  position: absolute;
+  inset: 35% -60px;
+  z-index: 4;
+  background: radial-gradient(
+    ellipse,
+    rgb(255 249 220 / 95%),
+    rgb(255 213 132 / 40%) 16%,
+    transparent 66%
+  );
+  animation: crest-flare 0.65s ease-out 5.2s both;
+}
+.challenger-crest-shine {
+  z-index: 4;
+  overflow: hidden;
+  mask: var(--crest-art) center / contain no-repeat;
+}
+.challenger-crest-shine-sweep {
+  position: absolute;
+  inset: -20% -60%;
+  background: linear-gradient(
+    110deg,
+    transparent 43%,
+    rgb(255 245 208 / 75%) 50%,
+    transparent 57%
+  );
+  animation: crest-shine 1.55s ease-in-out 6.15s both;
+}
+
+.challenger-crest-impact-glow {
+  position: absolute;
+  inset: -40px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgb(255 232 163 / 80%),
+    rgb(236 151 44 / 35%) 25%,
+    transparent 65%
+  );
+  animation: crest-impact-bloom 0.9s ease-out 5.18s both;
+}
+.challenger-crest-impact-echo,
+.challenger-crest-impact-flash {
+  position: absolute;
+  inset: 0;
+  mask: var(--crest-art) center / contain no-repeat;
+  background: #fff3c9;
+  pointer-events: none;
+}
+.challenger-crest-impact-echo {
+  z-index: 1;
+  animation: crest-impact-echo 0.65s ease-out 5.22s both;
+}
+.challenger-crest-impact-flash {
+  z-index: 5;
+  animation: crest-impact-flash 0.36s ease-out 5.2s both;
+}
+.challenger-crest-impact-spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 2px;
+  z-index: 5;
+  border-radius: 50%;
+  background: linear-gradient(90deg, transparent, #eab761, #fff8df);
+  box-shadow: 0 0 5px rgb(255 201 94 / 60%);
+  animation: crest-impact-spark 0.85s cubic-bezier(0.1, 0.75, 0.2, 1)
+    var(--spark-delay) both;
+}
+@keyframes crest-impact-recoil {
+  0%,
+  65% {
+    transform: scale(1) translateY(0);
+  }
+  72%,
+  76% {
+    transform: scale(0.84) translateY(3px);
+  }
+  80% {
+    transform: scale(1.26) translateY(-5px);
+  }
+  84% {
+    transform: scale(1.02) translateY(2px);
+  }
+  88% {
+    transform: scale(1.08) translateY(-1px);
+  }
+  100% {
+    transform: scale(1.04) translateY(0);
+  }
+}
+@keyframes crest-impact-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+@keyframes crest-impact-echo {
+  0% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  12% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.38);
+  }
+}
+@keyframes crest-impact-flash {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes crest-impact-spark {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--spark-angle)) translateX(26px) scaleX(0.5);
+  }
+  10% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--spark-angle)) translateX(var(--spark-distance))
+      scaleX(0.12);
+  }
+}
+@keyframes crest-old-dissolve {
+  0%,
+  45% {
+    --crest-burn: -30;
+    opacity: 1;
+    filter: brightness(1);
+  }
+  60% {
+    filter: brightness(1.7);
+  }
+  82% {
+    opacity: 0.8;
+  }
+  100% {
+    --crest-burn: 110;
+    opacity: 0;
+    filter: brightness(2);
+  }
+}
+@keyframes crest-old-ignite {
+  0%,
+  42% {
+    opacity: 0;
+  }
+  59% {
+    opacity: 0.7;
+  }
+  75% {
+    opacity: 0.3;
+    transform: scale(0.91);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+@keyframes crest-energy-flow {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 1;
+  }
+  25% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    stroke-dashoffset: -0.5;
+  }
+}
+@keyframes crest-metal-life {
+  0% {
+    opacity: 0;
+  }
+  12%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes crest-feather-grow {
+  0% {
+    opacity: 0;
+    transform: perspective(500px) translateX(calc(var(--part-side) * -26px))
+      translateY(13px) rotateY(calc(var(--part-side) * -72deg))
+      rotate(calc(var(--part-side) * -24deg)) scale(0.66);
+    filter: brightness(2.5) saturate(0.35);
+  }
+  28%,
+  48% {
+    opacity: 1;
+    transform: perspective(500px) translateX(calc(var(--part-side) * -14px))
+      translateY(6px) rotateY(calc(var(--part-side) * -40deg))
+      rotate(calc(var(--part-side) * -14deg)) scale(0.83);
+  }
+  70% {
+    opacity: 1;
+    transform: perspective(500px) translateX(calc(var(--part-side) * 3px))
+      translateY(-2px) rotateY(0deg) rotate(calc(var(--part-side) * 3deg))
+      scale(1.04);
+    filter: brightness(2);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(500px) translateX(0) translateY(0) rotateY(0deg)
+      rotate(0deg) scale(1);
+    filter: brightness(1) saturate(1);
+  }
+}
+@keyframes crest-core-forge {
+  0% {
+    opacity: 0;
+    transform: scale(0.25) translateY(20px);
+    filter: brightness(4) saturate(0);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: brightness(1) saturate(1);
+  }
+}
+@keyframes crest-crown-forge {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.5);
+    filter: brightness(3);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+@keyframes crest-complete {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes crest-fragment-hide {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes crest-aura {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 0.8;
+  }
+  55% {
+    opacity: 0.7;
+    background: radial-gradient(
+      ellipse,
+      rgb(236 187 98 / 35%),
+      transparent 66%
+    );
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+    background: radial-gradient(
+      ellipse,
+      rgb(236 187 98 / 25%),
+      transparent 66%
+    );
+  }
+}
+@keyframes crest-energy-core {
+  0%,
+  25% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+  75% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes crest-beam-strike {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.15);
+  }
+  18% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleY(1);
+  }
+}
+@keyframes crest-flare {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.3);
+  }
+  18% {
+    opacity: 0.85;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1.1);
+  }
+}
+@keyframes crest-shine {
+  0% {
+    opacity: 0;
+    transform: translateX(-65%);
+  }
+  16%,
+  30% {
+    opacity: 0.85;
+  }
+  58%,
+  100% {
+    opacity: 0;
+    transform: translateX(65%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .challenger-crest-assembling {
+    animation: none;
+  }
+  .challenger-crest-assembling .challenger-crest-image {
+    animation: none;
+    opacity: 1;
+  }
+  .challenger-crest-previous-image,
+  .challenger-crest > span,
+  .challenger-crest-forging {
+    display: none;
+  }
+}

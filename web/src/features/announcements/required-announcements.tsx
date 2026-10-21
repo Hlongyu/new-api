@@ -25,12 +25,12 @@ import { RichContent } from '@/components/rich-content'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { AnnouncementCelebration } from './announcement-celebration'
 import {
   dismissAnnouncement,
   getPendingAnnouncements,
   type RequiredAnnouncement,
 } from './api'
+import { ChallengerCrest } from './challenger-crest'
 
 export function RequiredAnnouncements() {
   const userId = useAuthStore((state) => state.auth.user?.id)
@@ -98,22 +98,7 @@ function AccountAnnouncements(props: { userId: number }) {
       }
     >
       {announcement.id === 'system:leaderboard-first-challenger' ? (
-        <>
-          <AnnouncementCelebration key={announcement.revision} />
-          <div
-            aria-hidden='true'
-            className='mx-auto mb-5 flex justify-center drop-shadow-[0_4px_12px_rgb(202_151_64_/_0.18)]'
-          >
-            <img
-              src='/rank-badges/challenger-crest.png'
-              alt=''
-              width={128}
-              height={128}
-              draggable={false}
-              className='h-24 w-auto max-w-full select-none'
-            />
-          </div>
-        </>
+        <ChallengerCrest key={announcement.revision} />
       ) : null}
       <RichContent
         breaks

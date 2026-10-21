@@ -1,5 +1,23 @@
 # Changelog
 
+## [custom-v1.0.19] - 2026-10-21
+
+### Added
+
+- Automatically publish a must-read timeline announcement for the first eligible historical Challenger (最强王者), including a one-time backfill at startup. Candidates who reach the tier on the same day are ordered by the leaderboard's rank value, total score, and entry ID. Publication respects participation, exclusion, account status, and public or anonymous display names.
+- Manage automatically generated announcements in the existing announcement settings: edit content, change the must-read option, or delete the item. A durable event receipt prevents retries, restarts, or deletion from publishing the same milestone again; stale settings saves preserve announcements published after the editor was loaded.
+- Added standalone Grandmaster and Challenger crest artwork and a staged promotion animation: the old crest dissolves, energy draws metal fragments inward, the new crest forms and unfolds its wings, then a light strike, recoil, and highlight finish the entrance. Gold and red confetti starts only after the entrance completes and repeats until the announcement is closed.
+
+### Changed
+
+- Refined the reminder layout with centered short announcements, a compact close button, and independently scrolling formatted content. Removed the visible generic must-read heading, publication timestamp, and dismissal explanation; an accessible dialog title remains available to screen readers.
+- Respect reduced-motion preferences by showing the complete static crest without effects. A failed previous-rank image falls back to the static Challenger crest, and settings refreshes do not restart an active entrance animation.
+
+### Compatibility
+
+- Added the `automatic_announcements` table through both startup migration paths. Persistence uses GORM operations compatible with SQLite, MySQL, and PostgreSQL; database behavior was tested with SQLite. The publication worker runs on primary nodes and stops after the milestone has been published.
+- Existing per-account dismissal behavior is preserved. Ordinary announcements do not receive the promotion effects. Rank scoring, promotion requirements, and user balances are unchanged.
+
 ## [custom-v1.0.18] - 2026-10-21
 
 ### Added

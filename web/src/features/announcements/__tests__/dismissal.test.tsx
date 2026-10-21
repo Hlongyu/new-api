@@ -21,7 +21,10 @@ import { after, test } from 'node:test'
 
 import { Window } from 'happy-dom'
 
-const domWindow = new Window()
+const domWindow = new Window({
+  url: 'http://localhost/',
+  settings: { enableImageFileLoading: false },
+})
 const domGlobals = [
   'window',
   'document',
@@ -210,6 +213,25 @@ function closeButton() {
   return button
 }
 
+async function loadCrestArtwork() {
+  await act(async () => {
+    for (const image of document.querySelectorAll('.challenger-crest img')) {
+      image.dispatchEvent(new Event('load'))
+    }
+  })
+}
+
+async function finishCrestEntrance() {
+  const crest = document.querySelector('[role="dialog"] img')
+  assert.ok(crest)
+  await loadCrestArtwork()
+  const sweep = document.querySelector('.challenger-crest-shine-sweep')
+  assert.ok(sweep)
+  const ended = new Event('animationend', { bubbles: true })
+  Object.defineProperty(ended, 'animationName', { value: 'crest-shine' })
+  await act(async () => sweep.dispatchEvent(ended))
+}
+
 test('closing each announcement dismisses only that version and does not reopen after reentry', async () => {
   const fixture = await announcementFixture([
     announcement,
@@ -323,11 +345,102 @@ test('first challenger announcement displays the complete standalone crest witho
   }
 })
 
+test('crest assembles after the image loads, preserves its sequence on refresh, and disappears on close', async () => {
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    const crest = document.querySelector<HTMLImageElement>(
+      '[role="dialog"] img'
+    )
+    assert.ok(crest)
+    assert.equal(document.querySelector('.challenger-crest-fragment'), null)
+    await loadCrestArtwork()
+    const fragment = document.querySelector('.challenger-crest-fragment')
+    assert.ok(fragment)
+    assert.ok(document.querySelector('.challenger-crest-shine'))
+    assert.ok(document.querySelector('.challenger-crest-charge'))
+    assert.ok(document.querySelector('.challenger-crest-old-energy'))
+    assert.ok(document.querySelector('.challenger-crest-forging animateMotion'))
+    assert.ok(document.querySelector('.challenger-crest-beam'))
+    assert.ok(document.querySelector('.challenger-crest-impact-spark'))
+    assert.equal(
+      crest.parentElement?.querySelector('button, a, [tabindex]'),
+      null
+    )
+    assert.equal(closeButton().disabled, false)
+    await fixture.render(10)
+    assert.equal(document.querySelector('.challenger-crest-fragment'), fragment)
+    await act(async () => closeButton().click())
+    assert.equal(document.querySelector('.challenger-crest'), null)
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('promotion waits for both rank images before replacing the old rank, and falls back if the old image fails', async () => {
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    const next = document.querySelector('.challenger-crest-image')
+    const previous = document.querySelector('.challenger-crest-previous-image')
+    assert.ok(next)
+    assert.ok(previous)
+    assert.equal(
+      previous.getAttribute('src'),
+      '/rank-badges/grandmaster-crest.png'
+    )
+    assert.equal(next.getAttribute('src'), '/rank-badges/challenger-crest.png')
+    await act(async () => next.dispatchEvent(new Event('load')))
+    assert.equal(document.querySelector('.challenger-crest-fragment'), null)
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    await act(async () => previous.dispatchEvent(new Event('error')))
+    assert.equal(
+      document.querySelector('.challenger-crest-previous-image'),
+      null
+    )
+    assert.ok(
+      document.querySelector('.challenger-crest-static .challenger-crest-image')
+    )
+    assert.equal(closeButton().disabled, false)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('confetti waits for the complete crest entrance including its final shine', async () => {
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    const crest = document.querySelector('[role="dialog"] img')
+    assert.ok(crest)
+    await loadCrestArtwork()
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    const assembling = new Event('animationend', { bubbles: true })
+    Object.defineProperty(assembling, 'animationName', {
+      value: 'crest-feather-grow',
+    })
+    const fragment = document.querySelector('.challenger-crest-fragment')
+    assert.ok(fragment)
+    await act(async () => fragment.dispatchEvent(assembling))
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    await finishCrestEntrance()
+    assert.ok(document.querySelector('.announcement-celebration'))
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
 test('champion confetti remains active across animation cycles and query refresh until closed', async () => {
   const fixture = await announcementFixture([
     { ...announcement, id: 'system:leaderboard-first-challenger' },
   ])
   try {
+    await finishCrestEntrance()
     const celebration = document.querySelector('.announcement-celebration')
     assert.ok(celebration)
     assert.equal(celebration.getAttribute('aria-hidden'), 'true')
@@ -344,9 +457,15 @@ test('champion confetti remains active across animation cycles and query refresh
       value: 'announcement-confetti-flight',
     })
     await act(async () => lastPiece.dispatchEvent(ended))
-    assert.equal(document.querySelector('.announcement-celebration'), celebration)
+    assert.equal(
+      document.querySelector('.announcement-celebration'),
+      celebration
+    )
     await fixture.render(10)
-    assert.equal(document.querySelector('.announcement-celebration'), celebration)
+    assert.equal(
+      document.querySelector('.announcement-celebration'),
+      celebration
+    )
     assert.ok(document.querySelector('[role="dialog"]'))
   } finally {
     await fixture.cleanup()
@@ -360,7 +479,19 @@ test('reduced motion skips champion confetti while preserving the announcement a
   ])
   try {
     assert.equal(document.querySelector('.announcement-celebration'), null)
-    assert.ok(document.querySelector('[role="dialog"] img'))
+    const crest = document.querySelector('[role="dialog"] img')
+    assert.ok(crest)
+    await loadCrestArtwork()
+    assert.equal(document.querySelector('.challenger-crest-fragment'), null)
+    assert.equal(document.querySelector('.challenger-crest-shine'), null)
+    assert.equal(document.querySelector('.challenger-crest-charge'), null)
+    assert.equal(
+      document.querySelector('.challenger-crest-previous-image'),
+      null
+    )
+    assert.equal(document.querySelector('.challenger-crest-forging'), null)
+    assert.equal(document.querySelector('.challenger-crest-impact-flash'), null)
+    assert.equal(document.querySelector('.challenger-crest-impact-spark'), null)
     await act(async () => closeButton().click())
     assert.equal(document.querySelector('[role="dialog"]'), null)
   } finally {
@@ -374,6 +505,7 @@ test('closing the announcement removes confetti immediately', async () => {
     { ...announcement, id: 'system:leaderboard-first-challenger' },
   ])
   try {
+    await finishCrestEntrance()
     assert.ok(document.querySelector('.announcement-celebration'))
     await act(async () => closeButton().click())
     assert.equal(document.querySelector('.announcement-celebration'), null)
