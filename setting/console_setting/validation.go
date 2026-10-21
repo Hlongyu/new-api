@@ -150,6 +150,11 @@ func validateAnnouncements(announcementsStr string) error {
 		"default": true, "ongoing": true, "success": true, "warning": true, "error": true,
 	}
 	for i, ann := range list {
+		if required, exists := ann["requireRead"]; exists {
+			if _, ok := required.(bool); !ok {
+				return fmt.Errorf("第%d个公告的必读选项必须为布尔值", i+1)
+			}
+		}
 		content, ok := ann["content"].(string)
 		if !ok || content == "" {
 			return fmt.Errorf("第%d个公告缺少内容字段", i+1)

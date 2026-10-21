@@ -72,6 +72,7 @@ type Announcement = {
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
   extra?: string
+  requireRead?: boolean
 }
 
 type AnnouncementsSectionProps = {
@@ -80,6 +81,7 @@ type AnnouncementsSectionProps = {
 }
 
 const announcementSchema = z.object({
+  requireRead: z.boolean(),
   content: z
     .string()
     .min(1, 'Content is required')
@@ -148,6 +150,7 @@ export function AnnouncementsSection({
   const form = useForm<AnnouncementFormValues>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
+      requireRead: false,
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -191,6 +194,7 @@ export function AnnouncementsSection({
   const handleAdd = () => {
     setEditingAnnouncement(null)
     form.reset({
+      requireRead: false,
       content: '',
       publishDate: new Date().toISOString(),
       type: 'default',
@@ -202,6 +206,7 @@ export function AnnouncementsSection({
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement)
     form.reset({
+      requireRead: announcement.requireRead ?? false,
       content: announcement.content,
       publishDate: announcement.publishDate,
       type: announcement.type,
@@ -420,6 +425,12 @@ export function AnnouncementsSection({
               cell: (announcement) => announcement.extra || '-',
             },
             {
+              id: 'require-read',
+              header: t('Must-read announcement'),
+              cell: (announcement) =>
+                announcement.requireRead ? t('Yes') : t('No'),
+            },
+            {
               id: 'actions',
               header: t('Actions'),
               cell: (announcement) => (
@@ -577,6 +588,29 @@ export function AnnouncementsSection({
                   <FormDescription>
                     {t(
                       'Optional supplementary information (max 100 characters)'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='requireRead'
+              render={({ field }) => (
+                <FormItem>
+                  <div className='flex items-center gap-2'>
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormLabel>{t('Must-read announcement')}</FormLabel>
+                  </div>
+                  <FormDescription>
+                    {t(
+                      'Show automatically in the console. Closing dismisses it for this account; editing the announcement shows it again.'
                     )}
                   </FormDescription>
                   <FormMessage />

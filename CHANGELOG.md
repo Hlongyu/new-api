@@ -1,5 +1,19 @@
 # Changelog
 
+## [custom-v1.0.18] - 2026-10-21
+
+### Added
+
+- Added a per-item must-read option for timeline announcements. Published announcements open automatically when authenticated users enter the console, with a check every minute for users already online.
+- Users can close an announcement directly, including with Escape. Dismissals are persisted per account and announcement revision, so the same version stays dismissed across browsers while new or edited announcements appear again. Multiple pending announcements are shown one at a time.
+- Added translations for all seven locales and regression coverage for administrator settings, account isolation, duplicate dismissals, edited or removed announcements, publication dates, keyboard dismissal, and save-failure retries.
+
+### Compatibility
+
+- Added the `announcement_reads` table through the standard and fast startup migration paths using GORM operations compatible with SQLite, MySQL, and PostgreSQL. Dismissal persistence was tested with SQLite.
+- Existing timeline announcements remain optional unless marked must-read. Disabled announcements and announcements with a future publication date do not trigger reminders. The global single Notice is unchanged.
+- Announcement backend and frontend tests, TypeScript checks, lint, and frontend and backend builds passed.
+
 ## [custom-v1.0.17] - 2026-10-18
 
 ### Changed
