@@ -1,5 +1,19 @@
 # Changelog
 
+## [custom-v1.0.20] - 2026-10-21
+
+### Added
+
+- Added an XXSwitch import action to the API key menu, supporting Codex Responses, Codex Chat Completions, and Claude Anthropic providers. Users can edit the provider name and server address and optionally supply up to 100 comma-separated models.
+- Reuse the authenticated complete-key endpoint before opening the import dialog, then launch `xxswitch://v1/import` synchronously on user submission. Import defaults to disabled, with final review and confirmation handled by XXSwitch.
+- Normalize the `/v1` suffix for the selected application while preserving deployment path prefixes. Validate server URLs, provider-name length, API-key byte length, model count, and the 16 KiB encoded-link limit; links contain only supported protocol fields.
+- Added translations for all seven locales and 32 regression tests covering URL encoding, application formats, validation boundaries, accessible errors, explicit submission, and cancellation.
+
+### Compatibility
+
+- This is a frontend integration using existing token APIs; no backend API or database migration is required. Existing CC Switch integration is preserved. XXSwitch must be installed with its protocol handler registered.
+- Frontend tests, TypeScript checks, lint, formatting, production build, and the backend build passed. Verified the menu and import dialog on a local deployment; system-level protocol handoff was not exercised during automated validation.
+
 ## [custom-v1.0.19] - 2026-10-21
 
 ### Added

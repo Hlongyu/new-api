@@ -16,13 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
+
 import { ApiKeysDeleteDialog } from './api-keys-delete-dialog'
 import { ApiKeysMutateDrawer } from './api-keys-mutate-drawer'
 import { useApiKeys } from './api-keys-provider'
 import { CCSwitchDialog } from './dialogs/cc-switch-dialog'
+import { XXSwitchDialog } from './dialogs/xx-switch-dialog'
 
 export function ApiKeysDialogs() {
   const { open, setOpen, currentRow, resolvedKey } = useApiKeys()
+
+  const { serverAddress } = useChatPresets()
 
   return (
     <>
@@ -32,6 +37,14 @@ export function ApiKeysDialogs() {
         currentRow={open === 'update' ? currentRow || undefined : undefined}
       />
       <ApiKeysDeleteDialog />
+      {open === 'xx-switch' && (
+        <XXSwitchDialog
+          tokenKey={resolvedKey}
+          name={currentRow?.name || 'New API'}
+          serverAddress={serverAddress}
+          onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        />
+      )}
       <CCSwitchDialog
         open={open === 'cc-switch'}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}

@@ -283,6 +283,21 @@ export function DataTableRowActions<TData>({
             <ArrowRightLeft size={16} />
           </DropdownMenuShortcut>
         </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={isRealKeyLoading}
+          onClick={async () => {
+            const realKey = await resolveRealKey(apiKey.id)
+            if (!realKey) return
+            setResolvedKey(realKey)
+            setCurrentRow(apiKey)
+            setOpen('xx-switch')
+          }}
+        >
+          XXSwitch
+          <DropdownMenuShortcut>
+            <ArrowRightLeft size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
         {hasChatPresets && (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>{t('Chat')}</DropdownMenuSubTrigger>
