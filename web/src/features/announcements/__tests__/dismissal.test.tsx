@@ -56,6 +56,22 @@ Object.defineProperty(domWindow.Element.prototype, 'getAnimations', {
   value: () => [],
 })
 
+const originalMatchMedia = domWindow.matchMedia.bind(domWindow)
+const reducedMotionQuery = originalMatchMedia(
+  '(prefers-reduced-motion: reduce)'
+)
+let reducedMotion = false
+Object.defineProperty(reducedMotionQuery, 'matches', {
+  get: () => reducedMotion,
+})
+Object.defineProperty(domWindow, 'matchMedia', {
+  configurable: true,
+  value: (query: string) =>
+    query === '(prefers-reduced-motion: reduce)'
+      ? reducedMotionQuery
+      : originalMatchMedia(query),
+})
+
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { createInstance } = await import('i18next')
@@ -79,6 +95,7 @@ after(() => {
 })
 
 const announcement = {
+  id: 1 as number | string,
   revision: 'a'.repeat(64),
   content: 'Service update',
   extra: '',
@@ -204,7 +221,7 @@ test('closing each announcement dismisses only that version and does not reopen 
     assert.ok(
       document
         .querySelector(`[id="${dialog.getAttribute('aria-labelledby')}"]`)
-        ?.textContent?.includes('Must-read announcement')
+        ?.textContent?.includes('Announcement Details')
     )
     assert.match(dialog.textContent ?? '', /Service update/)
     await act(async () => closeButton().click())
@@ -228,6 +245,175 @@ test('closing each announcement dismisses only that version and does not reopen 
       document.querySelector('[role="dialog"]')?.textContent ?? '',
       /Service update/
     )
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('announcement popup shows content without a visible heading, publication time, or dismissal explanation', async () => {
+  const fixture = await announcementFixture()
+  try {
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog)
+    const title = document.querySelector(
+      `[id="${dialog.getAttribute('aria-labelledby')}"]`
+    )
+    assert.equal(title?.textContent, 'Announcement Details')
+    assert.equal(title?.parentElement?.classList.contains('sr-only'), true)
+    assert.match(dialog.textContent ?? '', /Service update/)
+    assert.doesNotMatch(
+      dialog.textContent ?? '',
+      /Must-read announcement|Published:|2020-01-01|Closing this announcement/
+    )
+    assert.equal(closeButton().disabled, false)
+    assert.equal(dialog.querySelector('img'), null)
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    assert.equal(closeButton().classList.contains('w-full'), false)
+    assert.equal(closeButton().classList.contains('h-10'), true)
+    const footer = closeButton().closest('[data-slot="dialog-footer"]')
+    assert.equal(footer?.classList.contains('border-0'), true)
+    assert.equal(footer?.classList.contains('bg-transparent'), true)
+    assert.equal(footer?.classList.contains('justify-center'), true)
+    const text = [...dialog.querySelectorAll('div')].find((item) =>
+      item.classList.contains('prose')
+    )
+    assert.equal(text?.classList.contains('text-center'), true)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('first challenger announcement displays the complete standalone crest without adding a title or date', async () => {
+  const fixture = await announcementFixture([
+    {
+      ...announcement,
+      id: 'system:leaderboard-first-challenger',
+      content: 'Congratulations to our first challenger!',
+    },
+  ])
+  try {
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog)
+    const crest = dialog.querySelector('img')
+    assert.equal(
+      crest?.getAttribute('src'),
+      '/rank-badges/challenger-crest.png'
+    )
+    assert.equal(crest?.getAttribute('alt'), '')
+    assert.equal(crest?.parentElement?.getAttribute('aria-hidden'), 'true')
+    assert.equal(crest?.classList.contains('w-auto'), true)
+    assert.equal(crest?.classList.contains('max-w-full'), true)
+    assert.equal(crest?.getAttribute('width'), crest?.getAttribute('height'))
+    assert.equal(
+      crest?.parentElement?.classList.contains('overflow-hidden'),
+      false
+    )
+    assert.match(
+      dialog.textContent ?? '',
+      /Congratulations to our first challenger!/
+    )
+    assert.doesNotMatch(
+      dialog.textContent ?? '',
+      /Must-read announcement|Published:|2020-01-01/
+    )
+    await act(async () => closeButton().click())
+    assert.equal(document.querySelector('[role="dialog"]'), null)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('champion confetti remains active across animation cycles and query refresh until closed', async () => {
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    const celebration = document.querySelector('.announcement-celebration')
+    assert.ok(celebration)
+    assert.equal(celebration.getAttribute('aria-hidden'), 'true')
+    assert.equal(celebration.querySelector('button, a, [tabindex]'), null)
+    await fixture.render(10)
+    assert.equal(
+      document.querySelector('.announcement-celebration'),
+      celebration
+    )
+    const lastPiece = celebration.lastElementChild
+    assert.ok(lastPiece)
+    const ended = new Event('animationiteration', { bubbles: true })
+    Object.defineProperty(ended, 'animationName', {
+      value: 'announcement-confetti-flight',
+    })
+    await act(async () => lastPiece.dispatchEvent(ended))
+    assert.equal(document.querySelector('.announcement-celebration'), celebration)
+    await fixture.render(10)
+    assert.equal(document.querySelector('.announcement-celebration'), celebration)
+    assert.ok(document.querySelector('[role="dialog"]'))
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('reduced motion skips champion confetti while preserving the announcement and close action', async () => {
+  reducedMotion = true
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+    assert.ok(document.querySelector('[role="dialog"] img'))
+    await act(async () => closeButton().click())
+    assert.equal(document.querySelector('[role="dialog"]'), null)
+  } finally {
+    await fixture.cleanup()
+    reducedMotion = false
+  }
+})
+
+test('closing the announcement removes confetti immediately', async () => {
+  const fixture = await announcementFixture([
+    { ...announcement, id: 'system:leaderboard-first-challenger' },
+  ])
+  try {
+    assert.ok(document.querySelector('.announcement-celebration'))
+    await act(async () => closeButton().click())
+    assert.equal(document.querySelector('.announcement-celebration'), null)
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('formatted announcements preserve text, lists and links while scrolling independently of the close button', async () => {
+  const fixture = await announcementFixture([
+    {
+      ...announcement,
+      content:
+        '## Planned maintenance\n\nA longer update with details for users.\n\n- API requests remain available\n- Usage records remain accessible\n\n[Read the details](https://example.com/details)',
+      extra: 'Contact support if you need help.',
+    },
+  ])
+  try {
+    const dialog = document.querySelector('[role="dialog"]')
+    assert.ok(dialog)
+    const paragraph = [...dialog.querySelectorAll('p')].find(
+      (item) => item.textContent === 'A longer update with details for users.'
+    )
+    assert.ok(paragraph)
+    assert.equal(
+      paragraph.closest('.prose')?.classList.contains('text-left'),
+      true
+    )
+    assert.match(dialog.textContent ?? '', /Planned maintenance/)
+    assert.equal(dialog.querySelectorAll('li').length, 2)
+    assert.equal(
+      dialog.querySelector('a')?.getAttribute('href'),
+      'https://example.com/details'
+    )
+    assert.match(dialog.textContent ?? '', /Contact support/)
+    const scrollArea = [...dialog.querySelectorAll('div')].find((item) =>
+      item.classList.contains('overflow-y-auto')
+    )
+    assert.ok(scrollArea?.contains(paragraph))
+    assert.equal(scrollArea?.contains(closeButton()), false)
   } finally {
     await fixture.cleanup()
   }

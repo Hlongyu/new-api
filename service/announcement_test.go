@@ -19,7 +19,9 @@ func setupAnnouncementTest(t *testing.T) *console_setting.ConsoleSetting {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	sqlDB.SetMaxOpenConns(1)
-	require.NoError(t, db.AutoMigrate(&model.AnnouncementRead{}))
+	require.NoError(t, db.AutoMigrate(&model.AnnouncementRead{}, &model.AutomaticAnnouncement{}, &model.Option{}))
+	previousOptions := common.OptionMap
+	common.OptionMap = map[string]string{}
 	previousDB := model.DB
 	model.DB = db
 	settings := console_setting.GetConsoleSetting()
@@ -31,6 +33,7 @@ func setupAnnouncementTest(t *testing.T) *console_setting.ConsoleSetting {
 		{"id":3,"content":"Future update","publishDate":"9999-01-01T00:00:00Z","requireRead":true}
 	]`
 	t.Cleanup(func() {
+		common.OptionMap = previousOptions
 		model.DB = previousDB
 		*settings = previousSettings
 		require.NoError(t, sqlDB.Close())

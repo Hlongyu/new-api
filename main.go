@@ -131,6 +131,7 @@ func main() {
 	service.StartMonthlyRebateReconciliationTask()
 	service.StartMonthlyAccountingTask()
 	service.StartRechargeLotteryMaintenanceTask()
+	service.StartLeaderboardAnnouncementTask()
 
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.

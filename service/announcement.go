@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,10 +15,49 @@ import (
 var ErrAnnouncementUnavailable = errors.New("announcement is no longer available")
 
 type RequiredAnnouncement struct {
+	Id          any    `json:"id,omitempty"`
 	Revision    string `json:"revision"`
 	Content     string `json:"content"`
 	Extra       string `json:"extra"`
 	PublishDate string `json:"publishDate"`
+}
+
+// GetTimelineAnnouncements combines administrator content with event-generated
+// publications. Both the public timeline and account reminders use this list.
+func GetTimelineAnnouncements() ([]map[string]interface{}, error) {
+	announcements := console_setting.GetAnnouncements()
+	automatic, err := model.ListAutomaticAnnouncements()
+	if err != nil {
+		return nil, err
+	}
+	for _, announcement := range automatic {
+		if announcement.Deleted {
+			continue
+		}
+		if announcement.Payload != "" {
+			var item map[string]interface{}
+			if err := common.UnmarshalJsonStr(announcement.Payload, &item); err != nil {
+				return nil, err
+			}
+			announcements = append(announcements, item)
+			continue
+		}
+		announcements = append(announcements, map[string]interface{}{
+			"id":          "system:" + announcement.EventKey,
+			"content":     announcement.Content,
+			"publishDate": time.Unix(announcement.PublishedAt, 0).UTC().Format(time.RFC3339),
+			"type":        "success",
+			"requireRead": true,
+		})
+	}
+	sort.SliceStable(announcements, func(i, j int) bool {
+		left, _ := announcements[i]["publishDate"].(string)
+		right, _ := announcements[j]["publishDate"].(string)
+		leftTime, _ := time.Parse(time.RFC3339, left)
+		rightTime, _ := time.Parse(time.RFC3339, right)
+		return leftTime.After(rightTime)
+	})
+	return announcements, nil
 }
 
 // PublishedRequiredAnnouncements excludes future and disabled announcements.
@@ -28,7 +68,11 @@ func PublishedRequiredAnnouncements() ([]RequiredAnnouncement, error) {
 		return announcements, nil
 	}
 	now := time.Now()
-	for _, item := range console_setting.GetAnnouncements() {
+	timeline, err := GetTimelineAnnouncements()
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range timeline {
 		if required, _ := item["requireRead"].(bool); !required {
 			continue
 		}
@@ -47,6 +91,7 @@ func PublishedRequiredAnnouncements() ([]RequiredAnnouncement, error) {
 		}
 		extra, _ := item["extra"].(string)
 		announcements = append(announcements, RequiredAnnouncement{
+			Id:       item["id"],
 			Revision: fmt.Sprintf("%x", sha256.Sum256(encoded)),
 			Content:  content, Extra: extra, PublishDate: date,
 		})

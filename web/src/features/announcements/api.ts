@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 export interface RequiredAnnouncement {
+  id?: number | string
   revision: string
   content: string
   extra: string

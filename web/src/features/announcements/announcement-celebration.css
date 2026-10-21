@@ -1,0 +1,67 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+.announcement-celebration {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.announcement-celebration-piece {
+  position: absolute;
+  top: 60%;
+  opacity: 0;
+  animation: announcement-confetti-flight 3.2s linear var(--confetti-delay) infinite both;
+}
+
+@keyframes announcement-confetti-flight {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    animation-timing-function: ease-out;
+  }
+  7% {
+    opacity: 1;
+  }
+  35% {
+    opacity: 1;
+    transform: translate3d(var(--confetti-apex-x), var(--confetti-apex-y), 0)
+      rotate(calc(var(--confetti-spin) * 0.35)) rotateX(160deg);
+    animation-timing-function: ease-in;
+  }
+  80% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--confetti-end-x), 65vh, 0)
+      rotate(var(--confetti-spin)) rotateX(520deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcement-celebration {
+    display: none;
+  }
+  .announcement-celebration-piece {
+    animation: none;
+  }
+}

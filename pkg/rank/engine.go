@@ -61,21 +61,23 @@ type Promotion struct {
 }
 
 type Progress struct {
-	TierKey       string     `json:"tierKey"`
-	TierName      string     `json:"tierName"`
-	TierIndex     int        `json:"tierIndex"`
-	Division      string     `json:"division"`
-	DivisionIndex int        `json:"divisionIndex"`
-	Label         string     `json:"label"`
-	Score         int64      `json:"score"`
-	SegmentScore  int64      `json:"segmentScore"`
-	PendingScore  int64      `json:"pendingScore"`
-	TokenScore    int64      `json:"tokenScore"`
-	RenameScore   int64      `json:"renameScore"`
-	SponsorScore  int64      `json:"sponsorScore"`
-	TotalScore    int64      `json:"totalScore"`
-	RankValue     int64      `json:"rankValue"`
-	Promotion     *Promotion `json:"promotion"`
+	// ChallengerReachedOn is the first qualifying day in the replayed history.
+	ChallengerReachedOn string     `json:"-"`
+	TierKey             string     `json:"tierKey"`
+	TierName            string     `json:"tierName"`
+	TierIndex           int        `json:"tierIndex"`
+	Division            string     `json:"division"`
+	DivisionIndex       int        `json:"divisionIndex"`
+	Label               string     `json:"label"`
+	Score               int64      `json:"score"`
+	SegmentScore        int64      `json:"segmentScore"`
+	PendingScore        int64      `json:"pendingScore"`
+	TokenScore          int64      `json:"tokenScore"`
+	RenameScore         int64      `json:"renameScore"`
+	SponsorScore        int64      `json:"sponsorScore"`
+	TotalScore          int64      `json:"totalScore"`
+	RankValue           int64      `json:"rankValue"`
+	Promotion           *Promotion `json:"promotion"`
 }
 
 type state struct {
@@ -88,6 +90,7 @@ type state struct {
 
 func Calculate(scores []DailyScore, today string) Progress {
 	state := state{}
+	challengerReachedOn := ""
 	byDay := make(map[string]DailyScore, len(scores))
 	days := make([]string, 0, len(scores))
 	var tokenScore int64
@@ -127,6 +130,9 @@ func Calculate(scores []DailyScore, today string) Progress {
 					state.promotion.TodayCounts = true
 				}
 				applyDailyScore(&state, gained, day != today)
+				if challengerReachedOn == "" && Tiers[state.tierIndex].Key == "challenger" {
+					challengerReachedOn = day
+				}
 				cursor = cursor.AddDate(0, 0, 1)
 			}
 		}
@@ -134,21 +140,22 @@ func Calculate(scores []DailyScore, today string) Progress {
 
 	tier := Tiers[state.tierIndex]
 	return Progress{
-		TierKey:       tier.Key,
-		TierName:      tier.Name,
-		TierIndex:     state.tierIndex,
-		Division:      Divisions[state.divisionIndex],
-		DivisionIndex: state.divisionIndex,
-		Label:         tier.Name + " " + Divisions[state.divisionIndex],
-		Score:         state.score,
-		SegmentScore:  tier.SegmentScore,
-		PendingScore:  state.pendingScore,
-		TokenScore:    tokenScore,
-		RenameScore:   renameScore,
-		SponsorScore:  sponsorScore,
-		TotalScore:    tokenScore + renameScore + sponsorScore,
-		RankValue:     int64(state.tierIndex)*10_000 + int64(state.divisionIndex)*1_000 + state.score,
-		Promotion:     state.promotion,
+		ChallengerReachedOn: challengerReachedOn,
+		TierKey:             tier.Key,
+		TierName:            tier.Name,
+		TierIndex:           state.tierIndex,
+		Division:            Divisions[state.divisionIndex],
+		DivisionIndex:       state.divisionIndex,
+		Label:               tier.Name + " " + Divisions[state.divisionIndex],
+		Score:               state.score,
+		SegmentScore:        tier.SegmentScore,
+		PendingScore:        state.pendingScore,
+		TokenScore:          tokenScore,
+		RenameScore:         renameScore,
+		SponsorScore:        sponsorScore,
+		TotalScore:          tokenScore + renameScore + sponsorScore,
+		RankValue:           int64(state.tierIndex)*10_000 + int64(state.divisionIndex)*1_000 + state.score,
+		Promotion:           state.promotion,
 	}
 }
 

@@ -23,9 +23,9 @@ import { useTranslation } from 'react-i18next'
 import { Dialog } from '@/components/dialog'
 import { RichContent } from '@/components/rich-content'
 import { Button } from '@/components/ui/button'
-import { formatDateTimeObject } from '@/lib/time'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { AnnouncementCelebration } from './announcement-celebration'
 import {
   dismissAnnouncement,
   getPendingAnnouncements,
@@ -65,6 +65,10 @@ function AccountAnnouncements(props: { userId: number }) {
   })
   const announcement = pending.data?.[0]
   if (!announcement) return null
+  const isShortAnnouncement =
+    announcement.content.length <= 200 &&
+    !announcement.content.includes('\n') &&
+    !announcement.extra
 
   const closeAnnouncement = () => {
     if (!dismissal.isPending) dismissal.mutate(announcement.revision)
@@ -76,28 +80,55 @@ function AccountAnnouncements(props: { userId: number }) {
       onOpenChange={(open) => {
         if (!open) closeAnnouncement()
       }}
-      title={t('Must-read announcement')}
-      description={t(
-        'Closing this announcement stops reminders for your account.'
-      )}
-      contentClassName='sm:max-w-lg'
+      title={t('Announcement Details')}
+      headerClassName='sr-only'
+      showCloseButton={false}
+      contentClassName='gap-0 rounded-2xl px-6 py-8 shadow-xl shadow-black/10 sm:max-w-md sm:p-8'
       bodyClassName='space-y-4 break-words'
+      footerClassName='mx-0 mb-0 flex-row justify-center border-0 bg-transparent p-0 pt-6 sm:mx-0 sm:mb-0 sm:justify-center sm:p-0 sm:pt-6'
       footer={
-        <Button disabled={dismissal.isPending} onClick={closeAnnouncement}>
+        <Button
+          variant='outline'
+          className='h-10 min-w-28 rounded-lg px-6 text-sm focus-visible:ring-2'
+          disabled={dismissal.isPending}
+          onClick={closeAnnouncement}
+        >
           {dismissal.isPending ? t('Saving...') : t('Close')}
         </Button>
       }
     >
-      <p className='text-muted-foreground text-sm'>
-        {t('Published:')}{' '}
-        {formatDateTimeObject(new Date(announcement.publishDate))}
-      </p>
-      <RichContent breaks content={announcement.content} />
+      {announcement.id === 'system:leaderboard-first-challenger' ? (
+        <>
+          <AnnouncementCelebration key={announcement.revision} />
+          <div
+            aria-hidden='true'
+            className='mx-auto mb-5 flex justify-center drop-shadow-[0_4px_12px_rgb(202_151_64_/_0.18)]'
+          >
+            <img
+              src='/rank-badges/challenger-crest.png'
+              alt=''
+              width={128}
+              height={128}
+              draggable={false}
+              className='h-24 w-auto max-w-full select-none'
+            />
+          </div>
+        </>
+      ) : null}
+      <RichContent
+        breaks
+        content={announcement.content}
+        className={
+          isShortAnnouncement
+            ? 'text-foreground text-center text-lg font-medium text-balance [&_p]:leading-8'
+            : 'text-foreground text-left text-base [&_h1]:text-xl [&_h2]:text-lg [&_p]:leading-7 [&_strong]:font-semibold'
+        }
+      />
       {announcement.extra ? (
         <RichContent
           breaks
           content={announcement.extra}
-          className='text-muted-foreground'
+          className='text-muted-foreground text-sm [&_p]:leading-7'
         />
       ) : null}
       {dismissal.isError && dismissal.variables === announcement.revision ? (

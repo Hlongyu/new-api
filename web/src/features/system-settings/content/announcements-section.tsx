@@ -67,7 +67,7 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 type Announcement = {
-  id: number
+  id: number | string
   content: string
   publishDate: string
   type: 'default' | 'ongoing' | 'success' | 'warning' | 'error'
@@ -140,7 +140,8 @@ export function AnnouncementsSection({
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [isEnabled, setIsEnabled] = useState(enabled)
   const [hasChanges, setHasChanges] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [selectedIds, setSelectedIds] = useState<Announcement['id'][]>([])
+  const [knownAnnouncementIds, setKnownAnnouncementIds] = useState<string[]>([])
   const [showDialog, setShowDialog] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [editingAnnouncement, setEditingAnnouncement] =
@@ -162,6 +163,13 @@ export function AnnouncementsSection({
     try {
       const parsed = JSON.parse(data || '[]')
       if (Array.isArray(parsed)) {
+        setKnownAnnouncementIds(
+          parsed.flatMap((item) =>
+            typeof item.id === 'string' && item.id.startsWith('system:')
+              ? [item.id]
+              : []
+          )
+        )
         setAnnouncements(
           parsed.map((item, idx) => ({
             ...item,
@@ -262,7 +270,13 @@ export function AnnouncementsSection({
       )
       toast.success(t('Announcement updated. Click "Save Settings" to apply.'))
     } else {
-      const newId = Math.max(...announcements.map((item) => item.id), 0) + 1
+      const newId =
+        Math.max(
+          ...announcements.flatMap((item) =>
+            typeof item.id === 'number' ? [item.id] : []
+          ),
+          0
+        ) + 1
       setAnnouncements((prev) => [...prev, { id: newId, ...values }])
       toast.success(t('Announcement added. Click "Save Settings" to apply.'))
     }
@@ -272,10 +286,12 @@ export function AnnouncementsSection({
 
   const handleSaveAll = async () => {
     try {
-      await updateOption.mutateAsync({
+      const result = await updateOption.mutateAsync({
         key: 'console_setting.announcements',
         value: JSON.stringify(announcements),
+        known_announcement_ids: knownAnnouncementIds,
       })
+      if (!result.success) return
       setHasChanges(false)
       toast.success(t('Announcements saved successfully'))
     } catch {
@@ -287,7 +303,7 @@ export function AnnouncementsSection({
     setSelectedIds(checked ? announcements.map((item) => item.id) : [])
   }
 
-  const toggleSelectOne = (id: number, checked: boolean) => {
+  const toggleSelectOne = (id: Announcement['id'], checked: boolean) => {
     setSelectedIds((prev) =>
       checked ? [...prev, id] : prev.filter((item) => item !== id)
     )

@@ -30,6 +30,7 @@ export type SystemOptionsResponse = {
 }
 
 export type UpdateOptionRequest = {
+  known_announcement_ids?: string[]
   key: string
   value: string | boolean | number
 }

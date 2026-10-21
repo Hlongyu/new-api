@@ -77,98 +77,108 @@ after(() => {
   domWindow.close()
 })
 
-test('an administrator can enable automatic announcement reminders and preserve the flag when editing', async () => {
-  const container = document.createElement('div')
-  document.body.append(container)
-  const root = createRoot(container)
-  const client = new QueryClient({
-    defaultOptions: { mutations: { retry: false } },
-  })
-  const previousAdapter = api.defaults.adapter
-  const saved: { key: string; value: string }[] = []
-  api.defaults.adapter = async (config) => {
-    saved.push(JSON.parse(config.data as string))
-    return {
-      data: { success: true },
-      status: 200,
-      statusText: 'OK',
-      headers: {},
-      config,
+for (const announcementId of [1, 'system:leaderboard-first-challenger']) {
+  test(`administrator can edit and save announcement ${announcementId} through the shared editor`, async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    })
+    const previousAdapter = api.defaults.adapter
+    const saved: {
+      key: string
+      value: string
+      known_announcement_ids: string[]
+    }[] = []
+    api.defaults.adapter = async (config) => {
+      saved.push(JSON.parse(config.data as string))
+      return {
+        data: { success: true },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
+      }
     }
-  }
-  try {
-    await act(async () =>
-      root.render(
-        <QueryClientProvider client={client}>
-          <I18nextProvider i18n={i18n}>
-            <AnnouncementsSection
-              enabled
-              data={JSON.stringify([
-                {
-                  id: 1,
-                  content: 'Service update',
-                  publishDate: '2020-01-01T00:00:00Z',
-                  type: 'default',
-                },
-              ])}
-            />
-          </I18nextProvider>
-        </QueryClientProvider>
+    try {
+      await act(async () =>
+        root.render(
+          <QueryClientProvider client={client}>
+            <I18nextProvider i18n={i18n}>
+              <AnnouncementsSection
+                enabled
+                data={JSON.stringify([
+                  {
+                    id: announcementId,
+                    content: 'Service update',
+                    publishDate: '2020-01-01T00:00:00Z',
+                    type: 'default',
+                  },
+                ])}
+              />
+            </I18nextProvider>
+          </QueryClientProvider>
+        )
       )
-    )
-    const edit = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Edit"]'
-    )
-    assert.ok(edit)
-    await act(async () => edit.click())
-    const label = [...document.querySelectorAll('label')].find(
-      (label) => label.textContent === 'Must-read announcement'
-    )
-    assert.ok(label)
-    const checkbox = document.querySelector<HTMLInputElement>(
-      `[id="${label.htmlFor}"]`
-    )
-    assert.ok(checkbox)
-    assert.equal(checkbox.checked, false)
-    await act(async () => label.click())
-    assert.equal(checkbox.checked, true)
-    const update = [...document.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Update'
-    )
-    assert.ok(update)
-    await act(async () => update.click())
-    const save = [...document.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Save Settings'
-    )
-    assert.ok(save)
-    assert.equal(save.disabled, false)
-    await act(async () => save.click())
-    assert.equal(saved.length, 1)
-    assert.equal(saved[0]?.key, 'console_setting.announcements')
-    assert.deepEqual(JSON.parse(saved[0]?.value ?? ''), [
-      {
-        id: 1,
-        content: 'Service update',
-        publishDate: '2020-01-01T00:00:00Z',
-        type: 'default',
-        extra: '',
-        requireRead: true,
-      },
-    ])
-    await act(async () => edit.click())
-    const savedLabel = [...document.querySelectorAll('label')].find(
-      (label) => label.textContent === 'Must-read announcement'
-    )
-    assert.ok(savedLabel)
-    assert.equal(
-      document.querySelector<HTMLInputElement>(`[id="${savedLabel.htmlFor}"]`)
-        ?.checked,
-      true
-    )
-  } finally {
-    await act(async () => root.unmount())
-    client.clear()
-    api.defaults.adapter = previousAdapter
-    container.remove()
-  }
-})
+      const edit = document.querySelector<HTMLButtonElement>(
+        'button[aria-label="Edit"]'
+      )
+      assert.ok(edit)
+      await act(async () => edit.click())
+      const label = [...document.querySelectorAll('label')].find(
+        (label) => label.textContent === 'Must-read announcement'
+      )
+      assert.ok(label)
+      const checkbox = document.querySelector<HTMLInputElement>(
+        `[id="${label.htmlFor}"]`
+      )
+      assert.ok(checkbox)
+      assert.equal(checkbox.checked, false)
+      await act(async () => label.click())
+      assert.equal(checkbox.checked, true)
+      const update = [...document.querySelectorAll('button')].find(
+        (button) => button.textContent === 'Update'
+      )
+      assert.ok(update)
+      await act(async () => update.click())
+      const save = [...document.querySelectorAll('button')].find(
+        (button) => button.textContent === 'Save Settings'
+      )
+      assert.ok(save)
+      assert.equal(save.disabled, false)
+      await act(async () => save.click())
+      assert.equal(saved.length, 1)
+      assert.equal(saved[0]?.key, 'console_setting.announcements')
+      assert.deepEqual(
+        saved[0]?.known_announcement_ids,
+        typeof announcementId === 'string' ? [announcementId] : []
+      )
+      assert.deepEqual(JSON.parse(saved[0]?.value ?? ''), [
+        {
+          id: announcementId,
+          content: 'Service update',
+          publishDate: '2020-01-01T00:00:00Z',
+          type: 'default',
+          extra: '',
+          requireRead: true,
+        },
+      ])
+      await act(async () => edit.click())
+      const savedLabel = [...document.querySelectorAll('label')].find(
+        (label) => label.textContent === 'Must-read announcement'
+      )
+      assert.ok(savedLabel)
+      assert.equal(
+        document.querySelector<HTMLInputElement>(`[id="${savedLabel.htmlFor}"]`)
+          ?.checked,
+        true
+      )
+    } finally {
+      await act(async () => root.unmount())
+      client.clear()
+      api.defaults.adapter = previousAdapter
+      container.remove()
+    }
+  })
+}

@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -130,7 +131,12 @@ func GetStatus(c *gin.Context) {
 		data["api_info"] = console_setting.GetApiInfo()
 	}
 	if cs.AnnouncementsEnabled {
-		data["announcements"] = console_setting.GetAnnouncements()
+		announcements, err := service.GetTimelineAnnouncements()
+		if err != nil {
+			common.SysError("failed to load automatic announcements: " + err.Error())
+			announcements = console_setting.GetAnnouncements()
+		}
+		data["announcements"] = announcements
 	}
 	if cs.FAQEnabled {
 		data["faq"] = console_setting.GetFAQ()

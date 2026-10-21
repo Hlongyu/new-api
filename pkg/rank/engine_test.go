@@ -2,10 +2,29 @@ package rank
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCalculateRecordsFirstChallengerDayAfterPromotionCompletes(t *testing.T) {
+	start := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	scores := []DailyScore{{Day: "2026-01-01", TokenScore: 100_000}}
+	// The eight promotion series require 21 active days after the entry day.
+	for day := 1; day <= 21; day++ {
+		scores = append(scores, DailyScore{Day: start.AddDate(0, 0, day).Format(dayLayout), TokenScore: 20})
+	}
+	before := Calculate(scores, "2026-01-21")
+	assert.Equal(t, "grandmaster", before.TierKey)
+	assert.Empty(t, before.ChallengerReachedOn)
+	reached := Calculate(scores, "2026-01-22")
+	assert.Equal(t, "challenger", reached.TierKey)
+	assert.Equal(t, "2026-01-22", reached.ChallengerReachedOn)
+	scores = append(scores, DailyScore{Day: "2026-02-01", SponsorScore: 1_000})
+	later := Calculate(scores, "2026-02-01")
+	assert.Equal(t, "2026-01-22", later.ChallengerReachedOn)
+}
 
 func TestCalculateCombinesDailyScoreSources(t *testing.T) {
 	progress := Calculate([]DailyScore{{

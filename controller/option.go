@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -81,7 +82,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" {
+		if k == "theme.frontend" || k == "console_setting.announcements" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -105,6 +106,19 @@ func GetOptions(c *gin.Context) {
 		}
 	}
 	common.OptionMapRWMutex.Unlock()
+	announcements, err := service.GetTimelineAnnouncements()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	announcementJSON, err := common.Marshal(announcements)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	options = append(options, &model.Option{
+		Key: "console_setting.announcements", Value: string(announcementJSON),
+	})
 	options = append(options, &model.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),
@@ -117,8 +131,9 @@ func GetOptions(c *gin.Context) {
 }
 
 type OptionUpdateRequest struct {
-	Key   string `json:"key"`
-	Value any    `json:"value"`
+	Key                  string   `json:"key"`
+	Value                any      `json:"value"`
+	KnownAnnouncementIds []string `json:"known_announcement_ids"`
 }
 
 func UpdateOption(c *gin.Context) {
@@ -363,7 +378,11 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
-	err = model.UpdateOption(option.Key, option.Value.(string))
+	if option.Key == "console_setting.announcements" {
+		err = model.SaveManagedAnnouncements(option.Value.(string), option.KnownAnnouncementIds)
+	} else {
+		err = model.UpdateOption(option.Key, option.Value.(string))
+	}
 	if err != nil {
 		common.ApiError(c, err)
 		return

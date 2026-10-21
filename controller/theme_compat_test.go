@@ -28,6 +28,7 @@ func TestUpdateOptionRejectsRetiredFrontendTheme(t *testing.T) {
 }
 
 func TestGetStatusAdvertisesDefaultDashboard(t *testing.T) {
+	setupAnnouncementControllerTest(t)
 	previousMap := common.OptionMap
 	common.OptionMap = map[string]string{}
 	t.Cleanup(func() { common.OptionMap = previousMap })
