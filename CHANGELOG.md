@@ -1,5 +1,24 @@
 # Changelog
 
+## [custom-v1.0.21] - 2026-10-25
+
+### Added
+
+- Added root-managed, one-time group-ratio changes in the group-ratio settings page. Select an existing group, a non-negative target ratio, and a Beijing date/time (UTC+8), with pending-plan cancellation and execution history. Changes remain in effect until changed again; recurring schedules and automatic restoration are not implied. See [scheduled group-ratio changes](docs/group-ratio-schedules.md).
+- Persist schedules across restarts and apply overdue changes chronologically. Update only the target group's latest base ratio, preserving unrelated edits and existing group-specific overrides. Commit the ratio, configuration alias, webhook event, and completion record together; retry rolled-back database failures and mark deleted target groups as failed.
+- Added English and Simplified Chinese interface text, nine frontend tests for time conversion and administrator interactions, and backend coverage for scheduling boundaries, cancellation, duplicate prevention, recovery, ordering, and atomic webhook delivery creation.
+
+### Fixed
+
+- Replaced reflection-based Responses request deep copies with typed cloning and bulk raw-JSON byte copies. Keep nested options and scalar pointers independent between upstream attempts, preserving explicit zero/false values and preventing model mapping or reasoning changes from contaminating retries.
+- Skip conversation-body cloning on passthrough requests while preserving original request bytes and model-mapping metadata. Local Apple M4 benchmarks using the production request type reduced 1 MiB cloning from approximately 42 ms and 1.05 million allocations to 0.048 ms and three allocations; these are copy-operation measurements, not end-to-end latency guarantees.
+
+### Compatibility
+
+- Added `group_ratio_schedules` through both startup migration paths using GORM operations for SQLite, MySQL, and PostgreSQL. Persistence and recovery were tested with SQLite. No production schedules are created automatically.
+- Primary nodes check for due plans every second; other instances retain the existing `SyncOptions` propagation interval. Existing base ratios, recharge ratios, special overrides, and retained request data are preserved on upgrade.
+- Relevant backend and frontend tests, DTO race checks, TypeScript checks, lint, frontend/backend builds, and the independent `relaykit` build passed.
+
 ## [custom-v1.0.20] - 2026-10-21
 
 ### Added

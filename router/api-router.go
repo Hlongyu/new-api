@@ -258,6 +258,9 @@ func SetApiRouter(router *gin.Engine) {
 		optionRoute.Use(middleware.RootAuth())
 		{
 			optionRoute.GET("/", controller.GetOptions)
+			optionRoute.GET("/group-ratio-schedules", controller.ListGroupRatioSchedules)
+			optionRoute.POST("/group-ratio-schedules", controller.CreateGroupRatioSchedule)
+			optionRoute.POST("/group-ratio-schedules/:id/cancel", controller.CancelGroupRatioSchedule)
 			optionRoute.GET("/group-ratio-webhook", controller.GetGroupRatioWebhook)
 			optionRoute.PUT("/group-ratio-webhook", controller.SaveGroupRatioWebhook)
 			optionRoute.GET("/group-ratio-webhook/deliveries", controller.ListGroupRatioWebhookDeliveries)

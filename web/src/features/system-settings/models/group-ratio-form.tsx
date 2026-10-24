@@ -61,6 +61,7 @@ import {
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
 import { safeNumberFieldProps } from '../utils/numeric-field'
+import { GroupRatioSchedules } from './group-ratio-schedules'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
 import { GroupRatioWebhook } from './group-ratio-webhook'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
@@ -446,6 +447,14 @@ export const GroupRatioForm = memo(function GroupRatioForm({
           </SettingsForm>
         )}
       </Form>
+      <GroupRatioSchedules
+        groups={Object.keys(
+          safeJsonParse<Record<string, number>>(watchedGroupRatio, {
+            fallback: {},
+            silent: true,
+          })
+        )}
+      />
       <GroupRatioWebhook />
     </div>
   )
