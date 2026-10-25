@@ -3688,6 +3688,7 @@
     "Password reset: {{password}}": "Mật khẩu đã đặt lại: {{password}}",
     "Passwords do not match": "Mật khẩu không khớp",
     "Passwords don't match.": "Mật khẩu không khớp.",
+    "Paste a WeCom robot webhook URL to receive Markdown notifications. No signing secret is required.": "Dán URL webhook của bot WeCom để nhận thông báo Markdown. Không cần khóa bí mật ký.",
     "Paste Connection Info": "Dán thông tin kết nối",
     "Path": "Đường dẫn",
     "Path not set": "Chưa đặt đường dẫn",

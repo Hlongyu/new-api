@@ -3688,6 +3688,7 @@
     "Password reset: {{password}}": "Пароль сброшен: {{password}}",
     "Passwords do not match": "Пароли не совпадают",
     "Passwords don't match.": "Пароли не совпадают.",
+    "Paste a WeCom robot webhook URL to receive Markdown notifications. No signing secret is required.": "Вставьте URL вебхука бота WeCom для получения уведомлений в Markdown. Секрет подписи не требуется.",
     "Paste Connection Info": "Вставить данные подключения",
     "Path": "Путь",
     "Path not set": "Путь не задан",

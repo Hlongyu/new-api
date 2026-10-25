@@ -200,7 +200,7 @@ function WebhookForm(props: { config: WebhookConfig }) {
                     <Input
                       {...field}
                       type='url'
-                      placeholder='https://example.com/webhook'
+                      placeholder='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...'
                     />
                   </FormControl>
                   <FormMessage />
@@ -243,7 +243,10 @@ function WebhookForm(props: { config: WebhookConfig }) {
               )}
             />
             <p className='text-muted-foreground text-sm'>
-              {t('Use a public HTTPS URL on port 443.')}
+              {t('Use a public HTTPS URL on port 443.')}{' '}
+              {t(
+                'Paste a WeCom robot webhook URL to receive Markdown notifications. No signing secret is required.'
+              )}
             </p>
             <Button type='submit' disabled={save.isPending}>
               {save.isPending ? t('Saving...') : t('Save webhook')}

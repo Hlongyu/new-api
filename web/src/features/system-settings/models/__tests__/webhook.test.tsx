@@ -63,7 +63,7 @@ await i18n
   .init({ lng: 'en', resources: { en: { translation: {} } } })
 after(() => dom.close())
 
-test('enabled webhook requires groups but saves without a signing secret', async () => {
+test('enabled WeCom webhook requires groups but saves the robot URL without a signing secret', async () => {
   const adapter = api.defaults.adapter
   const writes: Record<string, unknown>[] = []
   api.defaults.adapter = async (config) => {
@@ -75,7 +75,7 @@ test('enabled webhook requires groups but saves without a signing secret', async
         success: true,
         data: {
           enabled: true,
-          url: 'https://example.com/hook',
+          url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key',
           groups: ['vip'],
           has_secret: true,
         },
@@ -94,7 +94,7 @@ test('enabled webhook requires groups but saves without a signing secret', async
   })
   client.setQueryData([...webhookQueryKey, 'config'], {
     enabled: true,
-    url: 'https://example.com/hook',
+    url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key',
     groups: [],
     has_secret: false,
   })
@@ -158,6 +158,10 @@ test('enabled webhook requires groups but saves without a signing secret', async
       )
     })
     assert.equal(writes.length, 1)
+    assert.equal(
+      writes[0].url,
+      'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'
+    )
     assert.deepEqual(writes[0].groups, ['vip', 'svip'])
     assert.equal(writes[0].secret, '')
     assert.equal(

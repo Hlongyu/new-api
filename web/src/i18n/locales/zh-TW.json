@@ -3688,6 +3688,7 @@
     "Password reset: {{password}}": "密碼已重置：{{password}}",
     "Passwords do not match": "密碼不匹配",
     "Passwords don't match.": "兩次輸入的密碼不一致。",
+    "Paste a WeCom robot webhook URL to receive Markdown notifications. No signing secret is required.": "貼上企業微信機器人的 Webhook 網址即可接收 Markdown 通知，無需填寫簽名金鑰。",
     "Paste Connection Info": "貼上連線資訊",
     "Path": "路徑",
     "Path not set": "未設定路徑",

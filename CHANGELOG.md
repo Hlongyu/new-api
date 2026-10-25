@@ -1,5 +1,21 @@
 # Changelog
 
+## [custom-v1.0.22] - 2026-10-25
+
+### Added
+
+- Support direct delivery to WeCom robot webhook URLs from group-ratio settings. Automatically send Markdown notifications with the event time, changed groups, and old/new ratios; no signing secret is required. Added setup guidance in all seven interface languages.
+- Keep notifications within WeCom's 4096-byte limit by preserving complete change lines and summarizing omitted groups. Full events remain available in delivery records, and group names are escaped to prevent unintended Markdown or mentions.
+
+### Fixed
+
+- Check WeCom's `errcode` as well as HTTP status before marking a delivery successful. Rejected or malformed responses use the existing automatic and manual retry flow, with credential-free error summaries.
+
+### Compatibility
+
+- Existing generic JSON webhooks and optional HMAC signatures retain their behavior. No database migration is required; queued events targeting WeCom are formatted when delivered.
+- Relevant backend and frontend regression tests, TypeScript, lint, formatting, and frontend/backend builds passed. Two sample Markdown notifications were accepted by a real WeCom robot without modifying group ratios. See [group-ratio webhooks](docs/webhooks/group-ratio.md).
+
 ## [custom-v1.0.21] - 2026-10-25
 
 ### Added

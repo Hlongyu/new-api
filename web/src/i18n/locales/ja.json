@@ -3688,6 +3688,7 @@
     "Password reset: {{password}}": "パスワードがリセットされました：{{password}}",
     "Passwords do not match": "パスワードが一致しません",
     "Passwords don't match.": "パスワードが一致しません。",
+    "Paste a WeCom robot webhook URL to receive Markdown notifications. No signing secret is required.": "WeCom ボットの Webhook URL を貼り付けると、Markdown 通知を受信できます。署名シークレットは不要です。",
     "Paste Connection Info": "接続情報を貼り付け",
     "Path": "パス",
     "Path not set": "パス未設定",
