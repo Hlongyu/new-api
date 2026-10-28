@@ -133,7 +133,11 @@ function UsageLogsContent() {
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
-                <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
+                <TabsTrigger value='self'>
+                  {activeCategory === 'common'
+                    ? t('My Requests and Groups')
+                    : t('Only Mine')}
+                </TabsTrigger>
               </TabsList>
             </Tabs>
           </SectionPageLayout.Actions>

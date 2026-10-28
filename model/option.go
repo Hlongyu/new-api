@@ -191,6 +191,7 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	RefreshPersonalGroupRatios()
 	optionWriteMutex.Lock()
 	defer optionWriteMutex.Unlock()
 	options, _ := AllOption()

@@ -367,6 +367,9 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 }
 
 func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*websocket.Conn, error) {
+	if c.GetBool("personal_channel") {
+		return nil, fmt.Errorf("personal channels do not support realtime WebSocket requests")
+	}
 	fullRequestURL, err := a.GetRequestURL(info)
 	if err != nil {
 		return nil, fmt.Errorf("get request url failed: %w", err)
@@ -476,6 +479,10 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
+	if c.GetBool("personal_channel") {
+		client = service.GetPersonalChannelHTTPClient()
+		err = nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
 	}

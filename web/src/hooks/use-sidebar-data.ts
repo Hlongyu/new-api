@@ -107,6 +107,11 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
+            title: t('Personal Groups'),
+            url: '/personal-groups',
+            icon: Radio,
+          },
+          {
             title: t('Monthly recap'),
             url: '/monthly-recap',
             icon: Activity,
@@ -142,6 +147,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Channel Reviews'),
+            url: '/channel-reviews',
+            icon: ListTodo,
           },
           {
             title: t('Models'),

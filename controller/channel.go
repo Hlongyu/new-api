@@ -626,6 +626,13 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
+	for _, group := range addChannelRequest.Channel.GetGroups() {
+		if strings.HasPrefix(group, "custom-") {
+			common.ApiError(c, fmt.Errorf("custom- groups require the personal channel approval workflow"))
+			return
+		}
+	}
+	addChannelRequest.Channel.OwnerUserID = 0
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
@@ -980,6 +987,16 @@ func UpdateChannel(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	if originChannel.OwnerUserID > 0 {
+		common.ApiError(c, fmt.Errorf("personal channel changes require the personal channel approval workflow"))
+		return
+	}
+	for _, group := range channel.GetGroups() {
+		if strings.HasPrefix(group, "custom-") && !common.StringsContains(originChannel.GetGroups(), group) {
+			common.ApiError(c, fmt.Errorf("custom- groups require the personal channel approval workflow"))
+			return
+		}
 	}
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
@@ -1425,6 +1442,10 @@ func CopyChannel(c *gin.Context) {
 		return
 	}
 
+	if origin.OwnerUserID > 0 {
+		common.ApiError(c, fmt.Errorf("personal channels must be created through the approval workflow"))
+		return
+	}
 	// clone channel
 	clone := *origin // shallow copy is sufficient as we will overwrite primitives
 	clone.Id = 0     // let DB auto-generate

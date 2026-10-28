@@ -57,6 +57,7 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 }
 
 type Log struct {
+	GroupOwnerUserID  int    `json:"-" gorm:"index"`
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
 	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
@@ -100,6 +101,12 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
+	if log.GroupOwnerUserID == 0 && strings.HasPrefix(log.Group, "custom-") && (log.Type == LogTypeConsume || log.Type == LogTypeError || log.Type == LogTypeRefund) {
+		var group PersonalGroup
+		if err := DB.Where("name = ?", log.Group).First(&group).Error; err == nil {
+			log.GroupOwnerUserID = group.OwnerUserID
+		}
+	}
 	return LOG_DB.Create(log).Error
 }
 
@@ -571,11 +578,16 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 const logSearchCountLimit = 10000
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
-	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+	if userId <= 0 {
+		return nil, 0, errors.New("Invalid log viewer")
+	}
+	tx := LOG_DB.Where("(logs.user_id = ? OR (logs.group_owner_user_id = ? AND logs.type IN ?))", userId, userId, []int{LogTypeConsume, LogTypeError, LogTypeRefund})
+	if logType != LogTypeUnknown {
+		tx = tx.Where("logs.type = ?", logType)
+	}
+	// Private identifiers may only be searched in the caller's own logs.
+	if tokenName != "" || upstreamRequestId != "" {
+		tx = tx.Where("logs.user_id = ?", userId)
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -614,6 +626,14 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return nil, 0, errors.New("查询日志失败")
 	}
 
+	for _, log := range logs {
+		if log.UserId != userId {
+			log.UserId, log.TokenId, log.ChannelId = 0, 0, 0
+			log.TokenName, log.Ip, log.UpstreamRequestId = "", "", ""
+			log.Content, log.Other = "", "{}"
+		}
+	}
+
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
 }
@@ -624,11 +644,24 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, viewerIDs ...int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+
+	if len(viewerIDs) > 0 {
+		viewerID := viewerIDs[0]
+		if viewerID <= 0 {
+			return stat, errors.New("Invalid log viewer")
+		}
+		tx = tx.Where("(user_id = ? OR group_owner_user_id = ?)", viewerID, viewerID)
+		rpmTpmQuery = rpmTpmQuery.Where("(user_id = ? OR group_owner_user_id = ?)", viewerID, viewerID)
+		if tokenName != "" {
+			tx = tx.Where("user_id = ?", viewerID)
+			rpmTpmQuery = rpmTpmQuery.Where("user_id = ?", viewerID)
+		}
+	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err

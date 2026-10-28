@@ -93,6 +93,13 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 - Migrations must work on all three databases. For SQLite, use `ALTER TABLE ... ADD COLUMN` instead of `ALTER COLUMN` (see `model/main.go` for patterns).
 - Avoid GORM boolean default tags such as `gorm:"default:true"` when the default is a business rule already enforced by code. MySQL and PostgreSQL can normalize boolean defaults differently, causing GORM `AutoMigrate` to repeatedly issue `ALTER TABLE` on restart. Prefer setting these defaults in request/model normalization, hooks, constructors, or service logic; do not replace `default:true` with `default:1` unless the behavior is verified across SQLite, MySQL, and PostgreSQL.
 
+**Personal groups and channel approval:**
+
+- Reserve the `custom-` group namespace for immutable, user-owned personal groups. Keep personal ratios separate from administrator options.
+- Personal channel changes must be stored as immutable revisions and published only by an authorized administrator approving the current submitted revision. Never expose draft credentials or materialize pending revisions in relay channel/ability tables.
+- Keep personal outbound connections on the protected HTTP transport. New providers or relay formats must preserve dial-time SSRF checks before being enabled for personal channels.
+- Group-owner log access must use the owner snapshot recorded with the request, preserve existing self-log access, and redact other callers' private metadata. Apply the same scope to counts, filters and statistics.
+
 **Relay and provider behavior:**
 
 - When implementing a new channel, confirm whether the provider supports `StreamOptions`; if supported, add the channel to `streamSupportedChannels`.

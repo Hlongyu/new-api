@@ -21,6 +21,7 @@ import (
 )
 
 type Channel struct {
+	OwnerUserID        int     `json:"owner_user_id" gorm:"index"`
 	Id                 int     `json:"id"`
 	Type               int     `json:"type" gorm:"default:0"`
 	Key                string  `json:"key" gorm:"not null"`

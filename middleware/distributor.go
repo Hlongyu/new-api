@@ -162,7 +162,10 @@ func Distribute() func(c *gin.Context) {
 			}
 		}
 		common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
-		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
+		if setupErr := SetupContextForSelectedChannel(c, channel, modelRequest.Model); setupErr != nil && channel != nil {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, setupErr.Error())
+			return
+		}
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
@@ -446,6 +449,20 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
+	if channel.OwnerUserID > 0 {
+		path := c.Request.URL.Path
+		supported := false
+		switch path {
+		case "/v1/chat/completions", "/v1/completions", "/v1/responses", "/v1/responses/compact", "/v1/messages", "/v1/embeddings", "/v1/moderations", "/v1/images/generations", "/v1/images/edits", "/v1/audio/speech", "/v1/audio/transcriptions", "/v1/audio/translations", "/pg/chat/completions":
+			supported = true
+		default:
+			supported = (strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/")) && (strings.HasSuffix(path, ":generateContent") || strings.HasSuffix(path, ":streamGenerateContent"))
+		}
+		if !supported {
+			return types.NewError(errors.New("personal channels support synchronous HTTP inference endpoints only"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+	}
+	c.Set("personal_channel", channel.OwnerUserID > 0)
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)
 	common.SetContextKey(c, constant.ContextKeyChannelType, channel.Type)

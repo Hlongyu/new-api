@@ -260,6 +260,9 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Channel{},
+		&PersonalGroup{},
+		&PersonalChannel{},
+		&PersonalChannelRevision{},
 		&Token{},
 		&User{},
 		&UserSession{},
@@ -358,6 +361,9 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Channel{}, "Channel"},
+		{&PersonalGroup{}, "PersonalGroup"},
+		{&PersonalChannel{}, "PersonalChannel"},
+		{&PersonalChannelRevision{}, "PersonalChannelRevision"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
 		{&UserSession{}, "UserSession"},
@@ -478,6 +484,9 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS group_owner_user_id Int32 DEFAULT 0").Error; err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -509,6 +518,7 @@ func clickHouseLogCreateTableSQL(ttlDays int) string {
 CREATE TABLE IF NOT EXISTS logs (
 	id Int64 DEFAULT 0,
 	user_id Int32 DEFAULT 0,
+ group_owner_user_id Int32 DEFAULT 0,
 	created_at Int64 DEFAULT 0,
 	type Int32 DEFAULT 0,
 	content String DEFAULT '',

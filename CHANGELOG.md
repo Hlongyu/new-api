@@ -1,5 +1,23 @@
 # Changelog
 
+## [custom-v1.0.23] - 2026-10-28
+
+### Added
+
+- Added user-owned `custom-` groups with independently managed ratios, personal channel drafts, and administrator approval of exact submitted revisions. Published channels continue serving while changes await review.
+- Added personal-group and channel-review pages, searchable upstream model selection, provider defaults, and seven-language UI text. Personal channels support OpenAI-compatible, Anthropic, Gemini and New API HTTP inference; model mapping is not supported.
+- Allow group owners to view requests served by their groups, including calling usernames, while hiding other callers’ tokens, IP addresses, request content and debugging metadata. The user column is hidden by default in personal log views and can be enabled manually.
+
+### Fixed
+
+- Warn when a personal channel base URL ends in `/v1` or `/v1/`, using the administrator channel warning and an inline reminder to avoid duplicate version paths.
+- Protect model discovery and personal inference with public-network validation; prevent saved credentials from being reused at changed destinations and prevent draft publication through ordinary channel editing.
+
+### Compatibility
+
+- Existing billing and settlement remain in use; revenue sharing remains outside the application. New group/channel revision tables and ownership columns require startup migrations. See [personal groups](docs/personal-groups.md).
+- SQLite regression tests and local multi-account calls verified approval, billing, caller visibility and isolation. MySQL/PostgreSQL live migration validation has not been performed. The local test database encountered an existing SQLite DDL parser error on repeat startup migration and currently runs with migration skipped (`NODE_TYPE=slave`); investigate this limitation before upgrading an existing deployment.
+
 ## [custom-v1.0.22] - 2026-10-25
 
 ### Added

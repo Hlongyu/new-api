@@ -535,6 +535,22 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     )
   }
 
+  if (!isAdmin) {
+    columns.push({
+      id: 'user',
+      header: t('User'),
+      accessorFn: (row) => row.username,
+      cell: function CallingUserCell({ row }) {
+        const { sensitiveVisible } = useUsageLogsContext()
+        return (
+          <span className='text-sm break-all'>
+            {sensitiveVisible ? row.original.username : '••••'}
+          </span>
+        )
+      },
+    })
+  }
+
   columns.push({
     accessorKey: 'token_name',
     header: t('Token'),

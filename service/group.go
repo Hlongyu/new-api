@@ -13,6 +13,9 @@ import (
 
 func GetUserUsableGroups(userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
+	for name, description := range model.GetPublishedPersonalGroups() {
+		groupsCopy[name] = description
+	}
 	if userGroup != "" {
 		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
 		if b {
@@ -55,9 +58,10 @@ func IsUserSelectableGroup(userGroup, groupName string) bool {
 // GetUserAutoGroup 根据用户分组获取自动分组设置
 func GetUserAutoGroup(userGroup string) []string {
 	autoGroups := make([]string, 0)
+	usableGroups := GetUserUsableGroups(userGroup)
 	seen := make(map[string]struct{})
 	for _, group := range setting.GetAutoGroups() {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if _, ok := usableGroups[group]; !ok || group == "" || group == "auto" || !ratio_setting.ContainsGroupRatio(group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {
@@ -74,9 +78,10 @@ func GetUserAutoGroup(userGroup string) []string {
 func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 	maxCount := setting.GetMaxTokenAutoGroups()
 	filtered := make([]string, 0, min(len(groups), maxCount))
+	usableGroups := GetUserUsableGroups(userGroup)
 	seen := make(map[string]struct{})
 	for _, group := range groups {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if _, ok := usableGroups[group]; !ok || group == "" || group == "auto" || !ratio_setting.ContainsGroupRatio(group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {

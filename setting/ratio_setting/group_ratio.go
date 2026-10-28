@@ -2,6 +2,8 @@ package ratio_setting
 
 import (
 	"errors"
+	"math"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
@@ -59,10 +61,19 @@ func GetGroupRatioSetting() *GroupRatioSetting {
 }
 
 func GetGroupRatioCopy() map[string]float64 {
-	return groupRatioMap.ReadAll()
+	ratios := groupRatioMap.ReadAll()
+	personalRatios.RLock()
+	defer personalRatios.RUnlock()
+	for name, ratio := range personalRatios.values {
+		ratios[name] = ratio
+	}
+	return ratios
 }
 
 func ContainsGroupRatio(name string) bool {
+	if _, ok := PersonalGroupRatio(name); ok {
+		return true
+	}
 	_, ok := groupRatioMap.Get(name)
 	return ok
 }
@@ -76,6 +87,9 @@ func UpdateGroupRatioByJSONString(jsonStr string) error {
 }
 
 func GetGroupRatio(name string) float64 {
+	if ratio, ok := PersonalGroupRatio(name); ok {
+		return ratio
+	}
 	ratio, ok := groupRatioMap.Get(name)
 	if !ok {
 		common.SysLog("group ratio not found: " + name)
@@ -114,6 +128,15 @@ func CheckGroupRatio(jsonStr string) error {
 		return errors.New("group ratios must be a JSON object")
 	}
 	for name, ratio := range checkGroupRatio {
+		if strings.HasPrefix(name, "custom-") {
+			// Preserve pre-existing system groups, but reserve new names.
+			if _, exists := groupRatioMap.Get(name); !exists {
+				return errors.New("custom- names are reserved for personal groups")
+			}
+		}
+		if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+			return errors.New("group ratio must be finite")
+		}
 		if ratio < 0 {
 			return errors.New("group ratio must be not less than 0: " + name)
 		}
