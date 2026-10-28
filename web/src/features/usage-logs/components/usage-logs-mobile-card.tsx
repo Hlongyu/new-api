@@ -48,7 +48,7 @@ import {
 } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { useUsageLogsContext, useLogsViewScope } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]:
@@ -245,13 +245,17 @@ function MobileUserField({ log }: { log: UsageLog }) {
   const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
     useUsageLogsContext()
 
+  const { isAdminView } = useLogsViewScope()
+  const UserContainer = isAdminView ? 'button' : 'span'
+
   if (!log.username) return null
 
   return (
-    <button
-      type='button'
+    <UserContainer
+      type={isAdminView ? 'button' : undefined}
       className='bg-muted/20 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left'
       onClick={(e) => {
+        if (!isAdminView) return
         e.stopPropagation()
         setSelectedUserId(log.user_id)
         setUserInfoDialogOpen(true)
@@ -273,7 +277,7 @@ function MobileUserField({ log }: { log: UsageLog }) {
       <span className='text-foreground min-w-0 truncate text-sm'>
         {sensitiveVisible ? log.username : '••••'}
       </span>
-    </button>
+    </UserContainer>
   )
 }
 

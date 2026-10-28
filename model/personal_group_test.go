@@ -198,3 +198,33 @@ func TestPersonalModelDiscoveryCannotReuseAnotherOwnersKeyOrChangedOrigin(t *tes
 	config.ModelMapping = `{"a":"b"}`
 	require.Error(t, config.Validate())
 }
+
+func TestPersonalLogUserChannelFiltersPreserveVisibility(t *testing.T) {
+	setupPersonalGroupsDB(t)
+	group, err := CreatePersonalGroup(11, "filter", "", 1)
+	require.NoError(t, err)
+	channel := Channel{Name: "Owner channel", Key: "secret", Group: group.Name, Models: "model"}
+	require.NoError(t, DB.Create(&channel).Error)
+	for _, row := range []Log{
+		{UserId: 22, Username: "caller", ChannelId: channel.Id, Group: group.Name, Type: LogTypeConsume, Quota: 10},
+		{UserId: 22, Username: "caller", ChannelId: channel.Id, Group: "default", Type: LogTypeConsume, Quota: 50},
+	} {
+		require.NoError(t, createLog(&row))
+	}
+	logs, total, err := GetUserLogs(11, 0, 0, 0, "", "", 0, 20, "", "", "", UserLogFilter{Username: "caller", ChannelID: channel.Id})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	require.Len(t, logs, 1)
+	assert.Equal(t, "Owner channel", logs[0].ChannelName)
+	assert.Equal(t, channel.Id, logs[0].ChannelId)
+	assert.Equal(t, "caller", logs[0].Username)
+	stat, err := SumUsedQuota(0, 0, 0, "", "caller", "", channel.Id, "", 11)
+	require.NoError(t, err)
+	assert.Equal(t, 10, stat.Quota)
+	_, total, err = GetUserLogs(33, 0, 0, 0, "", "", 0, 20, "", "", "", UserLogFilter{Username: "caller", ChannelID: channel.Id})
+	require.NoError(t, err)
+	assert.Zero(t, total)
+	_, total, err = GetUserLogs(11, 0, 0, 0, "", "", 0, 20, "", "", "", UserLogFilter{Username: "unrelated", ChannelID: channel.Id})
+	require.NoError(t, err)
+	assert.Zero(t, total)
+}

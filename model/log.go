@@ -577,11 +577,25 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+type UserLogFilter struct {
+	Username  string
+	ChannelID int
+}
+
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, filters ...UserLogFilter) (logs []*Log, total int64, err error) {
 	if userId <= 0 {
 		return nil, 0, errors.New("Invalid log viewer")
 	}
 	tx := LOG_DB.Where("(logs.user_id = ? OR (logs.group_owner_user_id = ? AND logs.type IN ?))", userId, userId, []int{LogTypeConsume, LogTypeError, LogTypeRefund})
+	if len(filters) > 0 {
+		if tx, err = applyExplicitLogTextFilter(tx, "logs.username", filters[0].Username); err != nil {
+			return nil, 0, err
+		}
+		if filters[0].ChannelID != 0 {
+			tx = tx.Where("logs.channel_id = ?", filters[0].ChannelID)
+		}
+	}
+
 	if logType != LogTypeUnknown {
 		tx = tx.Where("logs.type = ?", logType)
 	}
@@ -628,13 +642,36 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	for _, log := range logs {
 		if log.UserId != userId {
-			log.UserId, log.TokenId, log.ChannelId = 0, 0, 0
+			log.UserId, log.TokenId = 0, 0
 			log.TokenName, log.Ip, log.UpstreamRequestId = "", "", ""
 			log.Content, log.Other = "", "{}"
 		}
 	}
 
 	formatUserLogs(logs, startIdx)
+	channelIDs := make([]int, 0, len(logs))
+	for _, log := range logs {
+		if log.ChannelId != 0 {
+			channelIDs = append(channelIDs, log.ChannelId)
+		}
+	}
+	if len(channelIDs) > 0 {
+		var channels []struct {
+			Id   int
+			Name string
+		}
+		if err := DB.Model(&Channel{}).Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+			return nil, 0, err
+		}
+		names := make(map[int]string, len(channels))
+		for _, channel := range channels {
+			names[channel.Id] = channel.Name
+		}
+		for _, log := range logs {
+			log.ChannelName = names[log.ChannelId]
+		}
+	}
+
 	return logs, total, err
 }
 

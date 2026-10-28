@@ -319,7 +319,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     },
   ]
 
-  if (isAdmin) {
+  {
     columns.push(
       {
         id: 'channel',
@@ -489,11 +489,13 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
           if (!log.username) return null
 
+          const UserContainer = isAdmin ? 'button' : 'span'
           return (
-            <button
-              type='button'
+            <UserContainer
+              type={isAdmin ? 'button' : undefined}
               className='flex items-center gap-1.5 text-left'
               onClick={(e) => {
+                if (!isAdmin) return
                 e.stopPropagation()
                 setSelectedUserId(log.user_id)
                 setUserInfoDialogOpen(true)
@@ -528,27 +530,11 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                   )}
                 </Tooltip>
               </TooltipProvider>
-            </button>
+            </UserContainer>
           )
         },
       }
     )
-  }
-
-  if (!isAdmin) {
-    columns.push({
-      id: 'user',
-      header: t('User'),
-      accessorFn: (row) => row.username,
-      cell: function CallingUserCell({ row }) {
-        const { sensitiveVisible } = useUsageLogsContext()
-        return (
-          <span className='text-sm break-all'>
-            {sensitiveVisible ? row.original.username : '••••'}
-          </span>
-        )
-      },
-    })
   }
 
   columns.push({

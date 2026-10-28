@@ -58,5 +58,54 @@ test('personal log view shows the calling username without an administrator user
     </I18nextProvider>
   )
   assert.match(html, /caller/)
+  assert.match(html, /data-slot="avatar"/)
   assert.doesNotMatch(html, /<button/)
+})
+
+function OwnerChannelCell() {
+  const column = useCommonLogsColumns(false).find(
+    (item) => item.id === 'channel'
+  )
+  assert.ok(column)
+  const Cell = column.cell as (
+    context: CellContext<UsageLog, unknown>
+  ) => ReactNode
+  return (
+    <Cell
+      {...({
+        row: {
+          original: {
+            type: 2,
+            channel: 7,
+            channel_name: 'My upstream',
+            other: '{}',
+          },
+        },
+      } as CellContext<UsageLog, unknown>)}
+    />
+  )
+}
+test('personal logs display the channel name and ID using the shared channel cell', () => {
+  const html = renderToStaticMarkup(
+    <I18nextProvider i18n={i18n}>
+      <UsageLogsProvider>
+        <OwnerChannelCell />
+      </UsageLogsProvider>
+    </I18nextProvider>
+  )
+  assert.match(html, /My upstream/)
+  assert.match(html, /#7/)
+  assert.doesNotMatch(html, /Retry Chain/)
+})
+
+test('personal common log requests retain username and channel filters', async () => {
+  const { buildApiParams } = await import('../../lib/utils')
+  const params = buildApiParams({
+    page: 1,
+    pageSize: 20,
+    isAdmin: false,
+    searchParams: { username: 'caller', channel: '7' },
+  })
+  assert.equal(params.username, 'caller')
+  assert.equal(params.channel, 7)
 })

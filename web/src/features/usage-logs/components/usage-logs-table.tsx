@@ -101,7 +101,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       { columnId: 'model_name', searchKey: 'model', type: 'string' as const },
       { columnId: 'token_name', searchKey: 'token', type: 'string' as const },
       { columnId: 'group', searchKey: 'group', type: 'string' as const },
-      ...(isAdmin
+      ...(isAdmin || logCategory === 'common'
         ? [
             {
               columnId: 'channel',
@@ -162,7 +162,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     data: logs as Record<string, unknown>[],
     columns: columns as ColumnDef<Record<string, unknown>>[],
     columnFilters,
-    initialColumnVisibility: { user: isAdmin },
+    initialColumnVisibility: { user: isAdmin, channel: isAdmin },
     columnVisibilityStorageKey: getColumnVisibilityStorageKey(
       logCategory,
       isAdmin
