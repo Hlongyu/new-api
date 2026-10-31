@@ -41,6 +41,7 @@ export interface AccountingMonth {
 }
 
 export interface AccountingData {
+  excluded_user_ids: number[]
   start_period: string
   year: number
   items: AccountingMonth[]
@@ -96,4 +97,14 @@ export function accountingCNY(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(quota / snapshot.quota_per_cny)
+}
+
+export async function saveAccountingExclusions(
+  userIDs: number[]
+): Promise<void> {
+  const result = await api.put<{ success: boolean; message: string }>(
+    '/api/data/monthly-accounting/excluded-users',
+    { user_ids: userIDs }
+  )
+  if (!result.data.success) throw new Error(result.data.message)
 }

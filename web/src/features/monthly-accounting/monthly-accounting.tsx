@@ -33,6 +33,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
+import { AccountingExclusions } from './accounting-exclusions'
 import { accountingCNY, getMonthlyAccounting } from './api'
 import { SnapshotUsers } from './snapshot-users'
 
@@ -93,6 +94,12 @@ export function MonthlyAccounting() {
           </Button>
         </div>
       </div>
+      {query.data && (
+        <AccountingExclusions
+          key={(query.data.excluded_user_ids ?? []).join(',')}
+          userIDs={query.data.excluded_user_ids ?? []}
+        />
+      )}
       {query.isPending && <Skeleton className='h-40 w-full' />}
       {query.isError && (
         <Alert variant='destructive'>

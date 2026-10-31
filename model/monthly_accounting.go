@@ -39,6 +39,20 @@ type AccountingSnapshot struct {
 	NegativeUserCount int64   `json:"negative_user_count"`
 }
 
+// AccountingStatus interprets legacy negative-balance snapshots without rewriting
+// them. Negative wallets are valid credit balances. Old captures overwrote the
+// timing status, so recover it from the recorded capture time; batch state at
+// that instant cannot be reconstructed from this legacy status.
+func (s AccountingSnapshot) AccountingStatus() string {
+	if s.Status != "negative_balance" {
+		return s.Status
+	}
+	if s.CapturedAt < s.ScheduledAt || s.CapturedAt-s.ScheduledAt >= 60 {
+		return "late"
+	}
+	return "captured"
+}
+
 type AccountingSnapshotUser struct {
 	Period   string `json:"period" gorm:"primaryKey;type:varchar(7)"`
 	UserId   int    `json:"user_id" gorm:"primaryKey;autoIncrement:false"`
@@ -119,9 +133,6 @@ func CaptureMonthlyAccountingSnapshot(now time.Time, quotaPerCNY float64) error 
 		if common.BatchUpdateEnabled {
 			snapshot.Status = "batch_pending"
 		}
-		if snapshot.NegativeUserCount > 0 {
-			snapshot.Status = "negative_balance"
-		}
 		return tx.Model(&AccountingSnapshot{}).Where("period = ?", period).Select("*").Updates(&snapshot).Error
 	}, &sql.TxOptions{Isolation: isolation})
 }
@@ -139,7 +150,7 @@ type AccountingMonth struct {
 
 // ListAccountingMonths includes absent snapshots explicitly. Incomplete or late
 // periods never produce a definitive income figure. Amounts exclude expenses.
-func ListAccountingMonths(now time.Time, year int) ([]AccountingMonth, error) {
+func ListAccountingMonths(now time.Time, year int, excludedUserIDs ...int) ([]AccountingMonth, error) {
 	if year < 2026 || year > 9998 {
 		return nil, errors.New("invalid accounting year")
 	}
@@ -149,6 +160,15 @@ func ListAccountingMonths(now time.Time, year int) ([]AccountingMonth, error) {
 	}
 	byPeriod := make(map[string]*AccountingSnapshot, len(snapshots))
 	for i := range snapshots {
+		if len(excludedUserIDs) > 0 {
+			var excludedBalance int64
+			if err := DB.Model(&AccountingSnapshotUser{}).Where("period = ? AND user_id IN ?", snapshots[i].Period, excludedUserIDs).
+				Select("COALESCE(SUM(quota), 0)").Scan(&excludedBalance).Error; err != nil {
+				return nil, err
+			}
+			snapshots[i].BalanceQuota -= excludedBalance
+		}
+		snapshots[i].Status = snapshots[i].AccountingStatus()
 		byPeriod[snapshots[i].Period] = &snapshots[i]
 	}
 	rows := make([]AccountingMonth, 0, 12)
@@ -172,10 +192,20 @@ func ListAccountingMonths(now time.Time, year int) ([]AccountingMonth, error) {
 		if row.Opening != nil && row.Closing != nil {
 			row.Status = "complete"
 			receipts := row.Closing.RedeemedQuota - row.Opening.RedeemedQuota
+			if len(excludedUserIDs) > 0 {
+				var excludedReceipts int64
+				if err := DB.Model(&AccountingRedemption{}).
+					Where("user_id IN ? AND created_at >= ? AND created_at < ?", excludedUserIDs, row.Opening.CapturedAt, row.Closing.CapturedAt).
+					Select("COALESCE(SUM(quota), 0)").Scan(&excludedReceipts).Error; err != nil {
+					return nil, err
+				}
+				receipts -= excludedReceipts
+			}
+			// Loans are advance top-ups: redemption receipts include repayments,
+			// even when that portion does not credit the wallet again.
 			revenue := row.Opening.BalanceQuota + receipts - row.Closing.BalanceQuota
 			if row.Opening.Status != "captured" || row.Closing.Status != "captured" ||
-				row.Opening.QuotaPerCNY != row.Closing.QuotaPerCNY || receipts < 0 || revenue < 0 ||
-				row.Opening.RepaidQuota != row.Closing.RepaidQuota {
+				row.Opening.QuotaPerCNY != row.Closing.QuotaPerCNY || receipts < 0 || revenue < 0 {
 				row.Status = "review"
 			} else {
 				row.ReceiptsQuota, row.RevenueQuota = &receipts, &revenue
@@ -209,4 +239,30 @@ func ListAccountingSnapshotUsers(period string, offset, limit int) ([]Accounting
 	rows := make([]AccountingSnapshotUser, 0)
 	err := DB.Where("period = ?", period).Order("user_id ASC").Offset(offset).Limit(limit).Find(&rows).Error
 	return rows, err
+}
+
+// Accounting exclusions affect reports only, never persisted wallet snapshots.
+func GetAccountingExcludedUserIDs() ([]int, error) {
+	var option Option
+	err := DB.Where(&Option{Key: "AccountingExcludedUserIDs"}).First(&option).Error
+	ids := []int{}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ids, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := common.UnmarshalJsonStr(option.Value, &ids); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func SetAccountingExcludedUserIDs(ids []int) error {
+	value, err := common.Marshal(ids)
+	if err != nil {
+		return err
+	}
+	option := Option{Key: "AccountingExcludedUserIDs", Value: string(value)}
+	return DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).Create(&option).Error
 }

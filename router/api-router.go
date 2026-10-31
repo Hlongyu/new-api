@@ -391,6 +391,7 @@ func SetApiRouter(router *gin.Engine) {
 		dataRoute.GET("/monthly-recap/users", middleware.AdminAuth(), controller.AdminListMonthlyRecapUsers)
 		dataRoute.GET("/monthly-recap/self", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.GetSelfMonthlyRecap)
 		dataRoute.GET("/monthly-accounting", middleware.AdminAuth(), controller.AdminGetMonthlyAccounting)
+		dataRoute.PUT("/monthly-accounting/excluded-users", middleware.AdminAuth(), middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.AdminUpdateAccountingExcludedUsers)
 		dataRoute.GET("/monthly-accounting/users", middleware.AdminAuth(), controller.AdminGetAccountingSnapshotUsers)
 		dataRoute.GET("/monthly-consumption", middleware.AdminAuth(), controller.AdminGetMonthlyConsumption)
 		dataRoute.GET("/monthly-consumption/self", middleware.UserAuth(), controller.GetSelfMonthlyConsumption)

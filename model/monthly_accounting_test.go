@@ -90,7 +90,8 @@ func TestAccountingMissedBoundaryNeverBecomesHistoricalIncome(t *testing.T) {
 }
 
 func TestAccountingBatchUpdatesRequireReconciliation(t *testing.T) {
-	setupAccountingTest(t)
+	db := setupAccountingTest(t)
+	require.NoError(t, db.Create(&User{Id: 1, Username: "borrower", Quota: -100}).Error)
 	oct, nov, err := BeijingConsumptionWindow("2026-10")
 	require.NoError(t, err)
 	common.BatchUpdateEnabled = true
@@ -135,7 +136,7 @@ func TestAccountingYearBoundaryUsesFollowingJanuaryClosing(t *testing.T) {
 	assert.EqualValues(t, 400, *rows[2].RevenueQuota)
 }
 
-func TestAccountingNegativeWalletAndLoanRepaymentRequireReview(t *testing.T) {
+func TestAccountingNegativeWalletAndLoanRepaymentContributeToRevenue(t *testing.T) {
 	for _, scenario := range []string{"negative-wallet", "loan-repayment"} {
 		t.Run(scenario, func(t *testing.T) {
 			db := setupAccountingTest(t)
@@ -151,10 +152,17 @@ func TestAccountingNegativeWalletAndLoanRepaymentRequireReview(t *testing.T) {
 			require.NoError(t, CaptureMonthlyAccountingSnapshot(nov, 500000))
 			rows, err := ListAccountingMonths(nov, 2026)
 			require.NoError(t, err)
-			assert.Equal(t, "review", rows[0].Status)
-			assert.Nil(t, rows[0].RevenueQuota)
-			assert.Nil(t, rows[0].TransitionAdjustmentQuota)
-			assert.Nil(t, rows[0].BookkeepingRevenueQuota)
+			assert.Equal(t, "complete", rows[0].Status)
+			require.NotNil(t, rows[0].RevenueQuota)
+			require.NotNil(t, rows[0].BookkeepingRevenueQuota)
+			if scenario == "negative-wallet" {
+				assert.EqualValues(t, 1100, *rows[0].RevenueQuota)
+				assert.EqualValues(t, 1, rows[0].Closing.NegativeUserCount)
+				assert.EqualValues(t, 100, *rows[0].BookkeepingRevenueQuota)
+			} else {
+				assert.EqualValues(t, 500, *rows[0].RevenueQuota)
+				assert.EqualValues(t, -500, *rows[0].BookkeepingRevenueQuota)
+			}
 		})
 	}
 }
@@ -194,4 +202,74 @@ func TestAccountingCutoverReversesOldIncomeOnceAndPreservesRealBalances(t *testi
 	require.NoError(t, err)
 	require.Len(t, details, 1)
 	assert.EqualValues(t, 30000, details[0].Quota)
+}
+
+func TestAccountingLegacyNegativeSnapshotsKeepReceiptsIncludingRepayment(t *testing.T) {
+	for _, delay := range []time.Duration{0, time.Minute} {
+		t.Run(delay.String(), func(t *testing.T) {
+			db := setupAccountingTest(t)
+			oct, nov, err := BeijingConsumptionWindow("2026-10")
+			require.NoError(t, err)
+			require.NoError(t, db.Create(&[]AccountingSnapshot{
+				{Period: "2026-10", ScheduledAt: oct.Unix(), CapturedAt: oct.Add(delay).Unix(), Status: "negative_balance", QuotaPerCNY: 500000, BalanceQuota: 54797035097, RedeemedQuota: 615000000, RepaidQuota: 250000000, NegativeUserCount: 4},
+				{Period: "2026-11", ScheduledAt: nov.Unix(), CapturedAt: nov.Unix(), Status: "negative_balance", QuotaPerCNY: 500000, BalanceQuota: 54019378771, RedeemedQuota: 1882500000, RepaidQuota: 1237500000, NegativeUserCount: 5},
+			}).Error)
+			rows, err := ListAccountingMonths(nov, 2026)
+			require.NoError(t, err)
+			if delay == 0 {
+				assert.Equal(t, "complete", rows[0].Status)
+				require.NotNil(t, rows[0].RevenueQuota)
+				assert.EqualValues(t, 2045156326, *rows[0].RevenueQuota)
+				assert.Equal(t, "captured", rows[0].Opening.Status)
+				assert.Equal(t, "in_progress", rows[1].Status)
+			} else {
+				assert.Equal(t, "review", rows[0].Status)
+				assert.Nil(t, rows[0].RevenueQuota)
+			}
+			var stored AccountingSnapshot
+			require.NoError(t, db.First(&stored, "period = ?", "2026-10").Error)
+			assert.Equal(t, "negative_balance", stored.Status)
+		})
+	}
+}
+
+func TestAccountingExclusionsRemoveBalancesAndFullReceiptsWithoutChangingSnapshots(t *testing.T) {
+	db := setupAccountingTest(t)
+	oct, nov, err := BeijingConsumptionWindow("2026-10")
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&[]User{
+		{Id: 1, Username: "owner", AffCode: "owner", Quota: 1000},
+		{Id: 2, Username: "customer", AffCode: "customer", Quota: 2000},
+		{Id: 3, Username: "owner-debt", AffCode: "owner-debt", Quota: -100},
+	}).Error)
+	require.NoError(t, CaptureMonthlyAccountingSnapshot(oct, 1))
+	require.NoError(t, db.Create(&[]AccountingRedemption{
+		{UserId: 1, Quota: 500, RepaidQuota: 500, CreatedAt: oct.Unix()},
+		{UserId: 2, Quota: 300, CreatedAt: oct.Add(time.Hour).Unix()},
+	}).Error)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 1).Update("quota", 800).Error)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 2).Update("quota", 1800).Error)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", 3).Update("quota", -200).Error)
+	require.NoError(t, db.Delete(&User{Id: 3}).Error)
+	require.NoError(t, CaptureMonthlyAccountingSnapshot(nov, 1))
+	// A receipt at the closing boundary belongs to the next period.
+	require.NoError(t, db.Create(&AccountingRedemption{UserId: 1, Quota: 100, CreatedAt: nov.Unix()}).Error)
+	rows, err := ListAccountingMonths(nov, 2026, 1, 3)
+	require.NoError(t, err)
+	require.NotNil(t, rows[0].RevenueQuota)
+	assert.EqualValues(t, 2000, rows[0].Opening.BalanceQuota)
+	assert.EqualValues(t, 1800, rows[0].Closing.BalanceQuota)
+	assert.EqualValues(t, 300, *rows[0].ReceiptsQuota)
+	assert.EqualValues(t, 500, *rows[0].RevenueQuota)
+	assert.EqualValues(t, -2000, *rows[0].TransitionAdjustmentQuota)
+	assert.EqualValues(t, -1500, *rows[0].BookkeepingRevenueQuota)
+	all, err := ListAccountingMonths(nov, 2026)
+	require.NoError(t, err)
+	require.NotNil(t, all[0].RevenueQuota)
+	assert.EqualValues(t, 1300, *all[0].RevenueQuota)
+	assert.EqualValues(t, 2900, all[0].Opening.BalanceQuota)
+	empty, err := ListAccountingMonths(nov, 2026, 1, 2, 3)
+	require.NoError(t, err)
+	require.NotNil(t, empty[0].RevenueQuota)
+	assert.Zero(t, *empty[0].RevenueQuota)
 }

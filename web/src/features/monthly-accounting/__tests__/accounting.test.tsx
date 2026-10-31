@@ -293,3 +293,81 @@ test('accounting request failure displays an error without fabricated zero balan
     Date.now = previousNow
   }
 })
+
+test('accounting exclusions save to the server, clear, and reject invalid IDs', async () => {
+  const { AccountingExclusions } = await import('../accounting-exclusions')
+  const client = new QueryClient()
+  const previous = api.defaults.adapter
+  const requests: unknown[] = []
+  api.defaults.adapter = async (config) => {
+    requests.push(JSON.parse(config.data))
+    return {
+      config,
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+      data: { success: true, data: { excluded_user_ids: [] } },
+    }
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <I18nextProvider i18n={i18n}>
+            <AccountingExclusions userIDs={[1, 3]} />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+    )
+    const input = container.querySelector('input')
+    const form = container.querySelector('form')
+    assert.ok(input)
+    assert.ok(form)
+    assert.equal(input.value, '1, 3')
+    // Use the native value setter to simulate editing the controlled input.
+    const setter = Object.getOwnPropertyDescriptor(
+      domWindow.HTMLInputElement.prototype,
+      'value'
+    )?.set
+    assert.ok(setter)
+    await act(async () => {
+      setter.call(input, '1, invalid')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.equal(requests.length, 0)
+    assert.ok(container.querySelector('[role="alert"]'))
+    await act(async () => {
+      setter.call(input, '1, 5, 1')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.deepEqual(requests, [{ user_ids: [1, 5] }])
+    await act(async () => {
+      setter.call(input, '')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.deepEqual(requests[1], { user_ids: [] })
+  } finally {
+    api.defaults.adapter = previous
+    await act(async () => root.unmount())
+    client.clear()
+    container.remove()
+  }
+})
