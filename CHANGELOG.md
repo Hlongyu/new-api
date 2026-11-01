@@ -1,5 +1,27 @@
 # Changelog
 
+## [custom-v1.0.25] - 2026-11-01
+
+### Added
+
+- Add a unified consumption query with Beijing calendar-month, group, user ID and wallet/subscription source filters. Switch between group and user summaries, drill into a group's users, and view matching totals, request counts and paginated results.
+- Support independent user exclusions for each group across both summary dimensions. Show group-owner IDs and retain zero-consumption rows after exclusions so their filters remain editable. Administrators can query all groups; owners can query only requests attributed to their own groups by the recorded ownership snapshot.
+- Add saved group exclusions to monthly accounting. Deduct only the selected groups' wallet consumption, without deducting excluded users twice, and show the excluded amount separately. Original wallet balances and accounting snapshots remain unchanged.
+
+### Changed
+
+- Replace the separate group-consumption and administrator monthly-user tables with one query interface. Keep monthly accounting as a separate section below it and provide translations in all seven languages.
+- Reconcile request attribution from usage logs with net wallet/subscription settlement amounts, deduplicating repeated logs and preserving refunds. Missing or conflicting attribution and cross-period settlements/refunds require reconciliation instead of producing a definitive adjusted accounting figure.
+
+### Fixed
+
+- Prevent consumption filters from collapsing under container sizing, apply the current filters when searching or refreshing, and display the result month explicitly.
+
+### Compatibility
+
+- No database migration is required. Historical group queries depend on retained consume logs with request IDs and owner snapshots, together with postpaid settlement records; unavailable attribution is not inferred from users' current groups. Exclusions in the consumption query are temporary query filters, while accounting group exclusions are saved separately.
+- Relevant backend regression tests, nine frontend tests, TypeScript checks, lint, and frontend/backend builds passed. Local administrator and owner-account checks verified matching totals across dimensions, combined filters, group drilldown and owner isolation. Live MySQL/PostgreSQL validation has not been performed.
+
 ## [custom-v1.0.24] - 2026-11-01
 
 ### Added

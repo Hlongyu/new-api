@@ -35,6 +35,7 @@ import {
 
 import { AccountingExclusions } from './accounting-exclusions'
 import { accountingCNY, getMonthlyAccounting } from './api'
+import { GroupExclusions } from './group-exclusions'
 import { SnapshotUsers } from './snapshot-users'
 
 export function MonthlyAccounting() {
@@ -96,8 +97,14 @@ export function MonthlyAccounting() {
       </div>
       {query.data && (
         <AccountingExclusions
-          key={(query.data.excluded_user_ids ?? []).join(',')}
+          key={`users:${(query.data.excluded_user_ids ?? []).join(',')}`}
           userIDs={query.data.excluded_user_ids ?? []}
+        />
+      )}
+      {query.data && (
+        <GroupExclusions
+          key={`groups:${(query.data.excluded_groups ?? []).join(',')}`}
+          groups={query.data.excluded_groups ?? []}
         />
       )}
       {query.isPending && <Skeleton className='h-40 w-full' />}
@@ -116,6 +123,7 @@ export function MonthlyAccounting() {
               <TableHead>{t('Opening prepaid balance')}</TableHead>
               <TableHead>{t('Redemption receipts')}</TableHead>
               <TableHead>{t('Closing prepaid balance')}</TableHead>
+              <TableHead>{t('Excluded group wallet consumption')}</TableHead>
               <TableHead>{t('Consumption revenue')}</TableHead>
               <TableHead>{t('Opening balance reversal')}</TableHead>
               <TableHead>{t('Bookkeeping revenue')}</TableHead>
@@ -135,6 +143,14 @@ export function MonthlyAccounting() {
                 </TableCell>
                 <TableCell>
                   {accountingCNY(row.closing?.balance_quota, row.closing)}
+                </TableCell>
+                <TableCell>
+                  {accountingCNY(
+                    (query.data.excluded_groups?.length ?? 0) > 0
+                      ? row.excluded_group_wallet_quota
+                      : 0,
+                    row.opening
+                  )}
                 </TableCell>
                 <TableCell>
                   {accountingCNY(row.revenue_quota, row.opening)}

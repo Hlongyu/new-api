@@ -38,7 +38,16 @@ func AdminGetMonthlyAccounting(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"start_period": model.AccountingStartPeriod, "year": year, "items": rows, "excluded_user_ids": excludedIDs})
+	groups, err := model.GetAccountingExcludedGroups()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.ApplyAccountingGroupExclusions(rows, groups, excludedIDs); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"start_period": model.AccountingStartPeriod, "year": year, "items": rows, "excluded_user_ids": excludedIDs, "excluded_groups": groups})
 }
 
 func AdminGetAccountingSnapshotUsers(c *gin.Context) {
@@ -115,4 +124,36 @@ func AdminUpdateAccountingExcludedUsers(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, gin.H{"excluded_user_ids": ids})
+}
+
+func AdminUpdateAccountingExcludedGroups(c *gin.Context) {
+	if c.GetInt("role") < common.RoleAdminUser {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	var request struct {
+		Groups []string `json:"groups"`
+	}
+	if err := common.DecodeJson(http.MaxBytesReader(c.Writer, c.Request.Body, 65536), &request); err != nil || request.Groups == nil || len(request.Groups) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid excluded groups"})
+		return
+	}
+	seen := map[string]bool{}
+	groups := []string{}
+	for _, group := range request.Groups {
+		if len(group) == 0 || len(group) > 64 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid excluded group"})
+			return
+		}
+		if !seen[group] {
+			seen[group] = true
+			groups = append(groups, group)
+		}
+	}
+	sort.Strings(groups)
+	if err := model.SetAccountingExcludedGroups(groups); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"excluded_groups": groups})
 }

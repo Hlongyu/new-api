@@ -371,3 +371,81 @@ test('accounting exclusions save to the server, clear, and reject invalid IDs', 
     container.remove()
   }
 })
+
+test('group exclusions save exact names, clear, and reject oversized names', async () => {
+  const { GroupExclusions } = await import('../group-exclusions')
+  const client = new QueryClient()
+  const previous = api.defaults.adapter
+  const requests: unknown[] = []
+  api.defaults.adapter = async (config) => {
+    requests.push(JSON.parse(config.data))
+    return {
+      config,
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+      data: { success: true, data: { excluded_groups: [] } },
+    }
+  }
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <I18nextProvider i18n={i18n}>
+            <GroupExclusions groups={['custom-a', 'custom-b']} />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+    )
+    const input = container.querySelector('input')
+    const form = container.querySelector('form')
+    assert.ok(input)
+    assert.ok(form)
+    assert.equal(input.value, 'custom-a, custom-b')
+    // Use the native value setter to simulate editing the controlled input.
+    const setter = Object.getOwnPropertyDescriptor(
+      domWindow.HTMLInputElement.prototype,
+      'value'
+    )?.set
+    assert.ok(setter)
+    await act(async () => {
+      setter.call(input, 'a'.repeat(65))
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.equal(requests.length, 0)
+    assert.ok(container.querySelector('[role="alert"]'))
+    await act(async () => {
+      setter.call(input, 'custom-a, custom-c, custom-a')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.deepEqual(requests, [{ groups: ['custom-a', 'custom-c'] }])
+    await act(async () => {
+      setter.call(input, '')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () =>
+      form.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true })
+      )
+    )
+    assert.deepEqual(requests[1], { groups: [] })
+  } finally {
+    api.defaults.adapter = previous
+    await act(async () => root.unmount())
+    client.clear()
+    container.remove()
+  }
+})

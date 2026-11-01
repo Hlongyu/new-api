@@ -77,16 +77,16 @@ const PERFORMANCE_MODEL_FALLBACK_KEYS = [
   'secondary-model',
 ] as const
 
+const LazyGroupConsumption = lazy(() =>
+  import('@/features/group-consumption/group-consumption').then((module) => ({
+    default: module.GroupConsumption,
+  }))
+)
+
 const LazyMonthlyAccounting = lazy(() =>
   import('@/features/monthly-accounting/monthly-accounting').then((module) => ({
     default: module.MonthlyAccounting,
   }))
-)
-
-const LazyMonthlyConsumption = lazy(() =>
-  import('@/features/monthly-consumption/admin-monthly-consumption').then(
-    (module) => ({ default: module.AdminMonthlyConsumption })
-  )
 )
 
 const LazyLogStatCards = lazy(() =>
@@ -283,9 +283,7 @@ export function Dashboard() {
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) =>
-          section !== 'overview' &&
-          (!['users', 'consumption'].includes(section) || isAdmin)
+        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
       ),
     [isAdmin]
   )
@@ -432,11 +430,11 @@ export function Dashboard() {
               </FadeIn>
             </>
           )}
-          {activeSection === 'consumption' && isAdmin && (
+          {activeSection === 'consumption' && (
             <Suspense fallback={<ModelChartsFallback />}>
               <div className='space-y-8'>
-                <LazyMonthlyAccounting />
-                <LazyMonthlyConsumption />
+                <LazyGroupConsumption />
+                {isAdmin && <LazyMonthlyAccounting />}
               </div>
             </Suspense>
           )}

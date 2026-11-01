@@ -35,12 +35,14 @@ export interface AccountingMonth {
   opening: AccountingSnapshot | null
   closing: AccountingSnapshot | null
   receipts_quota: number | null
+  excluded_group_wallet_quota?: number | null
   revenue_quota: number | null
   transition_adjustment_quota: number | null
   bookkeeping_revenue_quota: number | null
 }
 
 export interface AccountingData {
+  excluded_groups?: string[]
   excluded_user_ids: number[]
   start_period: string
   year: number
@@ -105,6 +107,16 @@ export async function saveAccountingExclusions(
   const result = await api.put<{ success: boolean; message: string }>(
     '/api/data/monthly-accounting/excluded-users',
     { user_ids: userIDs }
+  )
+  if (!result.data.success) throw new Error(result.data.message)
+}
+
+export async function saveAccountingGroupExclusions(
+  groups: string[]
+): Promise<void> {
+  const result = await api.put<{ success: boolean; message: string }>(
+    '/api/data/monthly-accounting/excluded-groups',
+    { groups }
   )
   if (!result.data.success) throw new Error(result.data.message)
 }

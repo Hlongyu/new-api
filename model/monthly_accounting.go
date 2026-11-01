@@ -145,6 +145,7 @@ type AccountingMonth struct {
 	ReceiptsQuota             *int64              `json:"receipts_quota"`
 	RevenueQuota              *int64              `json:"revenue_quota"`
 	TransitionAdjustmentQuota *int64              `json:"transition_adjustment_quota"`
+	ExcludedGroupWalletQuota  *int64              `json:"excluded_group_wallet_quota"`
 	BookkeepingRevenueQuota   *int64              `json:"bookkeeping_revenue_quota"`
 }
 
@@ -264,5 +265,89 @@ func SetAccountingExcludedUserIDs(ids []int) error {
 		return err
 	}
 	option := Option{Key: "AccountingExcludedUserIDs", Value: string(value)}
+	return DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).Create(&option).Error
+}
+
+// Group exclusions remove wallet consumption only. Subscription usage is
+// reported separately and was never included in prepaid wallet revenue.
+func ApplyAccountingGroupExclusions(rows []AccountingMonth, groups []string, excludedUserIDs []int) error {
+	if len(groups) == 0 {
+		return nil
+	}
+	selected := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		selected[group] = true
+	}
+	for i := range rows {
+		row := &rows[i]
+		if row.RevenueQuota == nil {
+			continue
+		}
+		// Wallet snapshots measure movements during the capture interval. A
+		// request that settles/refunds across that boundary cannot be reconciled
+		// from its current net settlement alone; never silently mix the bases.
+		var crossing int64
+		start, end := row.Opening.CapturedAt, row.Closing.CapturedAt
+		query := DB.Model(&PostpaidSettlement{}).Where("request_id NOT LIKE ?", "%:violation").Where(
+			"(started_at >= ? AND started_at < ? AND (created_at >= ? OR updated_at >= ?)) OR (started_at < ? AND ((created_at >= ? AND created_at < ?) OR (updated_at >= ? AND updated_at < ?)))",
+			start, end, end, end, start, start, end, start, end)
+		if len(excludedUserIDs) > 0 {
+			query = query.Where("user_id NOT IN ?", excludedUserIDs)
+		}
+		if err := query.Count(&crossing).Error; err != nil {
+			return err
+		}
+		if crossing > 0 {
+			row.Status = "review"
+			row.RevenueQuota, row.BookkeepingRevenueQuota = nil, nil
+			continue
+		}
+		report, err := ListGroupConsumption(row.Opening.CapturedAt, row.Closing.CapturedAt, 0, excludedUserIDs, nil)
+		if err != nil {
+			return err
+		}
+		if report.UnattributedRequests > 0 {
+			row.Status = "review"
+			row.RevenueQuota, row.BookkeepingRevenueQuota = nil, nil
+			continue
+		}
+		var excluded int64
+		for _, group := range report.Items {
+			if selected[group.Group] {
+				excluded += group.WalletQuota
+			}
+		}
+		row.ExcludedGroupWalletQuota = &excluded
+		revenue, bookkeeping := *row.RevenueQuota-excluded, *row.BookkeepingRevenueQuota-excluded
+		if revenue < 0 {
+			row.Status = "review"
+			row.RevenueQuota, row.BookkeepingRevenueQuota = nil, nil
+			continue
+		}
+		row.RevenueQuota, row.BookkeepingRevenueQuota = &revenue, &bookkeeping
+	}
+	return nil
+}
+
+func GetAccountingExcludedGroups() ([]string, error) {
+	var option Option
+	groups := []string{}
+	err := DB.Where(&Option{Key: "AccountingExcludedGroups"}).First(&option).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return groups, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = common.UnmarshalJsonStr(option.Value, &groups)
+	return groups, err
+}
+
+func SetAccountingExcludedGroups(groups []string) error {
+	value, err := common.Marshal(groups)
+	if err != nil {
+		return err
+	}
+	option := Option{Key: "AccountingExcludedGroups", Value: string(value)}
 	return DB.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).Create(&option).Error
 }
