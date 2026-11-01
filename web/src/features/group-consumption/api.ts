@@ -27,6 +27,7 @@ export interface ConsumptionQuery {
 }
 
 export interface GroupConsumptionData {
+  generated_at?: number
   dimension: 'group' | 'user'
   source: 'all' | 'wallet' | 'subscription'
   groups: { group: string; owner_user_id: number }[]

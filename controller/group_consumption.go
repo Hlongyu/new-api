@@ -62,11 +62,11 @@ func GetGroupMonthlyConsumption(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "invalid consumption filters"})
 		return
 	}
-	report, err := model.QueryConsumption(start.Unix(), end.Unix(), ownerID, filters)
+	report, err := model.QueryPersistedConsumption(start.Unix(), end.Unix(), ownerID, filters)
 
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, gin.H{"period": period, "quota_per_usd": common.QuotaPerUnit, "items": report.Items, "groups": report.Groups, "dimension": filters.Dimension, "source": filters.Source, "unattributed_requests": report.UnattributedRequests})
+	common.ApiSuccess(c, gin.H{"generated_at": report.GeneratedAt, "period": period, "quota_per_usd": common.QuotaPerUnit, "items": report.Items, "groups": report.Groups, "dimension": filters.Dimension, "source": filters.Source, "unattributed_requests": report.UnattributedRequests})
 }

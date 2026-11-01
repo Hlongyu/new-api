@@ -16,7 +16,7 @@ func TestGroupConsumptionEnforcesOwnerDespiteQueryParameters(t *testing.T) {
 	previous := model.LOG_DB
 	model.LOG_DB = db
 	t.Cleanup(func() { model.LOG_DB = previous })
-	require.NoError(t, db.AutoMigrate(&model.PostpaidSettlement{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.PostpaidSettlement{}, &model.Log{}, &model.ConsumptionMonth{}, &model.ConsumptionAttribution{}, &model.ConsumptionContribution{}, &model.ConsumptionAggregate{}))
 	start, _, err := model.BeijingConsumptionWindow("2026-01")
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&[]model.PostpaidSettlement{

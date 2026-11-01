@@ -203,6 +203,7 @@ func ResetTokenQuotaUsage(tokenId int, userId int) error {
 }
 
 type PostpaidSettlement struct {
+	ConsumptionDirty  bool   `json:"-" gorm:"index:idx_consumption_dirty_month,priority:1"`
 	Id                int64  `json:"id" gorm:"primaryKey"`
 	RequestId         string `json:"request_id" gorm:"type:varchar(64);uniqueIndex"`
 	UserId            int    `json:"user_id" gorm:"index"`
@@ -210,7 +211,7 @@ type PostpaidSettlement struct {
 	ActualQuota       int    `json:"actual_quota" gorm:"not null;default:0"`
 	SubscriptionQuota int    `json:"subscription_quota" gorm:"not null;default:0"`
 	WalletQuota       int    `json:"wallet_quota" gorm:"not null;default:0"`
-	StartedAt         int64  `json:"started_at" gorm:"type:bigint;not null;index:idx_postpaid_started_at"`
+	StartedAt         int64  `json:"started_at" gorm:"type:bigint;not null;index:idx_postpaid_started_at;index:idx_consumption_dirty_month,priority:2"`
 	CreatedAt         int64  `json:"created_at" gorm:"type:bigint;not null"`
 	UpdatedAt         int64  `json:"updated_at" gorm:"type:bigint;not null"`
 }
@@ -502,6 +503,7 @@ func SettlePostpaidRequest(params PostpaidSettlementParams) (*PostpaidSettlement
 		if err := adjustTokenQuotaUsageTx(tx, params.TokenId, delta, params.StartedAt, now); err != nil {
 			return err
 		}
+		settlement.ConsumptionDirty = true
 		settlement.ActualQuota = params.Quota
 		settlement.UpdatedAt = now
 		if err := tx.Save(&settlement).Error; err != nil {

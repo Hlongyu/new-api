@@ -107,6 +107,9 @@ func createLog(log *Log) error {
 			log.GroupOwnerUserID = group.OwnerUserID
 		}
 	}
+	if err := recordConsumptionAttribution(log); err != nil {
+		return err
+	}
 	return LOG_DB.Create(log).Error
 }
 

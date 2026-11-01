@@ -1,5 +1,24 @@
 # Changelog
 
+## [custom-v1.0.26] - 2026-11-01
+
+### Added
+
+- Persist consumption-query summaries in the database by Beijing calendar month, group, owner snapshot and consuming user. The first query backfills historical requests in batches of 500 with a committed checkpoint; interrupted builds resume without restarting the month.
+- Store each request's last applied contribution and durable attribution. Settlement changes and refunds mark only affected requests for incremental correction; duplicate notifications do not double count, late consume logs repair missing attribution, and conflicting owners fail closed.
+- Show the last committed summary update time in the consumption query. Document the storage model, migration requirements and controlled-import repair path in [persistent consumption summaries](docs/consumption-query-cache.md).
+
+### Changed
+
+- Query persisted monthly aggregates instead of rescanning every request for each filter combination. Completed summaries survive process restarts and raw-log retention without TTL-based rebuilds. Group/user dimensions, funding-source filters and per-group exclusions retain owner access boundaries.
+- Commit aggregate deltas, request contributions, dirty-flag acknowledgements and backfill progress together. Reporting updates preserve original settlement amounts and billing timestamps; monthly accounting's separate snapshot-window calculation remains unchanged.
+
+### Compatibility
+
+- Both startup migration paths add `consumption_months`, `consumption_attributions`, `consumption_contributions` and `consumption_aggregates`, plus `postpaid_settlements.consumption_dirty` and its month lookup index. Run migrations before serving traffic and upgrade all writers; instances that skip migration need these schema changes applied explicitly.
+- Controlled imports or direct SQL repairs must mark affected request IDs dirty. The first query still needs the available historical settlements and logs; missing historical attribution is not invented. Do not delete reporting checkpoints or contributions as disposable cache data.
+- Relevant model/controller/service regression tests, persistence race checks, four frontend tests, TypeScript, lint, and frontend/backend builds passed. Local SQLite checks verified first-build persistence, restart reuse, indexed incremental lookup, owner isolation, and unchanged wallet balances and original settlement timestamps. Live MySQL/PostgreSQL validation has not been performed.
+
 ## [custom-v1.0.25] - 2026-11-01
 
 ### Added

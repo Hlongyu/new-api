@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { rebateUSD } from '@/features/monthly-rebates/lib/format'
+import { rebateTime, rebateUSD } from '@/features/monthly-rebates/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getGroupConsumption, type ConsumptionQuery } from './api'
@@ -39,7 +39,7 @@ import { ConsumptionFilters } from './consumption-filters'
 import { GroupUserExclusions } from './group-user-exclusions'
 
 export function GroupConsumption() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const userID = useAuthStore((state) => state.auth.user?.id)
   const currentMonth = new Date(Date.now() + 8 * 3600000)
     .toISOString()
@@ -117,6 +117,11 @@ export function GroupConsumption() {
           setPage(1)
         }}
       />
+      {data?.generated_at && (
+        <p className='text-muted-foreground text-sm'>
+          {t('Updated at')}: {rebateTime(data.generated_at, i18n.language)}
+        </p>
+      )}
       {query.isPending && <Skeleton className='h-40 w-full' />}
       {query.isError && (
         <Alert variant='destructive'>

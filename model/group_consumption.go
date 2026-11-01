@@ -2,9 +2,11 @@ package model
 
 import (
 	"errors"
+	"gorm.io/gorm"
 	"slices"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // GroupConsumption uses the owner snapshot in the request log, never the
@@ -34,7 +36,8 @@ type ConsumptionGroup struct {
 }
 
 type GroupConsumptionReport struct {
-	Groups []ConsumptionGroup `json:"groups"`
+	GeneratedAt int64              `json:"generated_at"`
+	Groups      []ConsumptionGroup `json:"groups"`
 
 	Items                []GroupConsumption `json:"items"`
 	UnattributedRequests int64              `json:"unattributed_requests"`
@@ -46,27 +49,51 @@ func ListGroupConsumption(start, end int64, ownerID int, excludedUsers []int, gr
 	return QueryConsumption(start, end, ownerID, ConsumptionFilters{Dimension: "group", Source: "all", ExcludedUsers: excludedUsers, GroupExclusions: groupExclusions})
 }
 
-// Both dimensions share attribution, permission, funding and exclusion rules.
+// QueryConsumption is the uncached accounting path. Live query pages use
+// QueryPersistedConsumption; accounting also supports non-calendar snapshot windows.
 func QueryConsumption(start, end int64, ownerID int, filters ConsumptionFilters) (GroupConsumptionReport, error) {
-	report := GroupConsumptionReport{Items: []GroupConsumption{}, Groups: []ConsumptionGroup{}}
-	if (filters.Dimension != "group" && filters.Dimension != "user") || (filters.Source != "all" && filters.Source != "wallet" && filters.Source != "subscription") || filters.UserID < 0 {
-		return report, errors.New("invalid consumption filters")
+	if err := validateConsumptionQuery(start, end, ownerID, filters); err != nil {
+		return GroupConsumptionReport{}, err
 	}
-	visibleGroups := map[string]int{}
+	cube, err := loadConsumptionCube(DB, LOG_DB, start, end)
+	if err != nil {
+		return GroupConsumptionReport{}, err
+	}
+	return summarizeConsumption(cube, ownerID, filters), nil
+}
 
-	if start < 0 || end <= start || ownerID < 0 {
-		return report, errors.New("invalid group consumption query")
+func validateConsumptionQuery(start, end int64, ownerID int, filters ConsumptionFilters) error {
+	if start < 0 || end <= start || ownerID < 0 || filters.UserID < 0 || (filters.Dimension != "group" && filters.Dimension != "user") || (filters.Source != "all" && filters.Source != "wallet" && filters.Source != "subscription") {
+		return errors.New("invalid consumption query")
 	}
-	byGroup := map[string]int{}
+	return nil
+}
+
+// The cube contains only group/owner/user aggregates, never request metadata.
+// Counts for each funding source preserve hybrid-request semantics.
+type consumptionCubeRow struct {
+	GroupConsumption
+	WalletRequests       int64
+	SubscriptionRequests int64
+}
+type consumptionCube struct {
+	Rows         []consumptionCubeRow
+	Unattributed map[int]int64
+	GeneratedAt  int64
+}
+
+func loadConsumptionCube(db, logDB *gorm.DB, start, end int64) (*consumptionCube, error) {
+	cube := &consumptionCube{Unattributed: map[int]int64{}}
+	type key struct {
+		group       string
+		owner, user int
+	}
+	rows := map[key]*consumptionCubeRow{}
 	var after int64
 	for {
 		var settlements []PostpaidSettlement
-		query := DB.Model(&PostpaidSettlement{}).Scopes(monthlyConsumptionScope(start, end)).Where("id > ?", after).Order("id ASC").Limit(500)
-		if len(filters.ExcludedUsers) > 0 {
-			query = query.Where("user_id NOT IN ?", filters.ExcludedUsers)
-		}
-		if err := query.Find(&settlements).Error; err != nil {
-			return report, err
+		if err := db.Model(&PostpaidSettlement{}).Scopes(monthlyConsumptionScope(start, end)).Where("id > ?", after).Order("id ASC").Limit(1000).Find(&settlements).Error; err != nil {
+			return nil, err
 		}
 		if len(settlements) == 0 {
 			break
@@ -76,76 +103,113 @@ func QueryConsumption(start, end int64, ownerID int, filters ConsumptionFilters)
 			ids = append(ids, settlement.RequestId)
 		}
 		var logs []Log
-		logQuery := LOG_DB.Model(&Log{}).Select([]string{"request_id", "group", "group_owner_user_id"}).Where("request_id IN ? AND type = ?", ids, LogTypeConsume).Distinct()
-		if err := logQuery.Find(&logs).Error; err != nil {
-			return report, err
+		if err := logDB.Model(&Log{}).Select([]string{"request_id", "group", "group_owner_user_id"}).Where("request_id IN ? AND type = ?", ids, LogTypeConsume).Distinct().Find(&logs).Error; err != nil {
+			return nil, err
 		}
-		groups := map[string]string{}
-		owners := map[string]int{}
+		groups := map[string]key{}
 		ambiguous := map[string]bool{}
 		for _, log := range logs {
-			if previous, ok := groups[log.RequestId]; ok && (previous != log.Group || owners[log.RequestId] != log.GroupOwnerUserID) {
+			current := key{group: log.Group, owner: log.GroupOwnerUserID}
+			if previous, ok := groups[log.RequestId]; ok && previous != current {
 				ambiguous[log.RequestId] = true
 			}
-			groups[log.RequestId] = log.Group
-			owners[log.RequestId] = log.GroupOwnerUserID
+			groups[log.RequestId] = current
 		}
 		for _, settlement := range settlements {
-			group, ok := groups[settlement.RequestId]
-			if !ok || group == "" || ambiguous[settlement.RequestId] {
-				// Do not leak other users' activity to a group owner.
-				if ownerID == 0 && (settlement.WalletQuota > 0 || settlement.SubscriptionQuota > 0) {
-					report.UnattributedRequests++
+			k, ok := groups[settlement.RequestId]
+			if !ok || k.group == "" || ambiguous[settlement.RequestId] {
+				if settlement.WalletQuota > 0 || settlement.SubscriptionQuota > 0 {
+					cube.Unattributed[settlement.UserId]++
 				}
 				continue
 			}
-			if ownerID > 0 && owners[settlement.RequestId] != ownerID {
-				continue
+			k.user = settlement.UserId
+			row := rows[k]
+			if row == nil {
+				row = &consumptionCubeRow{GroupConsumption: GroupConsumption{Group: k.group, OwnerUserID: k.owner, UserID: k.user}}
+				rows[k] = row
 			}
-			visibleGroups[group] = owners[settlement.RequestId]
-			if filters.Group != "" && filters.Group != group {
-				continue
-			}
-			if filters.UserID > 0 && filters.UserID != settlement.UserId {
-				continue
-			}
-			wallet, subscription := settlement.WalletQuota, settlement.SubscriptionQuota
-			if filters.Source == "wallet" {
-				if wallet == 0 {
-					continue
-				}
-				subscription = 0
-			}
-			if filters.Source == "subscription" {
-				if subscription == 0 {
-					continue
-				}
-				wallet = 0
-			}
-			key := group
-			if filters.Dimension == "user" {
-				key = strconv.Itoa(settlement.UserId)
-			}
-			index, exists := byGroup[key]
-			if !exists {
-				index = len(report.Items)
-				byGroup[key] = index
-				row := GroupConsumption{Group: group, OwnerUserID: owners[settlement.RequestId]}
-				if filters.Dimension == "user" {
-					row = GroupConsumption{UserID: settlement.UserId}
-				}
-				report.Items = append(report.Items, row)
-			}
-			if slices.Contains(filters.GroupExclusions[group], settlement.UserId) {
-				continue
-			}
-			row := &report.Items[index]
-			row.WalletQuota += int64(wallet)
-			row.SubscriptionQuota += int64(subscription)
-			row.TotalQuota = row.WalletQuota + row.SubscriptionQuota
+			row.WalletQuota += int64(settlement.WalletQuota)
+			row.SubscriptionQuota += int64(settlement.SubscriptionQuota)
 			row.Requests++
+			if settlement.WalletQuota > 0 {
+				row.WalletRequests++
+			}
+			if settlement.SubscriptionQuota > 0 {
+				row.SubscriptionRequests++
+			}
 		}
 		after = settlements[len(settlements)-1].Id
+	}
+	for _, row := range rows {
+		cube.Rows = append(cube.Rows, *row)
+	}
+	cube.GeneratedAt = time.Now().Unix()
+	return cube, nil
+}
+
+func summarizeConsumption(cube *consumptionCube, ownerID int, filters ConsumptionFilters) GroupConsumptionReport {
+	report := GroupConsumptionReport{Items: []GroupConsumption{}, Groups: []ConsumptionGroup{}, GeneratedAt: cube.GeneratedAt}
+	if ownerID == 0 {
+		for user, count := range cube.Unattributed {
+			if !slices.Contains(filters.ExcludedUsers, user) {
+				report.UnattributedRequests += count
+			}
+		}
+	}
+	visibleGroups := map[string]int{}
+	byGroup := map[string]int{}
+	for _, entry := range cube.Rows {
+		if ownerID > 0 && entry.OwnerUserID != ownerID {
+			continue
+		}
+		if slices.Contains(filters.ExcludedUsers, entry.UserID) {
+			continue
+		}
+		visibleGroups[entry.Group] = entry.OwnerUserID
+		if filters.Group != "" && filters.Group != entry.Group {
+			continue
+		}
+		if filters.UserID > 0 && filters.UserID != entry.UserID {
+			continue
+		}
+		wallet, subscription, requests := entry.WalletQuota, entry.SubscriptionQuota, entry.Requests
+		if filters.Source == "wallet" {
+			if entry.WalletRequests == 0 {
+				continue
+			}
+			subscription = 0
+			requests = entry.WalletRequests
+		}
+		if filters.Source == "subscription" {
+			if entry.SubscriptionRequests == 0 {
+				continue
+			}
+			wallet = 0
+			requests = entry.SubscriptionRequests
+		}
+		key := entry.Group
+		if filters.Dimension == "user" {
+			key = strconv.Itoa(entry.UserID)
+		}
+		index, exists := byGroup[key]
+		if !exists {
+			index = len(report.Items)
+			byGroup[key] = index
+			row := GroupConsumption{Group: entry.Group, OwnerUserID: entry.OwnerUserID}
+			if filters.Dimension == "user" {
+				row = GroupConsumption{UserID: entry.UserID}
+			}
+			report.Items = append(report.Items, row)
+		}
+		if slices.Contains(filters.GroupExclusions[entry.Group], entry.UserID) {
+			continue
+		}
+		row := &report.Items[index]
+		row.WalletQuota += wallet
+		row.SubscriptionQuota += subscription
+		row.TotalQuota = row.WalletQuota + row.SubscriptionQuota
+		row.Requests += requests
 	}
 	for group, owner := range visibleGroups {
 		report.Groups = append(report.Groups, ConsumptionGroup{Group: group, OwnerUserID: owner})
@@ -157,5 +221,5 @@ func QueryConsumption(start, end int64, ownerID int, filters ConsumptionFilters)
 		}
 		return report.Items[i].Group < report.Items[j].Group
 	})
-	return report, nil
+	return report
 }

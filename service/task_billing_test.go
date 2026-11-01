@@ -49,6 +49,7 @@ func TestMain(m *testing.M) {
 		&model.UserSubscription{},
 		&model.TokenQuotaUsage{},
 		&model.PostpaidSettlement{},
+		&model.ConsumptionAttribution{},
 		&model.PostpaidSettlementAllocation{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
@@ -76,6 +77,7 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM token_quota_usages")
 		model.DB.Exec("DELETE FROM postpaid_settlement_allocations")
 		model.DB.Exec("DELETE FROM postpaid_settlements")
+		model.DB.Exec("DELETE FROM consumption_attributions")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})
