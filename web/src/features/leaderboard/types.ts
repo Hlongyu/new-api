@@ -49,6 +49,8 @@ export type TierDivision = 'IV' | 'III' | 'II' | 'I'
  * both before serialising, so they are never present on the wire.
  */
 export type LeaderboardEntry = {
+  customTitle?: string
+  avatarImage?: string
   id: number
   displayName: string
   /** Localised tier text such as "黄金 I". Entries never carry `tierKey`. */
@@ -107,6 +109,8 @@ export type LeaderboardVisibility = {
 }
 
 export type LeaderboardMeEntry = {
+  customTitle?: string
+  avatarImage?: string
   displayName: string
   currentName: string
   anonymousName: string
@@ -168,6 +172,7 @@ export type LeaderboardMe = {
 }
 
 export type UpdateMeRequest = {
+  customTitle?: string
   displayName?: string
   isNamePublic?: boolean
   /**

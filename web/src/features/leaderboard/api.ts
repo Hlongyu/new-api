@@ -86,15 +86,13 @@ export async function updateLeaderboardMe(
 export async function buyRenameCards(
   body: RenameCardPurchaseRequest
 ): Promise<RenameCardPurchaseResult> {
-  const res = await api.post<LeaderboardResponse<RenameCardPurchaseResult['order']>>(
-    `${LEADERBOARD_BASE}/rename-cards`,
-    body,
-    {
-      headers: MUTATION_HEADERS,
-      skipBusinessError: true,
-      skipErrorHandler: true,
-    }
-  )
+  const res = await api.post<
+    LeaderboardResponse<RenameCardPurchaseResult['order']>
+  >(`${LEADERBOARD_BASE}/rename-cards`, body, {
+    headers: MUTATION_HEADERS,
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
   return { order: res.data.data, pending: res.status === 202 }
 }
 
@@ -124,6 +122,19 @@ export async function updateExcludedUsers(
 export async function getRenameCardAdminView(): Promise<RenameCardAdminView> {
   const res = await api.get<LeaderboardResponse<RenameCardAdminView>>(
     `${LEADERBOARD_BASE}/admin/rename-cards`
+  )
+  return res.data.data
+}
+
+export async function uploadLeaderboardAvatar(
+  file: File
+): Promise<LeaderboardMe> {
+  const body = new FormData()
+  body.append('avatar', file)
+  const res = await api.post<LeaderboardResponse<LeaderboardMe>>(
+    `${LEADERBOARD_BASE}/me/avatar`,
+    body,
+    { headers: MUTATION_HEADERS }
   )
   return res.data.data
 }

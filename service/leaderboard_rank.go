@@ -37,6 +37,8 @@ type SponsorBadge struct {
 }
 
 type LeaderboardRow struct {
+	CustomTitle   string        `json:"customTitle,omitempty"`
+	AvatarImage   string        `json:"avatarImage,omitempty"`
 	Id            int           `json:"id"`
 	DisplayName   string        `json:"displayName"`
 	RankLabel     string        `json:"rankLabel,omitempty"`
@@ -285,6 +287,7 @@ func GetUsageBoard(period string) (*UsageBoardPayload, error) {
 		}
 		payload.Entries = append(payload.Entries, LeaderboardRow{
 			Id: entry.Id, DisplayName: leaderboardDisplayName(entry), RankLabel: progress.Label,
+			CustomTitle: entry.CustomTitle, AvatarImage: entry.AvatarImage,
 			ShowRankBadge: entry.ShowRankBadge, UpdatedAt: total.UpdatedAt,
 			TokenUsed: total.TokenUsed, RequestCount: total.RequestCount,
 			SponsorBadge: badge, IsSponsor: badge != nil,
@@ -356,6 +359,7 @@ func GetTierBoard() (*TierBoardPayload, error) {
 		ranked = append(ranked, rankedRow{
 			row: LeaderboardRow{
 				Id: entry.Id, DisplayName: leaderboardDisplayName(entry), RankLabel: progress.Label,
+				CustomTitle: entry.CustomTitle, AvatarImage: entry.AvatarImage,
 				ShowRankBadge: entry.ShowRankBadge, SponsorBadge: badge,
 			},
 			rankValue: progress.RankValue,

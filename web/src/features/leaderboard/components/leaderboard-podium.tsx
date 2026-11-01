@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { formatTokens, podiumBarWidth } from '../lib/format'
 import { showsTierBadge } from '../lib/rank-badge'
 import type { LeaderboardEntry } from '../types'
+import { EntryCosmetics } from './entry-cosmetics'
 import { RankBadge } from './rank-badge'
 
 // ----------------------------------------------------------------------------
@@ -115,7 +116,8 @@ export function LeaderboardPodium(props: LeaderboardPodiumProps) {
                 />
               </span>
 
-              <span className='flex min-w-0 flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-[9px]'>
+              <span className='flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-[9px]'>
+                <EntryCosmetics entry={entry} />
                 <span
                   className='w-full min-w-0 truncate text-sm font-extrabold sm:w-auto'
                   title={entry.displayName}

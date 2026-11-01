@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -24,6 +25,8 @@ type LeaderboardVisibility struct {
 }
 
 type LeaderboardMeEntry struct {
+	CustomTitle   string                `json:"customTitle"`
+	AvatarImage   string                `json:"avatarImage"`
 	DisplayName   string                `json:"displayName"`
 	CurrentName   string                `json:"currentName"`
 	AnonymousName string                `json:"anonymousName"`
@@ -52,6 +55,8 @@ type LeaderboardMe struct {
 }
 
 type LeaderboardProfilePatch struct {
+	CustomTitle  *string
+	AvatarImage  *string
 	DisplayName  *string
 	IsNamePublic *bool
 	Visibility   struct {
@@ -188,6 +193,7 @@ func GetLeaderboardMe(userId int, isRoot bool) (*LeaderboardMe, error) {
 		Quota: quota, BalanceUsd: float64(quota) / common.QuotaPerUnit, IsRoot: isRoot,
 		Entry: LeaderboardMeEntry{
 			DisplayName: entry.DisplayName, CurrentName: currentName,
+			CustomTitle: entry.CustomTitle, AvatarImage: entry.AvatarImage,
 			AnonymousName: entry.AnonymousName, IsNamePublic: entry.IsNamePublic,
 			Visibility: LeaderboardVisibility{
 				ParticipateDay: entry.ParticipateDay, ParticipateWeek: entry.ParticipateWeek,
@@ -204,12 +210,30 @@ func GetLeaderboardMe(userId int, isRoot bool) (*LeaderboardMe, error) {
 }
 
 func UpdateLeaderboardMe(userId int, isRoot bool, patch LeaderboardProfilePatch) (*LeaderboardMe, error) {
+	if patch.CustomTitle != nil || patch.AvatarImage != nil {
+		progress, err := GetRankProgress(userId)
+		if err != nil {
+			return nil, err
+		}
+		if progress.TierKey != "challenger" {
+			return nil, errors.New("仅最强王者可以修改自定义称号和头像")
+		}
+	}
+	if patch.CustomTitle != nil {
+		title := strings.TrimSpace(*patch.CustomTitle)
+		if !utf8.ValidString(title) || utf8.RuneCountInString(title) < 1 || utf8.RuneCountInString(title) > 10 {
+			return nil, errors.New("自定义称号长度应为 1-10 个字")
+		}
+		patch.CustomTitle = &title
+	}
+
 	_, _, periodKey, err := leaderboardPeriodRange("week", time.Now())
 	if err != nil {
 		return nil, err
 	}
 	_, err = model.UpdateLeaderboardProfile(userId, model.LeaderboardProfileUpdate{
 		DisplayName: patch.DisplayName, IsNamePublic: patch.IsNamePublic,
+		CustomTitle: patch.CustomTitle, AvatarImage: patch.AvatarImage,
 		ParticipateDay:   patch.Visibility.ParticipateDay,
 		ParticipateWeek:  patch.Visibility.ParticipateWeek,
 		ParticipateMonth: patch.Visibility.ParticipateMonth,

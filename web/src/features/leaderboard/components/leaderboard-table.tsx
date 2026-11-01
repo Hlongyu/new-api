@@ -33,11 +33,13 @@ import { cn } from '@/lib/utils'
 import { formatCount, formatTokens } from '../lib/format'
 import { showsTierBadge } from '../lib/rank-badge'
 import type { LeaderboardBoard, LeaderboardEntry } from '../types'
+import { EntryCosmetics } from './entry-cosmetics'
 import { RankBadge } from './rank-badge'
 
 function NameCell(props: { entry: LeaderboardEntry }) {
   return (
     <div className='flex min-w-0 items-center gap-2'>
+      <EntryCosmetics entry={props.entry} />
       <span className='truncate' title={props.entry.displayName}>
         {props.entry.displayName}
       </span>

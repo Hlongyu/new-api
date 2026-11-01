@@ -38,6 +38,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 import { useLeaderboardMe } from '../hooks'
 import { ProfileAdminSection } from './profile-admin-section'
+import { ProfileCosmeticsForm } from './profile-cosmetics-form'
 import { ProfileNameForm } from './profile-name-form'
 import { ProfileRankCard } from './profile-rank-card'
 import { ProfileVisibility } from './profile-visibility'
@@ -95,6 +96,10 @@ export function ProfileSheet(props: ProfileSheetProps) {
 
         <SideDrawerSection>
           <ProfileNameForm me={me} />
+        </SideDrawerSection>
+
+        <SideDrawerSection>
+          <ProfileCosmeticsForm me={me} />
         </SideDrawerSection>
 
         <SideDrawerSection>

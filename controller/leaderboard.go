@@ -53,6 +53,7 @@ type leaderboardVisibilityRequest struct {
 }
 
 type updateLeaderboardMeRequest struct {
+	CustomTitle  *string                       `json:"customTitle"`
 	DisplayName  *string                       `json:"displayName"`
 	IsNamePublic *bool                         `json:"isNamePublic"`
 	Visibility   *leaderboardVisibilityRequest `json:"visibility"`
@@ -64,7 +65,7 @@ func UpdateLeaderboardMe(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求参数无效"})
 		return
 	}
-	patch := service.LeaderboardProfilePatch{DisplayName: request.DisplayName, IsNamePublic: request.IsNamePublic}
+	patch := service.LeaderboardProfilePatch{CustomTitle: request.CustomTitle, DisplayName: request.DisplayName, IsNamePublic: request.IsNamePublic}
 	if request.DisplayName != nil {
 		name := strings.TrimSpace(*request.DisplayName)
 		if utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 36 {

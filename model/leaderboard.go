@@ -23,6 +23,8 @@ const (
 )
 
 type LeaderboardEntry struct {
+	CustomTitle      string `json:"custom_title" gorm:"type:varchar(40)"`
+	AvatarImage      string `json:"-" gorm:"type:text"`
 	Id               int    `json:"id" gorm:"primaryKey"`
 	UserId           int    `json:"user_id" gorm:"uniqueIndex;not null"`
 	Username         string `json:"username" gorm:"type:varchar(64);not null"`

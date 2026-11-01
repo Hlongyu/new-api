@@ -20,6 +20,8 @@ var (
 )
 
 type LeaderboardProfileUpdate struct {
+	CustomTitle      *string
+	AvatarImage      *string
 	DisplayName      *string
 	IsNamePublic     *bool
 	ParticipateDay   *bool
@@ -38,6 +40,40 @@ func UpdateLeaderboardProfile(userId int, update LeaderboardProfileUpdate) (*Lea
 		var entry LeaderboardEntry
 		if err := lockForUpdate(tx).Where("user_id = ? AND active = ?", userId, true).First(&entry).Error; err != nil {
 			return err
+		}
+		// Each cosmetic is charged independently; the transaction rolls everything
+		// back if the balance cannot cover all requested changes.
+		for _, change := range []struct {
+			target *string
+			value  *string
+			label  string
+		}{
+			{&entry.CustomTitle, update.CustomTitle, "称号"},
+			{&entry.AvatarImage, update.AvatarImage, "头像"},
+		} {
+			if change.value == nil || *change.value == *change.target {
+				continue
+			}
+			result := tx.Model(&RenameCardBalance{}).Where("user_id = ? AND balance > 0", userId).
+				Updates(map[string]interface{}{"balance": gorm.Expr("balance - 1"), "updated_at": update.Now})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return errors.New("改名卡不足，每项修改需要 1 次改名卡")
+			}
+			oldValue, newValue := *change.target, *change.value
+			if change.label == "头像" {
+				oldValue, newValue = "", "已更新"
+			}
+			if err := tx.Create(&RenameEvent{
+				Id: common.GetUUID(), UserId: userId, EntryId: entry.Id,
+				OldName: change.label + ": " + oldValue, NewName: change.label + ": " + newValue,
+				CostType: "card", PeriodKey: update.PeriodKey, CreatedAt: update.Now,
+			}).Error; err != nil {
+				return err
+			}
+			*change.target = *change.value
 		}
 		if update.DisplayName != nil && *update.DisplayName != entry.DisplayName {
 			var freeRenameCount int64

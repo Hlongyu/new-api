@@ -1,5 +1,23 @@
 # Changelog
 
+## [custom-v1.0.24] - 2026-11-01
+
+### Added
+
+- Allow current Challenger users to customize their leaderboard title and avatar independently. Titles accept 1–10 Unicode characters; each changed item consumes one rename card without using the weekly free rename. Saved titles and avatars remain visible after demotion, while further edits require Challenger rank.
+- Add PNG/JPEG avatar uploads with a 2 MB file limit, a 4-megapixel limit and a 4096-pixel maximum side. Crop uploads to a square and re-encode them as 128×128 JPEG avatars with metadata removed. Show customizations on the podium, desktop table and mobile cards, with editing controls and translations in all seven languages.
+- Support user exclusions and credit balances in monthly accounting, including an exclusion-management interface.
+
+### Changed
+
+- Unify calling-user and channel views in personal usage logs, including filters and mobile presentation, while preserving group-owner access boundaries.
+- Save cosmetic changes, rename-card deductions and audit events in one transaction. Unchanged values do not consume cards; failed saves and insufficient balances roll back the complete update.
+
+### Compatibility
+
+- Add nullable `custom_title` and `avatar_image` columns to `leaderboard_entries` through the existing startup migration paths. Existing profiles retain their default appearance until customized. Instances that skip startup migrations must add these columns before running this version.
+- Relevant backend regression tests, 41 leaderboard frontend tests, TypeScript checks, lint, and frontend/backend builds passed. Local multi-account testing verified independent deductions, upload handling, insufficient-card rejection and retained customizations after demotion; user acceptance testing passed. Live MySQL/PostgreSQL migration validation has not been performed.
+
 ## [custom-v1.0.23] - 2026-10-28
 
 ### Added

@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getLeaderboardMe, updateLeaderboardMe } from '../api'
+import {
+  getLeaderboardMe,
+  updateLeaderboardMe,
+  uploadLeaderboardAvatar,
+} from '../api'
 import { LEADERBOARD_ME_STALE_TIME } from '../constants'
 import type { LeaderboardMe, UpdateMeRequest } from '../types'
 
@@ -45,9 +49,14 @@ export function useUpdateLeaderboardMe() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (body: UpdateMeRequest) => updateLeaderboardMe(body),
+    mutationFn: (body: UpdateMeRequest | File) =>
+      body instanceof File
+        ? uploadLeaderboardAvatar(body)
+        : updateLeaderboardMe(body),
     onMutate: async (body) => {
-      if (!body.visibility) return { previous: undefined }
+      if (body instanceof File || !body.visibility) {
+        return { previous: undefined }
+      }
 
       await queryClient.cancelQueries({ queryKey: ME_KEY })
       const previous = queryClient.getQueryData<LeaderboardMe>(ME_KEY)

@@ -79,6 +79,7 @@ func SetApiRouter(router *gin.Engine) {
 			leaderboardRoute.GET("/leaderboard", controller.GetLeaderboardUsage)
 			leaderboardRoute.GET("/ranks", controller.GetLeaderboardRanks)
 			leaderboardRoute.GET("/me", controller.GetLeaderboardMe)
+			leaderboardRoute.POST("/me/avatar", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.UploadLeaderboardAvatar)
 			leaderboardRoute.PATCH("/me", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.UpdateLeaderboardMe)
 			leaderboardRoute.GET("/app/status", controller.GetLeaderboardAppStatus)
 			leaderboardRoute.POST("/rename-cards", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), controller.BuyLeaderboardRenameCards)

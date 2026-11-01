@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { formatCount, formatTokens } from '../lib/format'
 import { showsTierBadge } from '../lib/rank-badge'
 import type { LeaderboardBoard, LeaderboardEntry } from '../types'
+import { EntryCosmetics } from './entry-cosmetics'
 import { RankBadge } from './rank-badge'
 
 export type LeaderboardCardsProps = {
@@ -60,6 +61,7 @@ export function LeaderboardCards(props: LeaderboardCardsProps) {
           </span>
           <div className='min-w-0 flex-1'>
             <div className='flex min-w-0 items-center gap-2'>
+              <EntryCosmetics entry={entry} />
               <span
                 className='text-foreground truncate text-sm font-medium'
                 title={entry.displayName}
