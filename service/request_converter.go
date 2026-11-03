@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/QuantumNous/new-api/common"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -24,15 +27,52 @@ func init() {
 }
 
 func ConvertRequest(c *gin.Context, info *relaycommon.RelayInfo, target types.RelayFormat, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequest(c, info, target, request)
+	result, err := relayconvert.ConvertRequest(c, info, target, request)
+	if err != nil {
+		return nil, err
+	}
+	return applyChatResponsesSessionCacheKey(c, result)
 }
 
 func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestByID(c, info, converter, request)
+	result, err := relayconvert.ConvertRequestByID(c, info, converter, request)
+	if err != nil {
+		return nil, err
+	}
+	return applyChatResponsesSessionCacheKey(c, result)
 }
 
 func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
-	return relayconvert.ConvertRequestVia(c, info, request, path...)
+	result, err := relayconvert.ConvertRequestVia(c, info, request, path...)
+	if err != nil {
+		return nil, err
+	}
+	return applyChatResponsesSessionCacheKey(c, result)
+}
+
+// Session headers take precedence only on the Chat-to-Responses bridge. Keep
+// HTTP policy in the host so relaykit stays independent of Gin and requests.
+func applyChatResponsesSessionCacheKey(c *gin.Context, result *relayconvert.RequestResult) (*relayconvert.RequestResult, error) {
+	if c == nil || c.Request == nil || result == nil || result.From != types.RelayFormatOpenAI || result.To != types.RelayFormatOpenAIResponses {
+		return result, nil
+	}
+	key := strings.TrimSpace(c.GetHeader("session_id"))
+	if key == "" {
+		key = strings.TrimSpace(c.GetHeader("conversation_id"))
+	}
+	if key == "" {
+		return result, nil
+	}
+	request, ok := result.Value.(*dto.OpenAIResponsesRequest)
+	if !ok || request == nil {
+		return result, nil
+	}
+	encoded, err := common.Marshal(key)
+	if err != nil {
+		return nil, fmt.Errorf("marshal session prompt_cache_key: %w", err)
+	}
+	request.PromptCacheKey = encoded
+	return result, nil
 }
 
 func ClaudeToOpenAIRequest(claudeRequest dto.ClaudeRequest, info *relaycommon.RelayInfo) (*dto.GeneralOpenAIRequest, error) {

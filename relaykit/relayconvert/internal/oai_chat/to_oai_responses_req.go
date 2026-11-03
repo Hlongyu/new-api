@@ -1,6 +1,7 @@
 package oaichat
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -399,12 +400,34 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		presencePenaltyRaw, _ = kitutil.Marshal(req.PresencePenalty)
 	}
 
-	var promptCacheKeyRaw json.RawMessage
-	if req.PromptCacheKey != "" {
-		promptCacheKeyRaw, err = kitutil.Marshal(req.PromptCacheKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshal prompt_cache_key: %w", err)
+	promptCacheKey := req.PromptCacheKey
+	if promptCacheKey == "" {
+		// Use stable conversation inputs, not growing history or per-request metadata.
+		// A structured seed avoids delimiter collisions and keeps raw content out of the key.
+		var firstUserContent any
+		for _, message := range req.Messages {
+			if strings.TrimSpace(message.Role) == "user" {
+				firstUserContent = message.Content
+				break
+			}
 		}
+		seed, err := kitutil.Marshal(struct {
+			Model            string          `json:"model"`
+			Instructions     json.RawMessage `json:"instructions"`
+			Tools            json.RawMessage `json:"tools"`
+			ToolChoice       json.RawMessage `json:"tool_choice"`
+			ReasoningEffort  string          `json:"reasoning_effort"`
+			User             json.RawMessage `json:"user"`
+			FirstUserContent any             `json:"first_user_content"`
+		}{req.Model, instructionsRaw, toolsRaw, toolChoiceRaw, req.ReasoningEffort, req.User, firstUserContent})
+		if err != nil {
+			return nil, fmt.Errorf("derive prompt_cache_key: %w", err)
+		}
+		promptCacheKey = fmt.Sprintf("newapi_cc_v1_%x", sha256.Sum256(seed))
+	}
+	promptCacheKeyRaw, err := kitutil.Marshal(promptCacheKey)
+	if err != nil {
+		return nil, fmt.Errorf("marshal prompt_cache_key: %w", err)
 	}
 
 	out := &dto.OpenAIResponsesRequest{

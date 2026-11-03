@@ -33,6 +33,7 @@
   ],
   "instructions": "You are a helpful assistant.",
   "max_output_tokens": 1024,
+  "prompt_cache_key": "newapi_cc_v1_<uuid><uuid>",
   "stream": true,
   "tools": [
     {

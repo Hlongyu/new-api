@@ -1,5 +1,17 @@
 # Changelog
 
+## [custom-v1.0.29] - 2026-11-03
+
+### Added
+
+- Generate a stable `prompt_cache_key` when Chat Completions requests are converted to Responses without a client-supplied key. Hash a versioned, structured seed containing the model, system/developer instructions, tools, tool choice, reasoning effort, user field and first user message. Appended conversation turns, tool results, output limits and per-request metadata do not change the key.
+- Prefer trimmed `session_id`, then `conversation_id` request headers over the body cache key on the host Chat-to-Responses bridge. Empty headers fall back to the body key and then content-derived generation. Apply the same priority to global-policy and advanced-custom conversions without mutating the original client request.
+
+### Compatibility
+
+- No database migration is required. Explicit body keys remain unchanged when no non-empty session header is present. Native Responses requests are not overridden by this header policy. Conversion routes that internally pass through Chat also receive the content-derived fallback; generated keys contain a SHA-256 digest rather than prompt text.
+- DTO/conversion and host service/relay tests, independent `relaykit` builds and root builds passed. Local mock end-to-end checks verified generated keys and session-header precedence at the upstream Responses endpoint, plus preserved cache counts in client usage and persisted logs. Real WorkBuddy cache-hit behavior still requires validation after deployment; stable keys do not guarantee upstream cache hits.
+
 ## [custom-v1.0.28] - 2026-11-03
 
 ### Fixed

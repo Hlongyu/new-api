@@ -67,7 +67,7 @@ func TestChatCompletionsRequestToResponsesRequestPreservesPromptCacheKey(t *test
 
 		encoded, err := kitutil.Marshal(got)
 		require.NoError(t, err)
-		assert.False(t, gjson.GetBytes(encoded, "prompt_cache_key").Exists())
+		assert.Regexp(t, `^newapi_cc_v1_[0-9a-f]{64}$`, gjson.GetBytes(encoded, "prompt_cache_key").String())
 	})
 }
 
@@ -262,6 +262,57 @@ func TestChatToResponsesSchemaPropertyOrder(t *testing.T) {
 			assert.Equal(t, schema, gjson.GetBytes(encoded, "text.format.schema").Raw)
 			assert.Equal(t, "ordered", gjson.GetBytes(encoded, "text.format.name").String())
 			assert.True(t, gjson.GetBytes(encoded, "text.format.strict").Bool())
+		})
+	}
+}
+
+func TestChatToResponsesDerivedCacheKeyStaysStableAcrossTurns(t *testing.T) {
+	req := &dto.GeneralOpenAIRequest{Model: "gpt-test", Messages: []dto.Message{{Role: "system", Content: "rules"}, {Role: "user", Content: "first"}}, ReasoningEffort: "medium"}
+	first, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+	assert.Empty(t, req.PromptCacheKey)
+	req.Messages = append(req.Messages, assistantMessageWithTool("checking", "call_1", "lookup", `{"q":"x"}`), dto.Message{Role: "tool", ToolCallId: "call_1", Content: "result"}, dto.Message{Role: "user", Content: "next"})
+	req.MaxCompletionTokens = lo.ToPtr(uint(128))
+	req.Metadata = json.RawMessage(`{"request_id":"new-request"}`)
+	next, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+	assert.Equal(t, first.PromptCacheKey, next.PromptCacheKey)
+	again, err := ChatCompletionsRequestToResponsesRequest(req)
+	require.NoError(t, err)
+	assert.Equal(t, next.PromptCacheKey, again.PromptCacheKey)
+}
+
+func TestChatToResponsesDerivedCacheKeyPartitionsStableInputs(t *testing.T) {
+	const base = `{"model":"gpt-test","messages":[{"role":"system","content":"rules"},{"role":"developer","content":"developer rules"},{"role":"user","content":"first"}],"reasoning_effort":"medium","user":"alice","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}],"tool_choice":"auto"}`
+	var req dto.GeneralOpenAIRequest
+	require.NoError(t, kitutil.Unmarshal([]byte(base), &req))
+	original, err := ChatCompletionsRequestToResponsesRequest(&req)
+	require.NoError(t, err)
+	for _, field := range []string{"model", "system", "developer", "first user", "tools", "tool choice", "reasoning", "user"} {
+		t.Run(field, func(t *testing.T) {
+			var changed dto.GeneralOpenAIRequest
+			require.NoError(t, kitutil.Unmarshal([]byte(base), &changed))
+			switch field {
+			case "model":
+				changed.Model = "gpt-other"
+			case "system":
+				changed.Messages[0].Content = "other rules"
+			case "developer":
+				changed.Messages[1].Content = "other developer rules"
+			case "first user":
+				changed.Messages[2].Content = "different conversation"
+			case "tools":
+				changed.Tools[0].Function.Name = "other_tool"
+			case "tool choice":
+				changed.ToolChoice = "none"
+			case "reasoning":
+				changed.ReasoningEffort = "high"
+			case "user":
+				changed.User = json.RawMessage(`"bob"`)
+			}
+			got, err := ChatCompletionsRequestToResponsesRequest(&changed)
+			require.NoError(t, err)
+			assert.NotEqual(t, original.PromptCacheKey, got.PromptCacheKey)
 		})
 	}
 }
