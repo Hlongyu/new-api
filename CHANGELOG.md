@@ -1,5 +1,18 @@
 # Changelog
 
+## [custom-v1.0.28] - 2026-11-03
+
+### Fixed
+
+- Preserve Responses cache-read, cache-write and modality token details when normalizing OpenAI billing usage for settlement and consume logs. Fill missing prompt details from input details without overwriting existing non-zero values, and fall back to the legacy `prompt_cache_hit_tokens` field when needed.
+- Ignore all-zero OpenAI billing snapshots, including empty input-detail objects, so valid top-level usage remains available for settlement.
+- Merge partial Responses-to-Chat stream usage and matching OpenAI billing snapshots. Later events that omit cache details no longer erase earlier counts; subsequent non-zero counts update the accumulated usage without modifying the original billing snapshots.
+
+### Compatibility
+
+- No database migration is required. The fix applies to new requests after deployment; historical logs, charges and balances are not rewritten. Long-lived cache pricing, cache subtype breakdowns and interrupted-stream settlement changes are outside this release.
+- Service, OpenAI/advanced-custom relay, DTO and conversion regression tests passed, together with the independent `relaykit` build and root build. A regression using 30,783 input tokens, 30,336 cached tokens and 373 output tokens now settles at 957 quota instead of 8,162 under the tested expression and group ratio. Local mock streaming checks verified that client usage and all three persisted consume logs retain cache counts when the terminal event omits them.
+
 ## [custom-v1.0.27] - 2026-11-03
 
 ### Fixed

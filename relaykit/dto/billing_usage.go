@@ -100,7 +100,15 @@ func HasOpenAIUsageTokens(usage *Usage) bool {
 		usage.CompletionTokenDetails.AudioTokens != 0 {
 		return true
 	}
-	return usage.InputTokensDetails != nil
+	if usage.InputTokensDetails == nil {
+		return false
+	}
+	return usage.InputTokensDetails.CachedTokens != 0 ||
+		usage.InputTokensDetails.CachedCreationTokens != 0 ||
+		usage.InputTokensDetails.CacheWriteTokens != 0 ||
+		usage.InputTokensDetails.TextTokens != 0 ||
+		usage.InputTokensDetails.ImageTokens != 0 ||
+		usage.InputTokensDetails.AudioTokens != 0
 }
 
 func NewGeminiChatBillingUsage(metadata *GeminiUsageMetadata) *BillingUsage {
