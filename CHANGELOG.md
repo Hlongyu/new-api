@@ -1,5 +1,17 @@
 # Changelog
 
+## [custom-v1.0.27] - 2026-11-03
+
+### Fixed
+
+- Backport upstream Chat Completions to Responses conversion fixes: preserve `prompt_cache_key`, presence/frequency penalties (including explicit zero), image detail and JSON Schema property order. Use `auto` for missing or unrecognized image detail rather than injecting `high` while parsing messages.
+- Flatten file input into Responses `filename`, `file_data` and `file_id` fields. Give an explicitly supplied `max_completion_tokens` precedence over `max_tokens`, including zero, and isolate the new penalty fields when cloning requests for retries.
+
+### Compatibility
+
+- No database migration is required. Presence/frequency penalties are extensions for compatible upstreams, not official OpenAI Responses parameters. This backport does not include the upstream reasoning/billing refactors or add `prompt_cache_retention` forwarding.
+- Conversion/DTO regression tests, host OpenAI/advanced-custom relay tests and the independent `relaykit` build passed. Local mock checks verified cache-key preservation, omission and repeatability. Three real requests through the cache-key-patched local service to xxgate used 13,683 input tokens each; the second and third reported 13,568 cached tokens. This verifies that tested path, not a general cache-hit guarantee.
+
 ## [custom-v1.0.26] - 2026-11-01
 
 ### Added

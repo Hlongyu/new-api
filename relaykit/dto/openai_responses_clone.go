@@ -18,6 +18,8 @@ func (r *OpenAIResponsesRequest) Clone() *OpenAIResponsesRequest {
 	cloned.Metadata = bytes.Clone(r.Metadata)
 	cloned.Moderation = bytes.Clone(r.Moderation)
 	cloned.ParallelToolCalls = bytes.Clone(r.ParallelToolCalls)
+	cloned.FrequencyPenalty = bytes.Clone(r.FrequencyPenalty)
+	cloned.PresencePenalty = bytes.Clone(r.PresencePenalty)
 	cloned.Store = bytes.Clone(r.Store)
 	cloned.PromptCacheKey = bytes.Clone(r.PromptCacheKey)
 	cloned.PromptCacheOptions = bytes.Clone(r.PromptCacheOptions)

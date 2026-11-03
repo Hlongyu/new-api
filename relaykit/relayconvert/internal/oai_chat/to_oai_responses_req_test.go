@@ -39,6 +39,38 @@ func TestChatCompletionsRequestToResponsesRequestInstructionsAndTools(t *testing
 	assert.Equal(t, "function_call_output", gjson.GetBytes(got.Input, "3.type").String())
 }
 
+func TestChatCompletionsRequestToResponsesRequestPreservesPromptCacheKey(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		key := "session-\"quoted\"\\path\n世界"
+		got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{
+			Model:          "gpt-test",
+			Messages:       []dto.Message{{Role: "user", Content: "hello"}},
+			PromptCacheKey: key,
+		})
+		require.NoError(t, err)
+
+		keyRaw, err := kitutil.Marshal(key)
+		require.NoError(t, err)
+		assert.Equal(t, keyRaw, []byte(got.PromptCacheKey))
+
+		encoded, err := kitutil.Marshal(got)
+		require.NoError(t, err)
+		assert.Equal(t, key, gjson.GetBytes(encoded, "prompt_cache_key").String())
+	})
+
+	t.Run("absent", func(t *testing.T) {
+		got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{
+			Model:    "gpt-test",
+			Messages: []dto.Message{{Role: "user", Content: "hello"}},
+		})
+		require.NoError(t, err)
+
+		encoded, err := kitutil.Marshal(got)
+		require.NoError(t, err)
+		assert.False(t, gjson.GetBytes(encoded, "prompt_cache_key").Exists())
+	})
+}
+
 func TestChatCompletionsRequestToResponsesRequestPreservesQwenThinkingBudget(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -97,4 +129,139 @@ func assistantMessageWithTool(content string, id string, name string, args strin
 		},
 	})
 	return msg
+}
+
+func TestChatCompletionsRequestToResponsesRequestImageDetail(t *testing.T) {
+	tests := []struct {
+		name     string
+		imageURL any
+		want     string
+	}{
+		{name: "object without detail defaults to auto", imageURL: map[string]any{"url": "https://example.test/a.png"}, want: "auto"},
+		{name: "low detail is preserved", imageURL: map[string]any{"url": "https://example.test/a.png", "detail": "low"}, want: "low"},
+		{name: "high detail is preserved", imageURL: map[string]any{"url": "https://example.test/a.png", "detail": "high"}, want: "high"},
+		{name: "auto detail is preserved", imageURL: map[string]any{"url": "https://example.test/a.png", "detail": "auto"}, want: "auto"},
+		{name: "original detail is preserved", imageURL: map[string]any{"url": "https://example.test/a.png", "detail": "original"}, want: "original"},
+		{name: "unknown detail falls back to auto", imageURL: map[string]any{"url": "https://example.test/a.png", "detail": "bogus"}, want: "auto"},
+		{name: "plain string url defaults to auto", imageURL: "https://example.test/a.png", want: "auto"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{
+				Model: "gpt-test",
+				Messages: []dto.Message{{Role: "user", Content: []any{
+					map[string]any{"type": "image_url", "image_url": tt.imageURL},
+				}}},
+			})
+			require.NoError(t, err)
+
+			assert.Equal(t, "input_image", gjson.GetBytes(got.Input, "0.content.0.type").String())
+			assert.Equal(t, tt.want, gjson.GetBytes(got.Input, "0.content.0.detail").String())
+		})
+	}
+}
+
+func TestChatCompletionsRequestToResponsesRequestPreservesPenalties(t *testing.T) {
+	tests := []struct {
+		name          string
+		frequency     *float64
+		frequencyWant json.RawMessage
+		presence      *float64
+		presenceWant  json.RawMessage
+	}{
+		{
+			name:          "positive values",
+			frequency:     lo.ToPtr(0.5),
+			frequencyWant: json.RawMessage(`0.5`),
+			presence:      lo.ToPtr(1.5),
+			presenceWant:  json.RawMessage(`1.5`),
+		},
+		{
+			name:          "explicit zero values",
+			frequency:     lo.ToPtr(0.0),
+			frequencyWant: json.RawMessage(`0`),
+			presence:      lo.ToPtr(0.0),
+			presenceWant:  json.RawMessage(`0`),
+		},
+		{
+			name:      "unset stays nil",
+			frequency: nil,
+			presence:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{
+				Model:            "gpt-test",
+				Messages:         []dto.Message{{Role: "user", Content: "hello"}},
+				FrequencyPenalty: tt.frequency,
+				PresencePenalty:  tt.presence,
+			})
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.frequencyWant, got.FrequencyPenalty)
+			assert.Equal(t, tt.presenceWant, got.PresencePenalty)
+		})
+	}
+}
+
+func TestChatToResponsesMaxOutputTokensPrecedence(t *testing.T) {
+	tests := []struct {
+		name                                 string
+		maxTokens, maxCompletionTokens, want *uint
+	}{
+		{name: "absent"},
+		{name: "legacy", maxTokens: lo.ToPtr(uint(128)), want: lo.ToPtr(uint(128))},
+		{name: "completion takes precedence", maxTokens: lo.ToPtr(uint(128)), maxCompletionTokens: lo.ToPtr(uint(64)), want: lo.ToPtr(uint(64))},
+		{name: "explicit zero takes precedence", maxTokens: lo.ToPtr(uint(128)), maxCompletionTokens: lo.ToPtr(uint(0)), want: lo.ToPtr(uint(0))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{Model: "gpt-test", MaxTokens: tt.maxTokens, MaxCompletionTokens: tt.maxCompletionTokens})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got.MaxOutputTokens)
+			encoded, err := kitutil.Marshal(got)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want != nil, gjson.GetBytes(encoded, "max_output_tokens").Exists())
+		})
+	}
+}
+
+func TestChatToResponsesFileInput(t *testing.T) {
+	tests := []struct{ name, body, want string }{
+		{"inline file", `{"model":"gpt-test","messages":[{"role":"user","content":[{"type":"file","file":{"filename":"note.txt","file_data":"data:text/plain;base64,aGk="}}]}]}`, `[{"role":"user","content":[{"type":"input_file","filename":"note.txt","file_data":"data:text/plain;base64,aGk="}]}]`},
+		{"file reference", `{"model":"gpt-test","messages":[{"role":"user","content":[{"type":"file","file":{"file_id":"file-test"}}]}]}`, `[{"role":"user","content":[{"type":"input_file","file_id":"file-test"}]}]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req dto.GeneralOpenAIRequest
+			require.NoError(t, kitutil.Unmarshal([]byte(tt.body), &req))
+			got, err := ChatCompletionsRequestToResponsesRequest(&req)
+			require.NoError(t, err)
+			assert.JSONEq(t, tt.want, string(got.Input))
+		})
+	}
+}
+
+func TestChatToResponsesSchemaPropertyOrder(t *testing.T) {
+	const schema = `{"type":"object","properties":{"z_last":{"type":"string"},"a_first":{"type":"object","properties":{"y":{"type":"string"},"b":{"type":"integer"}}}},"required":["z_last","a_first"],"additionalProperties":false}`
+	for _, nested := range []bool{false, true} {
+		name := "flat"
+		raw := `{"name":"ordered","strict":true,"schema":` + schema + `}`
+		if nested {
+			name = "nested"
+			raw = `{"json_schema":` + raw + `}`
+		}
+		t.Run(name, func(t *testing.T) {
+			got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{Model: "gpt-test", ResponseFormat: &dto.ResponseFormat{Type: "json_schema", JsonSchema: json.RawMessage(raw)}})
+			require.NoError(t, err)
+			encoded, err := kitutil.Marshal(got)
+			require.NoError(t, err)
+			assert.Equal(t, schema, gjson.GetBytes(encoded, "text.format.schema").Raw)
+			assert.Equal(t, "ordered", gjson.GetBytes(encoded, "text.format.name").String())
+			assert.True(t, gjson.GetBytes(encoded, "text.format.strict").Bool())
+		})
+	}
 }
