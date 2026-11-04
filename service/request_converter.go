@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 func init() {
@@ -31,7 +32,7 @@ func ConvertRequest(c *gin.Context, info *relaycommon.RelayInfo, target types.Re
 	if err != nil {
 		return nil, err
 	}
-	return applyChatResponsesSessionCacheKey(c, result)
+	return applyChatResponsesSessionCacheKey(c, info, result)
 }
 
 func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter string, request any) (*relayconvert.RequestResult, error) {
@@ -39,7 +40,7 @@ func ConvertRequestByID(c *gin.Context, info *relaycommon.RelayInfo, converter s
 	if err != nil {
 		return nil, err
 	}
-	return applyChatResponsesSessionCacheKey(c, result)
+	return applyChatResponsesSessionCacheKey(c, info, result)
 }
 
 func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any, path ...types.RelayFormat) (*relayconvert.RequestResult, error) {
@@ -47,12 +48,12 @@ func ConvertRequestVia(c *gin.Context, info *relaycommon.RelayInfo, request any,
 	if err != nil {
 		return nil, err
 	}
-	return applyChatResponsesSessionCacheKey(c, result)
+	return applyChatResponsesSessionCacheKey(c, info, result)
 }
 
 // Session headers take precedence only on the Chat-to-Responses bridge. Keep
 // HTTP policy in the host so relaykit stays independent of Gin and requests.
-func applyChatResponsesSessionCacheKey(c *gin.Context, result *relayconvert.RequestResult) (*relayconvert.RequestResult, error) {
+func applyChatResponsesSessionCacheKey(c *gin.Context, info *relaycommon.RelayInfo, result *relayconvert.RequestResult) (*relayconvert.RequestResult, error) {
 	if c == nil || c.Request == nil || result == nil || result.From != types.RelayFormatOpenAI || result.To != types.RelayFormatOpenAIResponses {
 		return result, nil
 	}
@@ -60,18 +61,38 @@ func applyChatResponsesSessionCacheKey(c *gin.Context, result *relayconvert.Requ
 	if key == "" {
 		key = strings.TrimSpace(c.GetHeader("conversation_id"))
 	}
-	if key == "" {
-		return result, nil
-	}
 	request, ok := result.Value.(*dto.OpenAIResponsesRequest)
 	if !ok || request == nil {
 		return result, nil
 	}
-	encoded, err := common.Marshal(key)
-	if err != nil {
-		return nil, fmt.Errorf("marshal session prompt_cache_key: %w", err)
+	if key != "" {
+		encoded, err := common.Marshal(key)
+		if err != nil {
+			return nil, fmt.Errorf("marshal session prompt_cache_key: %w", err)
+		}
+		request.PromptCacheKey = encoded
+	} else if len(request.PromptCacheKey) > 0 {
+		if err := common.Unmarshal(request.PromptCacheKey, &key); err != nil {
+			return nil, fmt.Errorf("decode session prompt_cache_key: %w", err)
+		}
 	}
-	request.PromptCacheKey = encoded
+	// xxgate binds accounts using session headers, not prompt_cache_key.
+	// Scope the session to the authenticated caller and token even when different
+	// users supply the same client key or identical conversation prefixes.
+	if info != nil && info.UserId > 0 && key != "" {
+		seed, err := common.Marshal(struct {
+			UserID  int    `json:"user_id"`
+			TokenID int    `json:"token_id"`
+			Key     string `json:"key"`
+		}{info.UserId, info.TokenId, key})
+		if err != nil {
+			return nil, fmt.Errorf("derive upstream session: %w", err)
+		}
+		// Use a stable RFC 4122 UUID v5, as the xxgate identity mapper does.
+		// The namespace separates this caller-scoped mapping from other UUID uses.
+		namespace := uuid.NewSHA1(uuid.NameSpaceURL, []byte("https://github.com/QuantumNous/new-api/chat-responses-session/v1"))
+		info.ChatResponsesSessionID = uuid.NewSHA1(namespace, seed).String()
+	}
 	return result, nil
 }
 

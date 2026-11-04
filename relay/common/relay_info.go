@@ -102,6 +102,7 @@ type RelayInfo struct {
 	ResponseModelName      string // Model reported by the upstream response, independent of mapping and billing.
 	RequestURLPath         string
 	RequestHeaders         map[string]string
+	ChatResponsesSessionID string // Scoped upstream affinity for a converted Chat request.
 	ShouldIncludeUsage     bool
 	DisablePing            bool // 是否禁止向下游发送自定义 Ping
 	ClientWs               *websocket.Conn
@@ -204,6 +205,7 @@ func (info *RelayInfo) RecordResponseModel(model string) {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	info.ChatResponsesSessionID = ""
 	info.ResponseModelName = ""
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)

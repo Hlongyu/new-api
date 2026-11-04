@@ -1,5 +1,17 @@
 # Changelog
 
+## [custom-v1.0.30] - 2026-11-04
+
+### Fixed
+
+- Send stable `session_id` and `conversation_id` headers on authenticated Chat-to-Responses conversions so upstream gateways such as xxgate can establish session-to-account bindings instead of treating every request as stateless. Derive a UUID v5 from the resolved session/cache key, authenticated user ID and API token ID, preserving session reuse while isolating different callers and tokens.
+- Reset conversion-specific session affinity when initializing a channel attempt, preventing retries on native-protocol channels from inheriting a previous conversion's session headers. Preserve the existing cache-key priority and leave the original client request unchanged.
+
+### Compatibility
+
+- No database migration is required. Native Responses requests do not receive this generated session identity. Stable bindings do not prevent upstream failover when an account becomes unavailable or routing constraints change.
+- Service, channel, OpenAI/advanced-custom adaptor and relay regression tests passed, including UUID format, caller isolation, conversation continuation and retry reset checks. Before switching the generated identity's textual format to UUID v5, three real requests through the local affinity fix to xxgate shared one account and binding with `stateless: false`; the second and third each hit 13,568 of 13,683 input tokens. The final UUID format passed regression tests but has not yet been revalidated against the live upstream.
+
 ## [custom-v1.0.29] - 2026-11-03
 
 ### Added

@@ -43,6 +43,10 @@ func applyUpstreamContentLength(req *http.Request, info *common.RelayInfo) {
 }
 
 func SetupApiRequestHeader(info *common.RelayInfo, c *gin.Context, req *http.Header) {
+	if info.ChatResponsesSessionID != "" {
+		req.Set("session_id", info.ChatResponsesSessionID)
+		req.Set("conversation_id", info.ChatResponsesSessionID)
+	}
 	if info.RelayMode == constant.RelayModeAudioTranscription || info.RelayMode == constant.RelayModeAudioTranslation {
 		// multipart/form-data
 	} else if info.RelayMode == constant.RelayModeRealtime {
