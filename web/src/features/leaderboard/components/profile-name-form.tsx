@@ -19,11 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { sideDrawerSwitchItemClassName } from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { sideDrawerSwitchItemClassName } from '@/components/drawer-layout'
 
 import { DISPLAY_NAME_MAX_LENGTH } from '../constants'
 import { useUpdateLeaderboardMe } from '../hooks'
@@ -51,13 +51,15 @@ export function ProfileNameForm(props: ProfileNameFormProps) {
 
   const renameHint = () => {
     if (props.me.rename.freeAvailable) {
-      return t('Free rename available this week')
+      return t(
+        'One free change available this week (shared by name, title, and avatar)'
+      )
     }
     if (props.me.rename.cardBalance > 0) {
       return t('Rename cards will be used')
     }
     return t(
-      'You have used your free rename this week. Purchase a rename card to continue.'
+      'You have used your shared free change this week. Purchase a rename card to continue.'
     )
   }
 

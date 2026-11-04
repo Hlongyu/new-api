@@ -80,7 +80,8 @@ after(() => domWindow.close())
 
 function profile(
   tierKey: LeaderboardMe['rankProgress']['tierKey'],
-  cards: number
+  cards: number,
+  freeAvailable = false
 ): LeaderboardMe {
   return {
     id: 42,
@@ -107,8 +108,8 @@ function profile(
     },
     rename: {
       periodKey: 'week',
-      freeAvailable: true,
-      freeUsed: false,
+      freeAvailable,
+      freeUsed: !freeAvailable,
       cardBalance: cards,
       cardPriceCny: 1,
     },
@@ -191,7 +192,7 @@ for (const [tier, cards] of [
   })
 }
 
-test('Challenger validates ten Unicode characters and saves title independently', async () => {
+test('Challenger without cards uses the weekly free change to save a valid title', async () => {
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
@@ -200,7 +201,7 @@ test('Challenger validates ten Unicode characters and saves title independently'
   })
   const originalAdapter = api.defaults.adapter
   const requests: unknown[] = []
-  const me = profile('challenger', 2)
+  const me = profile('challenger', 0, true)
   api.defaults.adapter = async (config) => {
     requests.push(JSON.parse(config.data as string))
     return {
@@ -230,6 +231,12 @@ test('Challenger validates ten Unicode characters and saves title independently'
     assert.ok(input)
     assert.ok(save)
     assert.equal(input.disabled, false)
+    assert.equal(save.textContent, 'Save title (free)')
+    assert.equal(
+      container.querySelector<HTMLInputElement>('#leaderboard-avatar')
+        ?.disabled,
+      false
+    )
     assert.equal(save.disabled, true)
     for (const value of ['', '一二三四五六七八九十多']) {
       await act(async () => {
@@ -264,50 +271,66 @@ test('Challenger validates ten Unicode characters and saves title independently'
   }
 })
 
-test('avatar upload rejects invalid files, submits only the selected image, and exposes failures', async () => {
-  const container = document.createElement('div')
-  document.body.append(container)
-  const root = createRoot(container)
-  const client = new QueryClient({
-    defaultOptions: { mutations: { retry: false } },
-  })
-  const originalAdapter = api.defaults.adapter
-  const me = profile('challenger', 2)
-  let submitted: FormData | undefined
-  let complete: (() => void) | undefined
-  const request = new Promise<void>((resolve) => {
-    complete = resolve
-  })
-  api.defaults.adapter = async (config) => {
-    assert.equal(config.url, '/api/leaderboard/me/avatar')
-    submitted = config.data as FormData
-    await request
-    throw new Error('Upload failed')
-  }
-  try {
-    await act(async () =>
-      root.render(
-        <QueryClientProvider client={client}>
-          <I18nextProvider i18n={i18n}>
-            <ProfileCosmeticsForm me={me} />
-          </I18nextProvider>
-        </QueryClientProvider>
+for (const freeAvailable of [false, true]) {
+  test(`avatar upload with free allowance ${freeAvailable} validates files, saves independently, and exposes failures`, async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    })
+    const originalAdapter = api.defaults.adapter
+    const me = profile('challenger', freeAvailable ? 0 : 2, freeAvailable)
+    let submitted: FormData | undefined
+    let complete: (() => void) | undefined
+    const request = new Promise<void>((resolve) => {
+      complete = resolve
+    })
+    api.defaults.adapter = async (config) => {
+      assert.equal(config.url, '/api/leaderboard/me/avatar')
+      submitted = config.data as FormData
+      await request
+      throw new Error('Upload failed')
+    }
+    try {
+      await act(async () =>
+        root.render(
+          <QueryClientProvider client={client}>
+            <I18nextProvider i18n={i18n}>
+              <ProfileCosmeticsForm me={me} />
+            </I18nextProvider>
+          </QueryClientProvider>
+        )
       )
-    )
-    const input = container.querySelector<HTMLInputElement>(
-      '#leaderboard-avatar'
-    )
-    const save = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Save avatar (1 card)'
-    )
-    assert.ok(input)
-    assert.ok(save)
-    for (const file of [
-      new File(['<svg/>'], 'bad.svg', { type: 'image/svg+xml' }),
-      new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.png', {
+      const input = container.querySelector<HTMLInputElement>(
+        '#leaderboard-avatar'
+      )
+      const save = [...container.querySelectorAll('button')].find(
+        (button) =>
+          button.textContent ===
+          (freeAvailable ? 'Save avatar (free)' : 'Save avatar (1 card)')
+      )
+      assert.ok(input)
+      assert.ok(save)
+      for (const file of [
+        new File(['<svg/>'], 'bad.svg', { type: 'image/svg+xml' }),
+        new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'large.png', {
+          type: 'image/png',
+        }),
+      ]) {
+        await act(async () => {
+          Object.defineProperty(input, 'files', {
+            configurable: true,
+            value: [file],
+          })
+          input.dispatchEvent(new Event('change', { bubbles: true }))
+        })
+        assert.equal(input.getAttribute('aria-invalid'), 'true')
+        assert.equal(save.disabled, true)
+      }
+      const file = new File(['image bytes'], 'avatar.png', {
         type: 'image/png',
-      }),
-    ]) {
+      })
       await act(async () => {
         Object.defineProperty(input, 'files', {
           configurable: true,
@@ -315,56 +338,73 @@ test('avatar upload rejects invalid files, submits only the selected image, and 
         })
         input.dispatchEvent(new Event('change', { bubbles: true }))
       })
-      assert.equal(input.getAttribute('aria-invalid'), 'true')
+      assert.equal(save.disabled, false)
+      await act(async () => save.click())
+      assert.ok(submitted instanceof FormData)
+      assert.equal((submitted.get('avatar') as File).name, 'avatar.png')
+      assert.equal(submitted.has('customTitle'), false)
       assert.equal(save.disabled, true)
-    }
-    const file = new File(['image bytes'], 'avatar.png', { type: 'image/png' })
-    await act(async () => {
-      Object.defineProperty(input, 'files', {
-        configurable: true,
-        value: [file],
+      assert.equal(input.disabled, true)
+      await act(async () => complete?.())
+      assert.ok(container.querySelector('[role="alert"]'))
+      api.defaults.adapter = async (config) => ({
+        data: {
+          success: true,
+          data: {
+            ...me,
+            rename: {
+              ...me.rename,
+              freeAvailable: false,
+              freeUsed: true,
+              cardBalance: freeAvailable ? 0 : 1,
+            },
+          },
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: {},
+        config,
       })
-      input.dispatchEvent(new Event('change', { bubbles: true }))
-    })
-    assert.equal(save.disabled, false)
-    await act(async () => save.click())
-    assert.ok(submitted instanceof FormData)
-    assert.equal((submitted.get('avatar') as File).name, 'avatar.png')
-    assert.equal(submitted.has('customTitle'), false)
-    assert.equal(save.disabled, true)
-    assert.equal(input.disabled, true)
-    await act(async () => complete?.())
-    assert.ok(container.querySelector('[role="alert"]'))
-    api.defaults.adapter = async (config) => ({
-      data: {
-        success: true,
-        data: { ...me, rename: { ...me.rename, cardBalance: 1 } },
-      },
-      status: 200,
-      statusText: 'OK',
-      headers: {},
-      config,
-    })
-    await act(async () => save.click())
-    assert.equal(container.querySelector('[role="alert"]'), null)
-    assert.equal(input.value, '')
-    assert.equal(save.disabled, true)
-    assert.equal(
-      client.getQueryData<LeaderboardMe>(['leaderboard', 'me'])?.rename
-        .cardBalance,
-      1
-    )
+      await act(async () => save.click())
+      assert.equal(container.querySelector('[role="alert"]'), null)
+      assert.equal(input.value, '')
+      assert.equal(save.disabled, true)
+      assert.equal(
+        client.getQueryData<LeaderboardMe>(['leaderboard', 'me'])?.rename
+          .cardBalance,
+        freeAvailable ? 0 : 1
+      )
 
-    assert.equal(
-      container.querySelector<HTMLInputElement>('#leaderboard-custom-title')
-        ?.value,
-      '旧称号'
-    )
-  } finally {
-    complete?.()
-    api.defaults.adapter = originalAdapter
-    await act(async () => root.unmount())
-    client.clear()
-    container.remove()
-  }
-})
+      assert.equal(
+        container.querySelector<HTMLInputElement>('#leaderboard-custom-title')
+          ?.value,
+        '旧称号'
+      )
+      const saved = client.getQueryData<LeaderboardMe>(['leaderboard', 'me'])
+      assert.ok(saved)
+      assert.equal(saved.rename.freeAvailable, false)
+      await act(async () =>
+        root.render(
+          <QueryClientProvider client={client}>
+            <I18nextProvider i18n={i18n}>
+              <ProfileCosmeticsForm me={saved} />
+            </I18nextProvider>
+          </QueryClientProvider>
+        )
+      )
+      assert.equal(input.disabled, freeAvailable)
+      assert.equal(save.textContent, 'Save avatar (1 card)')
+      assert.equal(
+        container.querySelector<HTMLInputElement>('#leaderboard-custom-title')
+          ?.disabled,
+        freeAvailable
+      )
+    } finally {
+      complete?.()
+      api.defaults.adapter = originalAdapter
+      await act(async () => root.unmount())
+      client.clear()
+      container.remove()
+    }
+  })
+}

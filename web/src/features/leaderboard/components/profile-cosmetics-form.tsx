@@ -64,8 +64,9 @@ export function ProfileCosmeticsForm(props: { me: LeaderboardMe }) {
     return () => URL.revokeObjectURL(url)
   }, [file])
   const canEdit = props.me.rankProgress.tierKey === 'challenger'
-  const disabled =
-    !canEdit || props.me.rename.cardBalance < 1 || update.isPending
+  const canAfford =
+    props.me.rename.freeAvailable || props.me.rename.cardBalance > 0
+  const disabled = !canEdit || !canAfford || update.isPending
   const validFile =
     file &&
     file.size > 0 &&
@@ -77,7 +78,7 @@ export function ProfileCosmeticsForm(props: { me: LeaderboardMe }) {
       <p className='text-sm font-medium'>{t('Custom title and avatar')}</p>
       <p className='text-muted-foreground text-xs'>
         {t(
-          'Challenger only. Each change costs 1 rename card. Saved customizations remain after demotion.'
+          'Challenger only. Name, title, and avatar changes share one free change per week; each further change costs 1 rename card. Saved customizations remain after demotion.'
         )}
       </p>
       <p className='text-muted-foreground text-xs'>
@@ -112,7 +113,9 @@ export function ProfileCosmeticsForm(props: { me: LeaderboardMe }) {
             form.watch('title').trim() === storedTitle
           }
         >
-          {t('Save title (1 card)')}
+          {props.me.rename.freeAvailable
+            ? t('Save title (free)')
+            : t('Save title (1 card)')}
         </Button>
       </form>
       <div className='space-y-2'>
@@ -154,7 +157,9 @@ export function ProfileCosmeticsForm(props: { me: LeaderboardMe }) {
             }
           }}
         >
-          {t('Save avatar (1 card)')}
+          {props.me.rename.freeAvailable
+            ? t('Save avatar (free)')
+            : t('Save avatar (1 card)')}
         </Button>
       </div>
       {update.isError && (

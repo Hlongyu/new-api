@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrLeaderboardInsufficientQuota = errors.New("leaderboard wallet quota is insufficient")
-	ErrLeaderboardRenameCardNeeded  = errors.New("本周免费改名已用完，请购买改名卡")
+	ErrLeaderboardRenameCardNeeded  = errors.New("本周免费修改机会已用完，请购买改名卡")
 	ErrQuotaLoanCreditExceeded      = errors.New("quota loan credit limit exceeded")
 	ErrQuotaLoanOverdue             = errors.New("overdue quota credit must be repaid before another drawdown")
 	ErrQuotaLoanPending             = errors.New("quota loan request is still pending")
@@ -41,41 +41,20 @@ func UpdateLeaderboardProfile(userId int, update LeaderboardProfileUpdate) (*Lea
 		if err := lockForUpdate(tx).Where("user_id = ? AND active = ?", userId, true).First(&entry).Error; err != nil {
 			return err
 		}
-		// Each cosmetic is charged independently; the transaction rolls everything
-		// back if the balance cannot cover all requested changes.
+		// Names, titles and avatars share one free change per week. Each further
+		// changed field costs a card; insufficient balance rolls back the full update.
 		for _, change := range []struct {
 			target *string
 			value  *string
 			label  string
 		}{
+			{&entry.DisplayName, update.DisplayName, ""},
 			{&entry.CustomTitle, update.CustomTitle, "称号"},
 			{&entry.AvatarImage, update.AvatarImage, "头像"},
 		} {
 			if change.value == nil || *change.value == *change.target {
 				continue
 			}
-			result := tx.Model(&RenameCardBalance{}).Where("user_id = ? AND balance > 0", userId).
-				Updates(map[string]interface{}{"balance": gorm.Expr("balance - 1"), "updated_at": update.Now})
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				return errors.New("改名卡不足，每项修改需要 1 次改名卡")
-			}
-			oldValue, newValue := *change.target, *change.value
-			if change.label == "头像" {
-				oldValue, newValue = "", "已更新"
-			}
-			if err := tx.Create(&RenameEvent{
-				Id: common.GetUUID(), UserId: userId, EntryId: entry.Id,
-				OldName: change.label + ": " + oldValue, NewName: change.label + ": " + newValue,
-				CostType: "card", PeriodKey: update.PeriodKey, CreatedAt: update.Now,
-			}).Error; err != nil {
-				return err
-			}
-			*change.target = *change.value
-		}
-		if update.DisplayName != nil && *update.DisplayName != entry.DisplayName {
 			var freeRenameCount int64
 			if err := tx.Model(&RenameEvent{}).
 				Where("user_id = ? AND period_key = ? AND cost_type = ?", userId, update.PeriodKey, "free").
@@ -98,14 +77,21 @@ func UpdateLeaderboardProfile(userId int, update LeaderboardProfileUpdate) (*Lea
 				}
 				costType = "card"
 			}
+			oldValue, newValue := *change.target, *change.value
+			if change.label == "头像" {
+				oldValue, newValue = "", "已更新"
+			}
+			if change.label != "" {
+				oldValue, newValue = change.label+": "+oldValue, change.label+": "+newValue
+			}
 			if err := tx.Create(&RenameEvent{
 				Id: common.GetUUID(), UserId: userId, EntryId: entry.Id,
-				OldName: entry.DisplayName, NewName: *update.DisplayName,
+				OldName: oldValue, NewName: newValue,
 				CostType: costType, PeriodKey: update.PeriodKey, CreatedAt: update.Now,
 			}).Error; err != nil {
 				return err
 			}
-			entry.DisplayName = *update.DisplayName
+			*change.target = *change.value
 		}
 		if update.IsNamePublic != nil {
 			entry.IsNamePublic = *update.IsNamePublic

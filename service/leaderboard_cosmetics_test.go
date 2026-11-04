@@ -58,7 +58,9 @@ func TestLeaderboardCosmeticsRequireCurrentChallengerAndPersistAfterDemotion(t *
 	require.NoError(t, err)
 	assert.Equal(t, title, me.Entry.CustomTitle)
 	assert.Equal(t, avatar, me.Entry.AvatarImage)
-	assert.Equal(t, 1, me.Rename.CardBalance)
+	assert.Equal(t, 2, me.Rename.CardBalance)
+	assert.True(t, me.Rename.FreeUsed)
+	assert.False(t, me.Rename.FreeAvailable)
 	// Reduce the history to a lower rank and verify stored cosmetics still show.
 	require.NoError(t, db.Model(&model.QuotaData{}).Where("user_id = ?", 42).Update("quota", 1).Error)
 	invalidateRankReplayCache()
