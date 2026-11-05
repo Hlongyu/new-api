@@ -422,6 +422,56 @@ func TestAdaptorBuildModelListRequestRequiresConfiguredRoute(t *testing.T) {
 	assert.Contains(t, err.Error(), "does not configure a /v1/models route")
 }
 
+func TestAdaptorResponsesServiceTierPassthrough(t *testing.T) {
+	settings := model_setting.GetGlobalSettings()
+	originalPassThrough := settings.PassThroughRequestEnabled
+	settings.PassThroughRequestEnabled = false
+	t.Cleanup(func() { settings.PassThroughRequestEnabled = originalPassThrough })
+
+	for _, tc := range []struct {
+		name     string
+		allow    bool
+		tier     string
+		wantTier string
+	}{
+		{name: "disabled filters priority", tier: "priority"},
+		{name: "enabled preserves priority", allow: true, tier: "priority", wantTier: "priority"},
+		{name: "enabled does not upgrade ordinary requests", allow: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
+				Routes: []dto.AdvancedCustomRoute{{
+					IncomingPath: "/v1/responses",
+					UpstreamPath: "/v1/responses",
+					Converter:    relayconvert.ConverterNone,
+				}},
+			})
+			info.RelayMode = relayconstant.RelayModeResponses
+			info.RequestURLPath = "/v1/responses"
+			info.ChannelOtherSettings.AllowServiceTier = tc.allow
+			adaptor := &Adaptor{}
+			adaptor.Init(info)
+			converted, err := adaptor.ConvertOpenAIResponsesRequest(advancedCustomGinContext("/v1/responses"), info, dto.OpenAIResponsesRequest{
+				Model:       "gpt-test",
+				Input:       mustAdvancedCustomRawMessage(t, "hello"),
+				ServiceTier: tc.tier,
+			})
+			require.NoError(t, err)
+			body, err := common.Marshal(converted)
+			require.NoError(t, err)
+			body, err = relaycommon.RemoveDisabledFields(body, info.ChannelOtherSettings, false)
+			require.NoError(t, err)
+			var upstream map[string]any
+			require.NoError(t, common.Unmarshal(body, &upstream))
+			if tc.wantTier == "" {
+				assert.NotContains(t, upstream, "service_tier")
+			} else {
+				assert.Equal(t, tc.wantTier, upstream["service_tier"])
+			}
+		})
+	}
+}
+
 func TestAdaptorConvertsResponsesRequestToOpenAIChatUpstream(t *testing.T) {
 	adaptor := &Adaptor{}
 	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{
