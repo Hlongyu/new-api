@@ -1,5 +1,29 @@
 # Changelog
 
+## [custom-v1.0.31] - 2026-11-05
+
+### Added
+
+- Add native WebSocket relay at `GET /v1/responses`, with WebSocket connections on both sides. Support sequential `response.create` turns, `generate: false` warmup and `previous_response_id` continuation for OpenAI-compatible, New API, Sub2API, Codex and advanced-custom channels whose matching route requires no protocol conversion.
+- Apply authentication, model restrictions, request limits and billing independently to each turn. Keep the upstream connection, channel and enabled key bound to the downstream session; recheck channel access and reject changed credentials or endpoints instead of silently losing continuation state. Cancel upstream work when the client disconnects and never automatically replay an interrupted turn.
+- Add isolated blue/green application deployment with a separate master Worker, per-color private gateway networks, online backup and rollback tooling, and a database-free `/api/health` endpoint. Keep the previous color available while existing streams drain.
+
+### Changed
+
+- Share one weekly free leaderboard change across display name, Challenger title and avatar. Each additional changed field consumes a rename card, and insufficient cards roll back the entire update. Update the frontend cost explanation and translations accordingly.
+- Run group-ratio webhook delivery only on master nodes and add four composite log indexes for user/owner, log type, ID and creation-time lookups.
+
+### Fixed
+
+- Preserve explicit zero request parameters and warmup flags across the WebSocket transport. Reject oversized `max_output_tokens` before forwarding, including on subsequent turns, and reject advanced-custom protocol-conversion routes even when body passthrough is enabled.
+- Reuse Responses token and tool accounting across SSE and WebSocket streams. Settle incomplete-response usage and interrupted tool calls, preserve authoritative zero usage, and saturate untrusted streaming token counters with the existing billing audit markers before arithmetic can overflow.
+
+### Compatibility
+
+- WebSocket support itself requires no database migration. This release also includes log indexes added by normal master-node migration; traffic-serving slave nodes do not create them. See [the deployment runbook](deploy/README.md) for the full release workflow.
+- WebSocket sessions process turns sequentially; concurrent multiplexing, background generation and personal channels are not supported. Personal-channel outbound SSRF protections remain enforced.
+- Relevant controller, relay, middleware, router, service and advanced-custom tests passed, together with WebSocket race checks and backend builds. An isolated green instance based on `custom-v1.0.30` plus the WS patch completed a real xxgate warmup and continuation on one socket, returned HTTP 400 for an oversized token limit, completed an HTTP Responses control request, and recorded separate usage charges. Public traffic remained on blue, and the temporary probe token was revoked. That live check did not exercise the additional log-index migrations or leaderboard changes included in this tag.
+
 ## [custom-v1.0.30] - 2026-11-04
 
 ### Fixed

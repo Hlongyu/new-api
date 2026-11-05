@@ -15,6 +15,7 @@ import (
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -102,7 +103,32 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if turn := relaycommon.GetResponsesWebSocketTurn(c.Request); turn != nil && turn.Session.ChannelID != 0 {
+					// Recheck the current channel and group/model authorization on
+					// every turn, without losing the upstream connection's state.
+					pinned, loadErr := model.GetChannelById(turn.Session.ChannelID, true)
+					groups := []string{usingGroup}
+					if usingGroup == "auto" {
+						groups = service.GetRequestAutoGroups(c, common.GetContextKeyString(c, constant.ContextKeyUserGroup))
+					}
+					if loadErr == nil && pinned != nil && pinned.Status == common.ChannelStatusEnabled {
+						for _, group := range groups {
+							if model.IsChannelEnabledForGroupModel(group, modelRequest.Model, pinned.Id) {
+								channel, selectGroup = pinned, group
+								if usingGroup == "auto" {
+									common.SetContextKey(c, constant.ContextKeyAutoGroup, group)
+								}
+								break
+							}
+						}
+					}
+					if channel == nil {
+						abortWithOpenAiMessage(c, http.StatusForbidden, "WebSocket channel is no longer available for this group/model; reconnect to select another channel")
+						return
+					}
+				}
+
+				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); channel == nil && found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
@@ -483,7 +509,26 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+	if turn := relaycommon.GetResponsesWebSocketTurn(c.Request); turn != nil && turn.Session.ChannelID != 0 {
+		if turn.Session.ChannelID != channel.Id {
+			return types.NewError(errors.New("WebSocket channel changed; reconnect to continue"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+		}
+		index = turn.Session.KeyIndex
+		key = channel.Key
+		if channel.ChannelInfo.IsMultiKey {
+			keys := channel.GetKeys()
+			status, hasStatus := channel.ChannelInfo.MultiKeyStatusList[index]
+			if index < 0 || index >= len(keys) || (hasStatus && status != common.ChannelStatusEnabled) {
+				return types.NewError(errors.New("WebSocket channel key is no longer enabled; reconnect to continue"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+			}
+			key = keys[index]
+		}
+	} else {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	}
 	if newAPIError != nil {
 		return newAPIError
 	}

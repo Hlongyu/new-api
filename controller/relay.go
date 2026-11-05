@@ -116,6 +116,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
 		} else {
 			newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest)
+			if relaycommon.GetResponsesWebSocketTurn(c.Request) != nil {
+				newAPIError.StatusCode = http.StatusBadRequest
+			}
 		}
 		return
 	}
@@ -335,6 +338,11 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	// A WS send may already have been accepted. Never replay a turn or switch
+	// connections underneath connection-local previous_response_id state.
+	if relaycommon.GetResponsesWebSocketTurn(c.Request) != nil {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}

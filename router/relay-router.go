@@ -70,6 +70,8 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())
+	// Authenticate the handshake; the POST pipeline applies limits per WS turn.
+	relayV1Router.GET("/responses", controller.ResponsesWebSocket(router))
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
 	{
 		// WebSocket 路由（统一到 Relay）

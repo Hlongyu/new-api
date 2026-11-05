@@ -7,11 +7,15 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -21,6 +25,27 @@ import (
 
 func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	wsTurn := relaycommon.GetResponsesWebSocketTurn(c.Request)
+	if wsTurn != nil {
+		if c.GetBool("personal_channel") {
+			return types.NewErrorWithStatusCode(fmt.Errorf("personal channels do not support Responses WebSocket requests"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		switch info.ApiType {
+		case constant.APITypeOpenAI, constant.APITypeNewAPI, constant.APITypeSub2API, constant.APITypeCodex:
+		case constant.APITypeAdvancedCustom:
+			config := info.ChannelOtherSettings.AdvancedCustom
+			if config == nil {
+				return types.NewErrorWithStatusCode(fmt.Errorf("advanced_custom is required"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			route, matched := config.MatchPathForModel(c.Request.URL.Path, info.OriginModelName)
+			converter := strings.TrimSpace(route.Converter)
+			if !matched || (converter != "" && converter != relayconvert.ConverterNone) {
+				return types.NewErrorWithStatusCode(fmt.Errorf("native Responses WebSocket requires a matching route without protocol conversion"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+		default:
+			return types.NewErrorWithStatusCode(fmt.Errorf("selected channel does not support native Responses WebSocket"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+	}
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact &&
 		!common.IsResponsesCompactAPIType(info.ApiType) {
 		return types.NewErrorWithStatusCode(
@@ -126,6 +151,28 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		jsonData = nil
 		info.UpstreamRequestBodySize = size
 		requestBody = body
+	}
+
+	if wsTurn != nil {
+		if err := channel.DoResponsesWebSocketRequest(adaptor, c, info, requestBody); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeDoRequestFailed, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+		}
+		usage, apiErr := openai.OaiResponsesWebSocketHandler(c, info)
+		// Settle partial text/tool usage even if the connection was interrupted.
+		// A rejection with no usage stays on the normal controller error path.
+		settle := apiErr == nil || usage.TotalTokens > 0
+		if info.ResponsesUsageInfo != nil {
+			for _, tool := range info.ResponsesUsageInfo.BuiltInTools {
+				if tool != nil && tool.CallCount > 0 {
+					settle = true
+					break
+				}
+			}
+		}
+		if settle {
+			service.PostTextConsumeQuota(c, info, usage, nil)
+		}
+		return apiErr
 	}
 
 	var httpResp *http.Response
