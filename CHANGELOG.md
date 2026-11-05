@@ -1,5 +1,17 @@
 # Changelog
 
+## [custom-v1.0.33] - 2026-11-05
+
+### Fixed
+
+- Expose the `service_tier` passthrough switch for advanced-custom channels, including its settings navigation and configured indicator. Preserve `allow_service_tier` when creating or updating these channels instead of deleting it on save, allowing client-supplied `service_tier: "priority"` to reach compatible upstreams such as xxgate when enabled.
+- Keep service-tier passthrough disabled by default. Enabling the switch preserves the client's requested tier without automatically upgrading requests that omit `service_tier`.
+
+### Compatibility
+
+- No database migration is required. Enable **Allow service_tier passthrough** under the channel's **Advanced Settings → Field passthrough controls** after updating the frontend; the existing backend already supports this setting.
+- Advanced-custom adaptor and relay-common tests, 12 frontend tests, TypeScript checks and lint passed. Live xxgate fast-mode behavior has not been revalidated for this change.
+
 ## [custom-v1.0.32] - 2026-11-05
 
 ### Fixed
