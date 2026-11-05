@@ -407,3 +407,91 @@ func TestResponsesWebSocketInterruptedToolCallIsBilled(t *testing.T) {
 	require.NoError(t, f.db.First(&user, 1).Error)
 	assert.Equal(t, 1000000-500, user.Quota)
 }
+
+func TestResponsesWebSocketCodexInterruptDrainsAndContinues(t *testing.T) {
+	finishFirst := make(chan struct{}, 1)
+	var requests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if !assert.NoError(t, err) {
+			return
+		}
+		defer ws.Close()
+		for _, id := range []string{"resp_before_input", "resp_after_input", "resp_after_late_interrupt"} {
+			_, data, err := ws.ReadMessage()
+			if !assert.NoError(t, err) {
+				return
+			}
+			var event struct {
+				Type string `json:"type"`
+			}
+			if !assert.NoError(t, common.Unmarshal(data, &event)) || !assert.Equal(t, "response.create", event.Type) {
+				return
+			}
+			requests.Add(1)
+			created, err := common.Marshal(gin.H{"type": "response.created", "response": gin.H{"id": id}})
+			if !assert.NoError(t, err) || !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, created)) {
+				return
+			}
+			if id == "resp_before_input" {
+				<-finishFirst
+			}
+			completed, err := common.Marshal(gin.H{"type": "response.completed", "response": gin.H{
+				"id": id, "status": "completed", "usage": gin.H{"input_tokens": 10, "output_tokens": 2},
+			}})
+			if !assert.NoError(t, err) || !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, completed)) {
+				return
+			}
+		}
+		_, _, _ = ws.ReadMessage()
+	}))
+	t.Cleanup(upstream.Close)
+	f := newResponsesWSFixture(t, upstream.URL)
+	client := f.connect(t)
+	t.Cleanup(func() {
+		select {
+		case finishFirst <- struct{}{}:
+		default:
+		}
+	})
+	create := []byte(`{"type":"response.create","model":"ws-test","input":[]}`)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, create))
+	require.JSONEq(t, `"response.created"`, string(readResponsesWSEvent(t, client)["type"]))
+	interrupt := []byte(`{"type":"response.interrupt","response_id":"resp_before_input","mode":"discard_partial_items"}`)
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, interrupt))
+	ack := readResponsesWSEvent(t, client)
+	require.JSONEq(t, `"response.interrupt.failed"`, string(ack["type"]))
+	assert.JSONEq(t, `"resp_before_input"`, string(ack["response_id"]))
+	assert.NotContains(t, ack, "status") // Not a fatal wrapped HTTP error in Codex.
+	assert.EqualValues(t, 1, requests.Load())
+
+	// A pending create and a repeated interrupt must not overflow the bounded
+	// create queue or send the control event into an upstream expecting creates.
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, create))
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, interrupt))
+	require.JSONEq(t, `"response.interrupt.failed"`, string(readResponsesWSEvent(t, client)["type"]))
+	finishFirst <- struct{}{}
+	require.JSONEq(t, `"response.completed"`, string(readResponsesWSEvent(t, client)["type"]))
+	require.JSONEq(t, `"response.created"`, string(readResponsesWSEvent(t, client)["type"]))
+	require.JSONEq(t, `"response.completed"`, string(readResponsesWSEvent(t, client)["type"]))
+	f.waitTurn(t)
+	f.waitTurn(t)
+
+	// The same acknowledgement handles the race where completion beats the
+	// user's interrupt. It must not poison the next response on this socket.
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","response_id":"resp_after_input","mode":"discard_partial_items"}`)))
+	ack = readResponsesWSEvent(t, client)
+	require.JSONEq(t, `"response.interrupt.failed"`, string(ack["type"]))
+	assert.JSONEq(t, `"resp_after_input"`, string(ack["response_id"]))
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, create))
+	require.JSONEq(t, `"response.created"`, string(readResponsesWSEvent(t, client)["type"]))
+	require.JSONEq(t, `"response.completed"`, string(readResponsesWSEvent(t, client)["type"]))
+	f.waitTurn(t)
+	assert.EqualValues(t, 3, requests.Load())
+	var user model.User
+	require.NoError(t, f.db.First(&user, 1).Error)
+	assert.Equal(t, 1000000-36, user.Quota)
+	var settlements int64
+	require.NoError(t, f.db.Model(&model.PostpaidSettlement{}).Count(&settlements).Error)
+	assert.EqualValues(t, 3, settlements)
+}

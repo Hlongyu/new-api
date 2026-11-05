@@ -12,6 +12,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"github.com/tidwall/gjson"
 )
 
 // ResponsesWebSocket sends each create event through the normal POST route, so
@@ -49,6 +50,31 @@ func ResponsesWebSocket(router http.Handler) gin.HandlerFunc {
 				if err != nil {
 					return
 				}
+				// Codex sends response.interrupt while draining a response after
+				// new user input. It is a control event, not a billable create.
+				// This sequential relay cannot discard upstream partial items:
+				// report that through the dedicated acknowledgement, which lets
+				// the client drain normally instead of treating it as a turn error.
+				var control struct {
+					Type       string `json:"type"`
+					ResponseID string `json:"response_id"`
+				}
+				if kind == websocket.TextMessage && gjson.GetBytes(data, "type").Str == "response.interrupt" &&
+					common.Unmarshal(data, &control) == nil && control.Type == "response.interrupt" {
+					ack, err := common.Marshal(gin.H{
+						"type":        "response.interrupt.failed",
+						"response_id": control.ResponseID,
+						"error": gin.H{
+							"type":    "invalid_request_error",
+							"code":    "interruption_not_supported",
+							"message": "This relay finishes the current response before processing the next turn",
+						},
+					})
+					if err != nil || session.Write(ack) != nil {
+						return
+					}
+					continue
+				}
 				// Bound pending input while a response is running. Reading stays
 				// active so a client disconnect cancels the upstream immediately.
 				select {
@@ -85,8 +111,17 @@ func ResponsesWebSocket(router http.Handler) gin.HandlerFunc {
 				StreamID   *string `json:"stream_id"`
 				Background *bool   `json:"background"`
 			}
-			if msg.kind != websocket.TextMessage || common.Unmarshal(msg.data, &envelope) != nil || envelope.Type != "response.create" || (envelope.Background != nil && *envelope.Background) {
-				if turn.WriteError(http.StatusBadRequest, gin.H{"type": "invalid_request_error", "code": "invalid_request", "message": "Expected a response.create text event; background is not supported"}) != nil {
+			validationError := ""
+			switch {
+			case msg.kind != websocket.TextMessage || common.Unmarshal(msg.data, &envelope) != nil:
+				validationError = "Expected a JSON text event"
+			case envelope.Type != "response.create":
+				validationError = "Unsupported Responses WebSocket event type"
+			case envelope.Background != nil && *envelope.Background:
+				validationError = "background is not supported over Responses WebSocket"
+			}
+			if validationError != "" {
+				if turn.WriteError(http.StatusBadRequest, gin.H{"type": "invalid_request_error", "code": "invalid_request", "message": validationError}) != nil {
 					return
 				}
 				continue

@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -15,12 +16,13 @@ type responsesWebSocketContextKey struct{}
 // ResponsesWebSocketSession belongs to one authenticated downstream connection.
 // Turns run sequentially; neither the upstream nor its credentials are pooled.
 type ResponsesWebSocketSession struct {
-	Client    *websocket.Conn
-	Upstream  *websocket.Conn
-	ChannelID int
-	KeyIndex  int
-	Signature [32]byte
-	Broken    bool
+	clientWriteMu sync.Mutex
+	Client        *websocket.Conn
+	Upstream      *websocket.Conn
+	ChannelID     int
+	KeyIndex      int
+	Signature     [32]byte
+	Broken        bool
 }
 
 // ResponsesWebSocketTurn carries transport-only fields outside the HTTP DTO.
@@ -58,6 +60,8 @@ func ResponsesWebSocketMessageLimit() int64 {
 }
 
 func (s *ResponsesWebSocketSession) Write(data []byte) error {
+	s.clientWriteMu.Lock()
+	defer s.clientWriteMu.Unlock()
 	if err := s.Client.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
 		return err
 	}

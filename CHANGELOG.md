@@ -1,5 +1,17 @@
 # Changelog
 
+## [custom-v1.0.32] - 2026-11-05
+
+### Fixed
+
+- Recognize Codex `response.interrupt` control frames immediately, including while a response is streaming or another create is queued. Return a correlated `response.interrupt.failed` acknowledgement for this sequential relay's unsupported interruption mode, allowing Codex's new-input drain path to finish the current response and continue on the same connection instead of receiving a fatal `response.create` validation error. This fallback does not interrupt upstream generation immediately.
+- Serialize downstream WebSocket writes from response streaming and control acknowledgements, keep interrupt frames out of billing and the bounded create queue, and distinguish unsupported events from malformed JSON and background-generation requests.
+
+### Compatibility
+
+- No database migration is required. Immediate upstream interruption and native mid-turn steering remain unsupported; the fix preserves Codex's sequential continuation behavior without reporting a false interruption success.
+- Relevant backend tests and WebSocket race checks passed. A real xxgate probe sent the Codex interruption event after `response.created`, received the nonfatal acknowledgement, completed the original response, and continued successfully on the same socket. Exactly two consume records were written for the two generations, and the temporary probe token was revoked.
+
 ## [custom-v1.0.31] - 2026-11-05
 
 ### Added
