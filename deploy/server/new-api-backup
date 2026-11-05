@@ -4,17 +4,28 @@ set -Eeuo pipefail
 umask 077
 
 readonly backup_root="/var/backups/new-api"
-readonly compose_file="/opt/new-api/compose.yaml"
+readonly legacy_compose_file="/opt/new-api/compose.yaml"
+readonly application_compose_file="/opt/new-api/compose.application.yaml"
+readonly worker_compose_file="/opt/new-api/compose.worker.yaml"
 readonly production_env="/etc/new-api/production.env"
 readonly release_env="/var/lib/new-api/release.env"
+readonly active_color_file="/var/lib/new-api/active-color"
 readonly postgres_container="postgres"
-readonly core_container="new-api"
-readonly web_container="new-api-web"
 readonly legacy_companion_containers=(
   "new-api-companion"
   "new-api-leaderboard-leaderboard-1"
 )
 readonly lock_file="/run/lock/new-api-backup.lock"
+
+backup_mode="online"
+case "${1:-}" in
+  --offline) backup_mode="offline" ;;
+  "") ;;
+  *)
+    echo "usage: new-api-backup [--offline]" >&2
+    exit 2
+    ;;
+esac
 
 if [[ ! -r "${production_env}" ]]; then
   echo "production environment is not installed" >&2
@@ -32,6 +43,35 @@ fi
 : "${CORE_IMAGE:?CORE_IMAGE is required}"
 readonly leaderboard_data_volume="${LEADERBOARD_DATA_VOLUME:-new-api-leaderboard_leaderboard-data}"
 
+active_color=""
+core_container="new-api"
+web_container="new-api-web"
+if [[ -r "${active_color_file}" ]]; then
+  active_color="$(tr -d '[:space:]' <"${active_color_file}")"
+  case "${active_color}" in
+    blue|green)
+      core_container="new-api-${active_color}"
+      web_container="new-api-web-${active_color}"
+      ;;
+    *)
+      echo "invalid active color in ${active_color_file}" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+if [[ "${backup_mode}" == "offline" ]]; then
+  for application_container in \
+    new-api new-api-web new-api-worker \
+    new-api-blue new-api-web-blue \
+    new-api-green new-api-web-green; do
+    if [[ "$(docker inspect "${application_container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
+      echo "offline backup requires stopped application container: ${application_container}" >&2
+      exit 3
+    fi
+  done
+fi
+
 exec 8>"${lock_file}"
 if ! flock --wait 300 8; then
   echo "another backup is still running" >&2
@@ -41,6 +81,9 @@ fi
 timestamp="$(TZ=Asia/Shanghai date +%Y%m%d-%H%M%S)"
 temporary_dir="${backup_root}/.new-api-${timestamp}.tmp"
 final_dir="${backup_root}/new-api-${timestamp}"
+if [[ "${backup_mode}" == "offline" ]]; then
+  final_dir="${final_dir}-offline"
+fi
 paused_containers=()
 
 # shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
@@ -106,7 +149,13 @@ for container in "${paused_containers[@]}"; do
 done
 paused_containers=()
 
-install -m 0600 "${compose_file}" "${temporary_dir}/compose.yaml"
+install -m 0600 "${legacy_compose_file}" "${temporary_dir}/compose.yaml"
+if [[ -f "${application_compose_file}" ]]; then
+  install -m 0600 "${application_compose_file}" "${temporary_dir}/compose.application.yaml"
+fi
+if [[ -f "${worker_compose_file}" ]]; then
+  install -m 0600 "${worker_compose_file}" "${temporary_dir}/compose.worker.yaml"
+fi
 install -m 0600 "${production_env}" "${temporary_dir}/production.env"
 if [[ -f "${release_env}" ]]; then
   install -m 0600 "${release_env}" "${temporary_dir}/release.env"
@@ -114,6 +163,13 @@ fi
 
 {
   printf 'created_at=%s\n' "$(TZ=Asia/Shanghai date --iso-8601=seconds)"
+  printf 'backup_mode=%s\n' "${backup_mode}"
+  if [[ "${backup_mode}" == "offline" ]]; then
+    printf 'application_containers_stopped=true\n'
+  fi
+  if [[ -n "${active_color}" ]]; then
+    printf 'active_color=%s\n' "${active_color}"
+  fi
   printf 'database=%s\n' "${POSTGRES_DB}"
   printf 'database_user=%s\n' "${POSTGRES_USER}"
   docker exec "${postgres_container}" psql \
@@ -124,6 +180,10 @@ fi
   if docker inspect "${web_container}" >/dev/null 2>&1; then
     docker inspect "${web_container}" --format 'app_image={{.Config.Image}}'
     docker inspect "${web_container}" --format 'app_image_id={{.Image}}'
+  fi
+  if docker inspect new-api-worker >/dev/null 2>&1; then
+    docker inspect new-api-worker --format 'worker_image={{.Config.Image}}'
+    docker inspect new-api-worker --format 'worker_image_id={{.Image}}'
   fi
   printf 'legacy_sqlite_volume=%s\n' "${leaderboard_data_volume}"
   printf 'legacy_sqlite_archive_bytes=%s\n' "$(wc -c <"${temporary_dir}/leaderboard-data.tar")"

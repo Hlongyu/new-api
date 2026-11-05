@@ -1,0 +1,59 @@
+name: new-api-worker
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: '5'
+
+services:
+  worker:
+    image: ${CORE_IMAGE:?CORE_IMAGE is required}
+    container_name: new-api-worker
+    restart: unless-stopped
+    command: ['--log-dir', '/app/logs']
+    volumes:
+      - type: bind
+        source: /var/lib/new-api/data
+        target: /data
+      - type: bind
+        source: /var/log/new-api
+        target: /app/logs
+    environment:
+      CRITICAL_RATE_LIMIT: ${CRITICAL_RATE_LIMIT:-20}
+      SQL_DSN: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}
+      REDIS_CONN_STRING: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379
+      TZ: ${TZ:-Asia/Shanghai}
+      ERROR_LOG_ENABLED: ${ERROR_LOG_ENABLED:-true}
+      BATCH_UPDATE_ENABLED: ${BATCH_UPDATE_ENABLED:-true}
+      NODE_TYPE: master
+      NODE_NAME: ${NODE_NAME:-new-api-node-1}-worker
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      SESSION_COOKIE_TRUSTED_URL: ${SESSION_COOKIE_TRUSTED_URL:?SESSION_COOKIE_TRUSTED_URL is required}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:?TRUSTED_PROXIES is required}
+      CORE_LEADERBOARD_MIGRATION_REQUIRED: ${CORE_LEADERBOARD_MIGRATION_REQUIRED:-true}
+      SPONSOR_MIN_AMOUNT: ${SPONSOR_MIN_AMOUNT:-1}
+      SPONSOR_MAX_AMOUNT: ${SPONSOR_MAX_AMOUNT:-1000}
+      LOTTERY_ENABLED: ${LOTTERY_ENABLED:-true}
+      LOTTERY_PRIZES: ${LOTTERY_PRIZES:-}
+    healthcheck:
+      test: ['CMD-SHELL', '(wget -q -O - http://127.0.0.1:3000/api/health || wget -q -O - http://127.0.0.1:3000/api/status) | grep -q ''"success":true''']
+      interval: 15s
+      timeout: 5s
+      retries: 18
+      start_period: 15s
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    networks:
+      - data-backend
+      - code-internal
+
+networks:
+  data-backend:
+    name: new-api_new-api-network
+    external: true
+  code-internal:
+    external: true

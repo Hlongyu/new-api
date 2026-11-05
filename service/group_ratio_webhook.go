@@ -125,6 +125,9 @@ func groupRatioWeComPayload(payload string) (string, error) {
 }
 
 func RunGroupRatioWebhookWorker() {
+	if !common.IsMasterNode {
+		return
+	}
 	client := newGroupRatioWebhookClient()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

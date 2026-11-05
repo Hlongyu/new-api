@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly worker_compose_file="/opt/new-api/compose.worker.yaml"
+readonly production_env="/etc/new-api/production.env"
+readonly state_root="/var/lib/new-api"
+readonly release_env="${state_root}/release.env"
+readonly color_root="${state_root}/colors"
+readonly active_color_file="${state_root}/active-color"
+readonly upstream_file="/etc/nginx/conf.d/new-api-active-upstream.conf"
+readonly lock_file="/run/lock/new-api-deploy.lock"
+
+target_color="${1:-}"
+case "${target_color}" in
+  blue) target_core_port=3100; target_web_port=3102 ;;
+  green) target_core_port=3200; target_web_port=3202 ;;
+  *)
+    echo "usage: new-api-switch blue|green" >&2
+    exit 2
+    ;;
+esac
+target_env="${color_root}/${target_color}.env"
+if [[ ! -r "${target_env}" || ! -r "${production_env}" ]]; then
+  echo "target color is not installed" >&2
+  exit 2
+fi
+
+exec 9>"${lock_file}"
+if ! flock -n 9; then
+  echo "another deployment is already running" >&2
+  exit 3
+fi
+
+release_value() {
+  local key="$1"
+  local file="$2"
+
+  sed -n "s/^${key}=//p" "${file}" | tail -n 1
+}
+
+write_active_state() {
+  local color="$1"
+  local source_env="$2"
+  local temporary_file=""
+
+  install -m 0600 "${source_env}" "${release_env}"
+  temporary_file="$(mktemp "${state_root}/.active-color.XXXXXX")"
+  printf '%s\n' "${color}" >"${temporary_file}"
+  chmod 0600 "${temporary_file}"
+  mv -f -- "${temporary_file}" "${active_color_file}"
+}
+
+install_upstream() {
+  local port="$1"
+  local temporary_file=""
+
+  temporary_file="$(mktemp /etc/nginx/conf.d/.new-api-active.XXXXXX)"
+  {
+    printf 'upstream new_api_active {\n'
+    printf '    server 127.0.0.1:%s;\n' "${port}"
+    printf '    keepalive 64;\n'
+    printf '}\n'
+  } >"${temporary_file}"
+  install -m 0644 "${temporary_file}" "${upstream_file}"
+  rm -f -- "${temporary_file}"
+  nginx -t
+  systemctl reload nginx
+}
+
+deploy_worker() {
+  local selected_core_image="$1"
+  local revision="$2"
+  local deployed_at="$3"
+  local state=""
+  local health=""
+
+  CORE_IMAGE="${selected_core_image}" \
+    APP_RELEASE_REVISION="${revision}" \
+    APP_RELEASE_DEPLOYED_AT="${deployed_at}" \
+    docker compose \
+    --project-name new-api-worker \
+    --env-file "${production_env}" \
+    -f "${worker_compose_file}" \
+    up -d --no-deps --force-recreate --pull never worker
+
+  for _ in $(seq 1 90); do
+    state="$(docker inspect new-api-worker --format '{{.State.Status}}' 2>/dev/null || true)"
+    health="$(docker inspect new-api-worker --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+    if [[ "${state}" == "running" && "${health}" == "healthy" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+target_core_image="$(release_value CORE_IMAGE "${target_env}")"
+target_app_image="$(release_value APP_IMAGE "${target_env}")"
+target_revision="$(release_value APP_RELEASE_REVISION "${target_env}")"
+target_deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${target_env}")"
+previous_color="$(tr -d '[:space:]' <"${active_color_file}")"
+if [[ "${previous_color}" == "${target_color}" ]]; then
+  echo "${target_color} is already active"
+  exit 0
+fi
+case "${previous_color}" in
+  blue|green) ;;
+  *)
+    echo "current active color is invalid" >&2
+    exit 4
+    ;;
+esac
+previous_env="${color_root}/${previous_color}.env"
+if [[ ! -r "${previous_env}" ]]; then
+  echo "current color metadata is missing" >&2
+  exit 4
+fi
+previous_core_image="$(release_value CORE_IMAGE "${previous_env}")"
+previous_revision="$(release_value APP_RELEASE_REVISION "${previous_env}")"
+previous_deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${previous_env}")"
+
+docker image inspect "${target_core_image}" >/dev/null
+docker image inspect "${target_app_image}" >/dev/null
+curl --fail --silent --show-error --max-time 10 \
+  "http://127.0.0.1:${target_core_port}/api/status" >/dev/null
+curl --fail --silent --show-error --max-time 10 \
+  "http://127.0.0.1:${target_web_port}/api/status" >/dev/null
+
+previous_upstream="$(mktemp /etc/nginx/conf.d/.new-api-active.previous.XXXXXX)"
+install -m 0644 "${upstream_file}" "${previous_upstream}"
+if ! install_upstream "${target_web_port}"; then
+  install -m 0644 "${previous_upstream}" "${upstream_file}"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+  rm -f -- "${previous_upstream}"
+  exit 5
+fi
+
+public_host="$(release_value PUBLIC_HEALTH_HOST "${production_env}")"
+public_host="${public_host:-code.xxcd.top}"
+if ! curl --fail --silent --show-error --max-time 15 \
+  --resolve "${public_host}:443:127.0.0.1" \
+  "https://${public_host}/" >/dev/null || \
+  ! deploy_worker "${target_core_image}" "${target_revision}" "${target_deployed_at}"; then
+  install -m 0644 "${previous_upstream}" "${upstream_file}"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+  deploy_worker "${previous_core_image}" "${previous_revision}" "${previous_deployed_at}" || true
+  write_active_state "${previous_color}" "${previous_env}"
+  rm -f -- "${previous_upstream}"
+  echo "manual switch failed and was rolled back" >&2
+  exit 6
+fi
+rm -f -- "${previous_upstream}"
+
+write_active_state "${target_color}" "${target_env}"
+logger -t new-api-deploy \
+  "manually switched active color from ${previous_color} to ${target_color} revision ${target_revision}"
+printf 'Active color switched to %s revision=%s\n' "${target_color}" "${target_revision}"

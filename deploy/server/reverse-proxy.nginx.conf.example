@@ -1,10 +1,11 @@
 # Include this fragment inside the public HTTPS server block.
-# Port 3002 is the custom Web/Gateway container. It serves the custom frontend
-# and routes all API traffic to Core through the gateway.
-# Keep Core port 3000 bound to loopback only.
+# The `new_api_active` upstream is managed by new-api-deploy and points to the
+# healthy blue or green Web/Gateway container. Include
+# new-api-active-upstream.conf in Nginx's http context before using this block.
+# The Web/Gateway routes API traffic to the matching color's Core container.
 
 location / {
-    proxy_pass http://127.0.0.1:3002;
+    proxy_pass http://new_api_active;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

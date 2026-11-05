@@ -3,28 +3,45 @@ set -Eeuo pipefail
 
 umask 077
 
-readonly compose_file="/opt/new-api/compose.yaml"
+readonly application_compose_file="/opt/new-api/compose.application.yaml"
+readonly worker_compose_file="/opt/new-api/compose.worker.yaml"
 readonly production_env="/etc/new-api/production.env"
 readonly state_root="/var/lib/new-api"
 readonly release_env="${state_root}/release.env"
 readonly release_root="${state_root}/releases"
+readonly color_root="${state_root}/colors"
+readonly active_color_file="${state_root}/active-color"
+readonly upstream_file="/etc/nginx/conf.d/new-api-active-upstream.conf"
 readonly lock_file="/run/lock/new-api-deploy.lock"
 readonly core_image_pattern='^ghcr\.io/hlongyu/new-api-core@sha256:[0-9a-f]{64}$'
 readonly app_image_pattern='^ghcr\.io/hlongyu/new-api-app@sha256:[0-9a-f]{64}$'
 readonly revision_pattern='^[0-9a-f]{40}$'
 readonly actor_pattern='^[A-Za-z0-9-]+$'
-readonly core_container="new-api"
-readonly web_container="new-api-web"
-readonly legacy_companion_containers=(
-  "new-api-companion"
-  "new-api-leaderboard-leaderboard-1"
-)
+
+backup_mode="online"
+case "${1:-}" in
+  --backup=*)
+    backup_mode="${1#--backup=}"
+    shift
+    ;;
+  --backup)
+    backup_mode="${2:-}"
+    shift 2
+    ;;
+esac
 
 candidate_core_image="${1:-}"
 candidate_app_image="${2:-}"
 release_revision="${3:-}"
 registry_user="${4:-}"
 
+case "${backup_mode}" in
+  none|online|offline) ;;
+  *)
+    echo "backup mode must be none, online, or offline" >&2
+    exit 2
+    ;;
+esac
 if [[ ! "${candidate_core_image}" =~ ${core_image_pattern} ]]; then
   echo "invalid candidate Core image" >&2
   exit 2
@@ -41,10 +58,18 @@ if [[ ! "${registry_user}" =~ ${actor_pattern} ]]; then
   echo "invalid registry user" >&2
   exit 2
 fi
-if [[ ! -r "${compose_file}" || ! -r "${production_env}" || ! -r "${release_env}" ]]; then
-  echo "production configuration or current release state is not installed" >&2
-  exit 2
-fi
+for required_file in \
+  "${application_compose_file}" \
+  "${worker_compose_file}" \
+  "${production_env}" \
+  "${release_env}" \
+  "${active_color_file}" \
+  "${upstream_file}"; do
+  if [[ ! -r "${required_file}" ]]; then
+    echo "required deployment file is missing: ${required_file}" >&2
+    exit 2
+  fi
+done
 
 exec 9>"${lock_file}"
 if ! flock -n 9; then
@@ -53,13 +78,7 @@ if ! flock -n 9; then
 fi
 
 docker_config="$(mktemp -d /run/new-api-deploy-docker.XXXXXX)"
-candidate_env=""
-
-# shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap.
 cleanup() {
-  if [[ -n "${candidate_env}" && -f "${candidate_env}" ]]; then
-    rm -f -- "${candidate_env}"
-  fi
   if [[ -d "${docker_config}" ]]; then
     find "${docker_config}" -depth -delete
   fi
@@ -71,7 +90,7 @@ if ! IFS= read -r registry_token || [[ -z "${registry_token}" ]]; then
   exit 2
 fi
 
-install -d -m 0700 "${release_root}"
+install -d -m 0700 "${release_root}" "${color_root}"
 
 release_value() {
   local key="$1"
@@ -80,222 +99,337 @@ release_value() {
   sed -n "s/^${key}=//p" "${file}" | tail -n 1
 }
 
-core_image() {
-  local image=""
+current_core_image="$(release_value CORE_IMAGE "${release_env}")"
+current_app_image="$(release_value APP_IMAGE "${release_env}")"
+current_revision="$(release_value APP_RELEASE_REVISION "${release_env}")"
+current_deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${release_env}")"
+current_deployed_at="${current_deployed_at:-0}"
+active_color="$(tr -d '[:space:]' <"${active_color_file}")"
+case "${active_color}" in
+  blue) candidate_color="green" ;;
+  green) candidate_color="blue" ;;
+  *)
+    echo "active color must be blue or green" >&2
+    exit 4
+    ;;
+esac
 
-  image="$(release_value CORE_IMAGE "${release_env}")"
-  if [[ -z "${image}" ]]; then
-    image="$(release_value CORE_IMAGE "${production_env}")"
-  fi
-  printf '%s\n' "${image}"
+if [[ ! "${current_core_image}" =~ ${core_image_pattern} ]] || \
+  [[ ! "${current_app_image}" =~ ${app_image_pattern} ]] || \
+  [[ ! "${current_revision}" =~ ${revision_pattern} ]]; then
+  echo "current release state is invalid" >&2
+  exit 4
+fi
+if ! docker image inspect "${current_core_image}" >/dev/null 2>&1 || \
+  ! docker image inspect "${current_app_image}" >/dev/null 2>&1; then
+  echo "current release images are unavailable for rollback" >&2
+  exit 4
+fi
+
+core_port() {
+  case "$1" in
+    blue) printf '3100\n' ;;
+    green) printf '3200\n' ;;
+    *) return 1 ;;
+  esac
 }
 
-app_image() {
-  release_value APP_IMAGE "${release_env}"
+web_port() {
+  case "$1" in
+    blue) printf '3102\n' ;;
+    green) printf '3202\n' ;;
+    *) return 1 ;;
+  esac
 }
 
-app_revision() {
-  release_value APP_RELEASE_REVISION "${release_env}"
-}
+application_compose() {
+  local color="$1"
+  local selected_core_image="$2"
+  local selected_app_image="$3"
+  local revision="$4"
+  local deployed_at="$5"
+  shift 5
 
-app_deployed_at() {
-  local deployed_at=""
-
-  deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${release_env}")"
-  printf '%s\n' "${deployed_at:-0}"
-}
-
-compose() {
-  local selected_app_image=""
-  local selected_core_image=""
-  local revision=""
-  local deployed_at=""
-
-  selected_core_image="$(core_image)"
-  selected_app_image="$(app_image)"
-  revision="$(app_revision)"
-  deployed_at="$(app_deployed_at)"
-  if [[ -z "${selected_core_image}" || -z "${selected_app_image}" ]]; then
-    echo "release images are not configured" >&2
-    return 1
-  fi
-
-  CORE_IMAGE="${selected_core_image}" \
+  DEPLOY_COLOR="${color}" \
+    CORE_PORT="$(core_port "${color}")" \
+    WEB_PORT="$(web_port "${color}")" \
+    CORE_IMAGE="${selected_core_image}" \
     APP_IMAGE="${selected_app_image}" \
     APP_RELEASE_REVISION="${revision}" \
     APP_RELEASE_DEPLOYED_AT="${deployed_at}" \
     docker compose \
-    --project-name new-api \
+    --project-name "new-api-${color}" \
     --env-file "${production_env}" \
-    -f "${compose_file}" \
+    -f "${application_compose_file}" \
     "$@"
 }
 
-write_release_env() {
+worker_compose() {
   local selected_core_image="$1"
-  local selected_app_image="$2"
-  local revision="$3"
-  local deployed_at="${4:-0}"
+  local revision="$2"
+  local deployed_at="$3"
+  shift 3
 
-  candidate_env="$(mktemp "${state_root}/.release.env.XXXXXX")"
-  {
-    printf 'CORE_IMAGE=%s\n' "${selected_core_image}"
-    printf 'APP_IMAGE=%s\n' "${selected_app_image}"
-    printf 'APP_RELEASE_REVISION=%s\n' "${revision}"
-    printf 'APP_RELEASE_DEPLOYED_AT=%s\n' "${deployed_at}"
-  } >"${candidate_env}"
-  chmod 0600 "${candidate_env}"
-  mv -f -- "${candidate_env}" "${release_env}"
-  candidate_env=""
+  CORE_IMAGE="${selected_core_image}" \
+    APP_RELEASE_REVISION="${revision}" \
+    APP_RELEASE_DEPLOYED_AT="${deployed_at}" \
+    docker compose \
+    --project-name new-api-worker \
+    --env-file "${production_env}" \
+    -f "${worker_compose_file}" \
+    "$@"
 }
 
-write_previous_env() {
+write_release_file() {
   local destination="$1"
   local selected_core_image="$2"
   local selected_app_image="$3"
   local revision="$4"
   local deployed_at="$5"
+  local temporary_file=""
 
+  temporary_file="$(mktemp "${state_root}/.release.XXXXXX")"
   {
     printf 'CORE_IMAGE=%s\n' "${selected_core_image}"
     printf 'APP_IMAGE=%s\n' "${selected_app_image}"
     printf 'APP_RELEASE_REVISION=%s\n' "${revision}"
     printf 'APP_RELEASE_DEPLOYED_AT=%s\n' "${deployed_at}"
-  } >"${destination}"
-  chmod 0600 "${destination}"
+  } >"${temporary_file}"
+  chmod 0600 "${temporary_file}"
+  mv -f -- "${temporary_file}" "${destination}"
 }
 
-wait_for_core_health() {
-  local attempts="${1:-150}"
+write_active_color() {
+  local color="$1"
+  local temporary_file=""
 
-  for _ in $(seq 1 "${attempts}"); do
-    if curl --fail --silent --show-error --max-time 5 \
-      http://127.0.0.1:3000/api/status >/dev/null; then
+  temporary_file="$(mktemp "${state_root}/.active-color.XXXXXX")"
+  printf '%s\n' "${color}" >"${temporary_file}"
+  chmod 0600 "${temporary_file}"
+  mv -f -- "${temporary_file}" "${active_color_file}"
+}
+
+wait_for_worker() {
+  local state=""
+  local health=""
+
+  for _ in $(seq 1 90); do
+    state="$(docker inspect new-api-worker --format '{{.State.Status}}' 2>/dev/null || true)"
+    health="$(docker inspect new-api-worker --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+    if [[ "${state}" == "running" && "${health}" == "healthy" ]]; then
       return 0
     fi
-    sleep 2
-  done
-
-  docker inspect "${core_container}" \
-    --format 'core_state={{.State.Status}} core_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
-  return 1
-}
-
-wait_for_app_health() {
-  local web_health=""
-  local web_state=""
-
-  for _ in $(seq 1 75); do
-    web_state="$(docker inspect "${web_container}" --format '{{.State.Status}}' 2>/dev/null || true)"
-    web_health="$(docker inspect "${web_container}" --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-    if [[ "${web_state}" == "running" && "${web_health}" == "healthy" ]]; then
-      if curl --fail --silent --show-error --max-time 5 \
-        http://127.0.0.1:3002/api/status >/dev/null && \
-        curl --fail --silent --show-error --max-time 5 \
-          http://127.0.0.1:3002/healthz >/dev/null; then
-        return 0
-      fi
-    fi
-    if [[ "${web_state}" == "dead" || "${web_state}" == "exited" ]]; then
+    if [[ "${state}" == "dead" || "${state}" == "exited" ]]; then
       break
     fi
     sleep 2
   done
 
-  docker inspect "${web_container}" \
+  docker inspect new-api-worker \
+    --format 'worker_state={{.State.Status}} worker_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
+  return 1
+}
+
+wait_for_color() {
+  local color="$1"
+  local selected_core_port=""
+  local selected_web_port=""
+
+  selected_core_port="$(core_port "${color}")"
+  selected_web_port="$(web_port "${color}")"
+  for _ in $(seq 1 90); do
+    if curl --fail --silent --show-error --max-time 5 \
+      "http://127.0.0.1:${selected_core_port}/api/status" >/dev/null && \
+      curl --fail --silent --show-error --max-time 5 \
+        "http://127.0.0.1:${selected_web_port}/api/status" >/dev/null && \
+      curl --fail --silent --show-error --max-time 5 \
+        "http://127.0.0.1:${selected_web_port}/healthz" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  docker inspect "new-api-${color}" \
+    --format 'core_state={{.State.Status}} core_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
+  docker inspect "new-api-web-${color}" \
     --format 'web_state={{.State.Status}} web_health={{if .State.Health}}{{.State.Health.Status}}{{end}}' >&2 || true
   return 1
 }
 
-remove_legacy_companion_containers() {
+color_connection_count() {
+  local port=""
+
+  port="$(web_port "$1")"
+  ss -Htan state established | awk -v suffix=":${port}" '
+    $4 ~ suffix "$" || $5 ~ suffix "$" { count++ }
+    END { print count + 0 }
+  '
+}
+
+wait_for_inactive_drain() {
+  local color="$1"
+  local count="0"
+
+  if ! docker container inspect "new-api-web-${color}" >/dev/null 2>&1; then
+    return 0
+  fi
+  for _ in $(seq 1 150); do
+    count="$(color_connection_count "${color}")"
+    if [[ "${count}" -eq 0 ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "inactive ${color} still has ${count} established connection(s); refusing to interrupt them" >&2
+  return 1
+}
+
+stage_color() {
+  local color="$1"
+  local selected_core_image="$2"
+  local selected_app_image="$3"
+  local revision="$4"
+  local deployed_at="$5"
+
+  application_compose \
+    "${color}" "${selected_core_image}" "${selected_app_image}" "${revision}" "${deployed_at}" \
+    up -d --no-deps --force-recreate --pull never core
+  application_compose \
+    "${color}" "${selected_core_image}" "${selected_app_image}" "${revision}" "${deployed_at}" \
+    up -d --no-deps --force-recreate --pull never web
+  wait_for_color "${color}"
+}
+
+deploy_worker() {
+  local selected_core_image="$1"
+  local revision="$2"
+  local deployed_at="$3"
+
+  worker_compose "${selected_core_image}" "${revision}" "${deployed_at}" \
+    up -d --no-deps --force-recreate --pull never worker
+  wait_for_worker
+}
+
+switch_upstream() {
+  local color="$1"
+  local port=""
+  local temporary_file=""
+  local previous_file=""
+
+  port="$(web_port "${color}")"
+  temporary_file="$(mktemp /etc/nginx/conf.d/.new-api-active.XXXXXX)"
+  previous_file="$(mktemp /etc/nginx/conf.d/.new-api-active.previous.XXXXXX)"
+  if [[ -f "${upstream_file}" ]]; then
+    cp -a "${upstream_file}" "${previous_file}"
+  else
+    : >"${previous_file}"
+  fi
+  {
+    printf 'upstream new_api_active {\n'
+    printf '    server 127.0.0.1:%s;\n' "${port}"
+    printf '    keepalive 64;\n'
+    printf '}\n'
+  } >"${temporary_file}"
+  chmod 0644 "${temporary_file}"
+  install -m 0644 "${temporary_file}" "${upstream_file}"
+  rm -f -- "${temporary_file}"
+
+  if nginx -t && systemctl reload nginx; then
+    rm -f -- "${previous_file}"
+    return 0
+  fi
+
+  if [[ -s "${previous_file}" ]]; then
+    install -m 0644 "${previous_file}" "${upstream_file}"
+  else
+    rm -f -- "${upstream_file}"
+  fi
+  rm -f -- "${previous_file}"
+  nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+  return 1
+}
+
+wait_for_public_health() {
+  local public_host=""
+
+  public_host="$(release_value PUBLIC_HEALTH_HOST "${production_env}")"
+  public_host="${public_host:-code.xxcd.top}"
+  for _ in $(seq 1 30); do
+    if curl --fail --silent --show-error --max-time 10 \
+      --resolve "${public_host}:443:127.0.0.1" \
+      "https://${public_host}/" >/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+stop_all_application_containers() {
   local container=""
 
-  for container in "${legacy_companion_containers[@]}"; do
-    if docker container inspect "${container}" >/dev/null 2>&1; then
-      docker rm --force "${container}" >/dev/null
+  for container in \
+    new-api-web-blue new-api-blue \
+    new-api-web-green new-api-green \
+    new-api-worker; do
+    if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
+      docker stop "${container}"
     fi
   done
 }
 
-deploy_release() {
-  remove_legacy_companion_containers || return
-  compose up -d --no-deps --force-recreate --pull never new-api || return
-  wait_for_core_health || return
-  compose up -d --no-deps --force-recreate --pull never web || return
-  wait_for_app_health
-}
+restore_previous_release() {
+  local restore_failed=0
+  local previous_core_port=""
+  local previous_web_port=""
 
-validate_offline_backup() {
-  local backup_dir=""
-
-  backup_dir="$(find /var/backups/new-api -mindepth 1 -maxdepth 1 -type d \
-    -name 'new-api-*-offline' -mmin -60 -printf '%T@ %p\n' 2>/dev/null | \
-    sort -nr | head -n 1 | cut -d' ' -f2-)"
-  if [[ -z "${backup_dir}" || ! -f "${backup_dir}/COMPLETE" ]]; then
-    echo "a completed offline backup from the last hour is required" >&2
-    return 1
+  echo "restoring previous worker and active color" >&2
+  if ! deploy_worker "${current_core_image}" "${current_revision}" "${current_deployed_at}"; then
+    restore_failed=1
   fi
-  if ! grep -Fxq 'backup_mode=offline' "${backup_dir}/metadata.txt" || \
-    ! grep -Fxq 'application_containers_stopped=true' "${backup_dir}/metadata.txt"; then
-    echo "offline backup metadata is invalid" >&2
-    return 1
-  fi
-  if ! (
-    cd "${backup_dir}"
-    sha256sum -c database.dump.sha256 >/dev/null
-    if [[ -f leaderboard-data.tar.sha256 ]]; then
-      sha256sum -c leaderboard-data.tar.sha256 >/dev/null
-      tar -tf leaderboard-data.tar ./leaderboard.db >/dev/null
-    else
-      sha256sum -c leaderboard.db.sha256 >/dev/null
+  previous_core_port="$(core_port "${active_color}")"
+  previous_web_port="$(web_port "${active_color}")"
+  if ! curl --fail --silent --max-time 5 \
+    "http://127.0.0.1:${previous_core_port}/api/status" >/dev/null 2>&1 || \
+    ! curl --fail --silent --max-time 5 \
+      "http://127.0.0.1:${previous_web_port}/api/status" >/dev/null 2>&1; then
+    if ! stage_color \
+      "${active_color}" \
+      "${current_core_image}" \
+      "${current_app_image}" \
+      "${current_revision}" \
+      "${current_deployed_at}"; then
+      restore_failed=1
     fi
-    test -s database.contents
-  ); then
-    echo "offline backup validation failed" >&2
-    return 1
   fi
-
-  printf '%s\n' "${backup_dir}"
+  if ! switch_upstream "${active_color}"; then
+    restore_failed=1
+  fi
+  write_release_file \
+    "${release_env}" \
+    "${current_core_image}" \
+    "${current_app_image}" \
+    "${current_revision}" \
+    "${current_deployed_at}"
+  write_active_color "${active_color}"
+  return "${restore_failed}"
 }
 
-current_core_image="$(core_image)"
-current_app_image="$(app_image)"
-current_revision="$(app_revision)"
-current_deployed_at="$(app_deployed_at)"
-
-if [[ -z "${current_core_image}" || -z "${current_app_image}" ]]; then
-  echo "current Core and App images must be configured before deployment" >&2
+if ! wait_for_color "${active_color}"; then
+  echo "active ${active_color} release is not healthy" >&2
   exit 4
 fi
-if ! docker image inspect "${current_core_image}" >/dev/null 2>&1; then
-  echo "current Core image is not available for rollback" >&2
+if ! wait_for_worker; then
+  echo "master worker is not healthy" >&2
   exit 4
 fi
-if ! docker image inspect "${current_app_image}" >/dev/null 2>&1; then
-  echo "current App image is not available for rollback" >&2
-  exit 4
-fi
-application_mode="running"
-running_application_containers=0
-for container in "${core_container}" "${web_container}"; do
-  if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
-    running_application_containers=$((running_application_containers + 1))
-  fi
-done
-if [[ "${running_application_containers}" -eq 0 ]]; then
-  application_mode="offline"
-elif [[ "${running_application_containers}" -ne 2 ]]; then
-  echo "application containers are only partially running; refusing deployment" >&2
-  exit 4
-elif ! wait_for_core_health 30; then
-  echo "current Core is not healthy; refusing to start deployment" >&2
+if ! wait_for_inactive_drain "${candidate_color}"; then
   exit 4
 fi
 
 printf '%s\n' "${registry_token}" | docker --config "${docker_config}" login \
   ghcr.io --username "${registry_user}" --password-stdin >/dev/null
 registry_token=""
-
 docker --config "${docker_config}" pull "${candidate_core_image}"
 docker --config "${docker_config}" pull "${candidate_app_image}"
 
@@ -303,15 +437,11 @@ actual_core_revision="$(docker image inspect "${candidate_core_image}" \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
 actual_app_revision="$(docker image inspect "${candidate_app_image}" \
   --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')"
-if [[ "${actual_core_revision}" != "${release_revision}" ]]; then
-  echo "Core image revision does not match requested release" >&2
+if [[ "${actual_core_revision}" != "${release_revision}" ]] || \
+  [[ "${actual_app_revision}" != "${release_revision}" ]]; then
+  echo "candidate image revision does not match requested release" >&2
   exit 4
 fi
-if [[ "${actual_app_revision}" != "${release_revision}" ]]; then
-  echo "App image revision does not match requested release" >&2
-  exit 4
-fi
-
 if ! docker run --rm --network none --entrypoint /bin/sh "${candidate_core_image}" \
   -c 'test -x /new-api && test -x /companion-migrate'; then
   echo "candidate Core image does not contain the required executables" >&2
@@ -327,65 +457,79 @@ if ! docker run --rm --network none \
   exit 4
 fi
 
-predeployment_backup=""
-if [[ "${application_mode}" == "offline" ]]; then
-  if ! predeployment_backup="$(validate_offline_backup)"; then
-    exit 5
-  fi
-else
-  if ! systemctl start new-api-backup.service; then
-    echo "pre-deployment database backup failed" >&2
-    exit 5
-  fi
-  predeployment_backup="online backup completed by new-api-backup.service"
-fi
+predeployment_backup="none"
+case "${backup_mode}" in
+  none)
+    predeployment_backup="skipped by explicit operator selection"
+    ;;
+  online)
+    systemctl start new-api-backup.service
+    predeployment_backup="online backup completed by new-api-backup.service"
+    ;;
+  offline)
+    stop_all_application_containers
+    predeployment_backup="$(/usr/local/sbin/new-api-backup --offline)"
+    printf '%s\n' "${predeployment_backup}"
+    ;;
+esac
 
 timestamp="$(date --utc +%Y%m%dT%H%M%SZ)"
+deployed_at="$(date +%s)"
 release_dir="${release_root}/${timestamp}-${release_revision}"
 install -d -m 0700 "${release_dir}"
-write_previous_env \
+write_release_file \
   "${release_dir}/previous.env" \
   "${current_core_image}" \
   "${current_app_image}" \
   "${current_revision}" \
   "${current_deployed_at}"
+printf '%s\n' "${active_color}" >"${release_dir}/previous-color"
 
-write_release_env \
+if ! deploy_worker "${candidate_core_image}" "${release_revision}" "${deployed_at}"; then
+  restore_previous_release || touch "${release_dir}/ROLLBACK_FAILED"
+  exit 6
+fi
+if ! stage_color \
+  "${candidate_color}" \
   "${candidate_core_image}" \
   "${candidate_app_image}" \
   "${release_revision}" \
-  "$(date +%s)"
-if ! compose config --quiet; then
-  install -m 0600 "${release_dir}/previous.env" "${release_env}"
+  "${deployed_at}"; then
+  restore_previous_release || touch "${release_dir}/ROLLBACK_FAILED"
   exit 6
 fi
 
-if deploy_release; then
-  install -m 0600 "${release_env}" "${release_dir}/deployed.env"
-  {
-    printf 'deployed_at=%s\n' "$(date --utc --iso-8601=seconds)"
-    printf 'deployed_by=%s\n' "${registry_user}"
-    printf 'release_revision=%s\n' "${release_revision}"
-    printf 'core_image=%s\n' "${candidate_core_image}"
-    printf 'app_image=%s\n' "${candidate_app_image}"
-    printf 'predeployment_backup=%s\n' "${predeployment_backup}"
-  } >"${release_dir}/manifest.env"
-  touch "${release_dir}/SUCCESS"
-  logger -t new-api-deploy "deployed Core and App revision ${release_revision}"
-  exit 0
-fi
+write_release_file \
+  "${color_root}/${candidate_color}.env" \
+  "${candidate_core_image}" \
+  "${candidate_app_image}" \
+  "${release_revision}" \
+  "${deployed_at}"
 
-echo "candidate release failed health checks; rolling back Core and App" >&2
-install -m 0600 "${release_dir}/previous.env" "${release_env}"
-compose config --quiet
-if deploy_release; then
-  touch "${release_dir}/ROLLED_BACK"
-  logger -p user.warning -t new-api-deploy \
-    "rolled back Core and App after failed revision ${release_revision}"
+if ! switch_upstream "${candidate_color}" || ! wait_for_public_health; then
+  restore_previous_release || touch "${release_dir}/ROLLBACK_FAILED"
   exit 7
 fi
 
-touch "${release_dir}/ROLLBACK_FAILED"
-logger -p user.err -t new-api-deploy \
-  "Core and App rollback failed after revision ${release_revision}"
-exit 8
+write_release_file \
+  "${release_env}" \
+  "${candidate_core_image}" \
+  "${candidate_app_image}" \
+  "${release_revision}" \
+  "${deployed_at}"
+write_active_color "${candidate_color}"
+install -m 0600 "${release_env}" "${release_dir}/deployed.env"
+{
+  printf 'deployed_at=%s\n' "$(date --utc --iso-8601=seconds)"
+  printf 'deployed_by=%s\n' "${registry_user}"
+  printf 'release_revision=%s\n' "${release_revision}"
+  printf 'active_color=%s\n' "${candidate_color}"
+  printf 'previous_color=%s\n' "${active_color}"
+  printf 'core_image=%s\n' "${candidate_core_image}"
+  printf 'app_image=%s\n' "${candidate_app_image}"
+  printf 'backup_mode=%s\n' "${backup_mode}"
+  printf 'predeployment_backup=%s\n' "${predeployment_backup}"
+} >"${release_dir}/manifest.env"
+touch "${release_dir}/SUCCESS"
+logger -t new-api-deploy \
+  "deployed revision ${release_revision} to ${candidate_color}; ${active_color} retained for rollback"

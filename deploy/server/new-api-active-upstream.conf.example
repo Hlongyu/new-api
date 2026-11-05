@@ -1,0 +1,7 @@
+# Installed as /etc/nginx/conf.d/new-api-active-upstream.conf.
+# The deployment script rewrites only the server port and reloads Nginx
+# atomically after the inactive color has passed its health checks.
+upstream new_api_active {
+    server 127.0.0.1:3102;
+    keepalive 64;
+}

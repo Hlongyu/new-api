@@ -1,0 +1,264 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+umask 077
+
+readonly application_compose_file="/opt/new-api/compose.application.yaml"
+readonly worker_compose_file="/opt/new-api/compose.worker.yaml"
+readonly legacy_compose_file="/opt/new-api/compose.yaml"
+readonly production_env="/etc/new-api/production.env"
+readonly state_root="/var/lib/new-api"
+readonly release_env="${state_root}/release.env"
+readonly color_root="${state_root}/colors"
+readonly active_color_file="${state_root}/active-color"
+readonly upstream_file="/etc/nginx/conf.d/new-api-active-upstream.conf"
+readonly lock_file="/run/lock/new-api-deploy.lock"
+readonly drain_timeout_seconds="${DRAIN_TIMEOUT_SECONDS:-3600}"
+readonly -a site_files=(
+  "/etc/nginx/sites-enabled/code.xxcd.top.conf"
+  "/etc/nginx/sites-enabled/code-origin.conf"
+  "/etc/nginx/sites-enabled/code2.xxcd.top.conf"
+  "/etc/nginx/sites-enabled/ppc-new-api-origin.conf"
+)
+
+for required_file in \
+  "${application_compose_file}" \
+  "${worker_compose_file}" \
+  "${legacy_compose_file}" \
+  "${production_env}" \
+  "${release_env}"; do
+  if [[ ! -r "${required_file}" ]]; then
+    echo "required bootstrap file is missing: ${required_file}" >&2
+    exit 2
+  fi
+done
+for site_file in "${site_files[@]}"; do
+  if [[ ! -r "${site_file}" ]]; then
+    echo "required Nginx site is missing: ${site_file}" >&2
+    exit 2
+  fi
+done
+resume_bootstrap="false"
+if [[ -e "${active_color_file}" ]]; then
+  existing_color="$(tr -d '[:space:]' <"${active_color_file}")"
+  if [[ "${existing_color}" == "blue" ]] && \
+    [[ "$(docker inspect new-api-blue --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] && \
+    docker inspect new-api >/dev/null 2>&1 && \
+    ! docker inspect new-api-worker >/dev/null 2>&1; then
+    resume_bootstrap="true"
+  elif [[ "${existing_color}" == "blue" ]] && \
+    [[ "$(docker inspect new-api-worker --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]] && \
+    ! docker inspect new-api >/dev/null 2>&1; then
+    echo "blue/green bootstrap is already complete"
+    exit 0
+  else
+    echo "blue/green state already exists but is not resumable" >&2
+    exit 3
+  fi
+fi
+
+exec 9>"${lock_file}"
+if ! flock -n 9; then
+  echo "another deployment is already running" >&2
+  exit 3
+fi
+
+release_value() {
+  local key="$1"
+  local file="$2"
+
+  sed -n "s/^${key}=//p" "${file}" | tail -n 1
+}
+
+current_core_image="$(release_value CORE_IMAGE "${release_env}")"
+current_app_image="$(release_value APP_IMAGE "${release_env}")"
+current_revision="$(release_value APP_RELEASE_REVISION "${release_env}")"
+current_deployed_at="$(release_value APP_RELEASE_DEPLOYED_AT "${release_env}")"
+current_deployed_at="${current_deployed_at:-0}"
+if [[ -z "${current_core_image}" || -z "${current_app_image}" || -z "${current_revision}" ]]; then
+  echo "current release state is incomplete" >&2
+  exit 4
+fi
+if [[ "${resume_bootstrap}" != "true" ]] && \
+  { [[ "$(docker inspect new-api --format '{{.State.Running}}' 2>/dev/null || true)" != "true" ]] || \
+    [[ "$(docker inspect new-api-web --format '{{.State.Running}}' 2>/dev/null || true)" != "true" ]]; }; then
+  echo "legacy application containers must be running before bootstrap" >&2
+  exit 4
+fi
+curl --fail --silent --show-error --max-time 10 \
+  http://127.0.0.1:3002/api/status >/dev/null
+
+install -d -m 0700 "${color_root}" "${state_root}/tooling-backups"
+backup_dir="${state_root}/tooling-backups/blue-green-$(date --utc +%Y%m%dT%H%M%SZ)"
+install -d -m 0700 "${backup_dir}"
+for site_file in "${site_files[@]}"; do
+  install -m 0600 "${site_file}" "${backup_dir}/$(basename "${site_file}")"
+done
+install -m 0600 "${release_env}" "${backup_dir}/release.env"
+
+write_release_file() {
+  local destination="$1"
+  local temporary_file=""
+
+  temporary_file="$(mktemp "${state_root}/.release.XXXXXX")"
+  {
+    printf 'CORE_IMAGE=%s\n' "${current_core_image}"
+    printf 'APP_IMAGE=%s\n' "${current_app_image}"
+    printf 'APP_RELEASE_REVISION=%s\n' "${current_revision}"
+    printf 'APP_RELEASE_DEPLOYED_AT=%s\n' "${current_deployed_at}"
+  } >"${temporary_file}"
+  chmod 0600 "${temporary_file}"
+  mv -f -- "${temporary_file}" "${destination}"
+}
+
+blue_compose() {
+  DEPLOY_COLOR=blue \
+    CORE_PORT=3100 \
+    WEB_PORT=3102 \
+    CORE_IMAGE="${current_core_image}" \
+    APP_IMAGE="${current_app_image}" \
+    APP_RELEASE_REVISION="${current_revision}" \
+    APP_RELEASE_DEPLOYED_AT="${current_deployed_at}" \
+    docker compose \
+    --project-name new-api-blue \
+    --env-file "${production_env}" \
+    -f "${application_compose_file}" \
+    "$@"
+}
+
+worker_compose() {
+  CORE_IMAGE="${current_core_image}" \
+    APP_RELEASE_REVISION="${current_revision}" \
+    APP_RELEASE_DEPLOYED_AT="${current_deployed_at}" \
+    docker compose \
+    --project-name new-api-worker \
+    --env-file "${production_env}" \
+    -f "${worker_compose_file}" \
+    "$@"
+}
+
+wait_for_blue() {
+  for _ in $(seq 1 90); do
+    if curl --fail --silent --show-error --max-time 5 \
+      http://127.0.0.1:3100/api/status >/dev/null && \
+      curl --fail --silent --show-error --max-time 5 \
+        http://127.0.0.1:3102/api/status >/dev/null && \
+      curl --fail --silent --show-error --max-time 5 \
+        http://127.0.0.1:3102/healthz >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+wait_for_worker() {
+  local health=""
+  local state=""
+
+  for _ in $(seq 1 90); do
+    state="$(docker inspect new-api-worker --format '{{.State.Status}}' 2>/dev/null || true)"
+    health="$(docker inspect new-api-worker --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+    if [[ "${state}" == "running" && "${health}" == "healthy" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
+if [[ "${resume_bootstrap}" != "true" ]]; then
+  blue_compose up -d --no-deps --force-recreate --pull never core
+  blue_compose up -d --no-deps --force-recreate --pull never web
+  if ! wait_for_blue; then
+    echo "blue application failed health checks" >&2
+    exit 5
+  fi
+
+  {
+    printf 'upstream new_api_active {\n'
+    printf '    server 127.0.0.1:3102;\n'
+    printf '    keepalive 64;\n'
+    printf '}\n'
+  } >"${backup_dir}/new-api-active-upstream.conf"
+  install -m 0644 "${backup_dir}/new-api-active-upstream.conf" "${upstream_file}"
+
+  for site_file in "${site_files[@]}"; do
+    site_target="$(readlink -f "${site_file}")"
+    patched_site="$(mktemp /etc/nginx/sites-enabled/.new-api-site.XXXXXX)"
+    sed -E 's#proxy_pass http://127\.0\.0\.1:300(0|2);#proxy_pass http://new_api_active;#g' \
+      "${site_target}" >"${patched_site}"
+    if cmp -s "${site_target}" "${patched_site}" && \
+      ! grep -Fq 'proxy_pass http://new_api_active;' "${site_target}"; then
+      rm -f -- "${patched_site}"
+      echo "Nginx site did not contain the expected gateway proxy: ${site_file}" >&2
+      exit 5
+    fi
+    install -m 0644 "${patched_site}" "${site_target}"
+    rm -f -- "${patched_site}"
+  done
+  if ! nginx -t || ! systemctl reload nginx; then
+    for site_file in "${site_files[@]}"; do
+      site_target="$(readlink -f "${site_file}")"
+      install -m 0644 "${backup_dir}/$(basename "${site_file}")" "${site_target}"
+    done
+    rm -f -- "${upstream_file}"
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    exit 6
+  fi
+
+  public_host="$(release_value PUBLIC_HEALTH_HOST "${production_env}")"
+  public_host="${public_host:-code.xxcd.top}"
+  if ! curl --fail --silent --show-error --max-time 15 \
+    --resolve "${public_host}:443:127.0.0.1" \
+    "https://${public_host}/" >/dev/null; then
+    for site_file in "${site_files[@]}"; do
+      site_target="$(readlink -f "${site_file}")"
+      install -m 0644 "${backup_dir}/$(basename "${site_file}")" "${site_target}"
+    done
+    rm -f -- "${upstream_file}"
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    exit 6
+  fi
+
+  write_release_file "${color_root}/blue.env"
+  printf 'blue\n' >"${active_color_file}"
+  chmod 0600 "${active_color_file}"
+else
+  wait_for_blue
+fi
+
+deadline=$((SECONDS + drain_timeout_seconds))
+while (( SECONDS < deadline )); do
+  connection_count="$(ss -Htan state established | awk '
+    $4 ~ /:3002$/ || $5 ~ /:3002$/ { count++ }
+    END { print count + 0 }
+  ')"
+  if [[ "${connection_count}" -eq 0 ]]; then
+    break
+  fi
+  echo "waiting for ${connection_count} legacy gateway connection(s) to drain"
+  sleep 5
+done
+if [[ "${connection_count:-0}" -ne 0 ]]; then
+  echo "legacy traffic did not drain before timeout; blue remains active and legacy master remains available" >&2
+  exit 7
+fi
+
+for legacy_container in new-api-web new-api; do
+  if [[ "$(docker inspect "${legacy_container}" --format '{{.State.Running}}' 2>/dev/null || true)" == "true" ]]; then
+    docker stop "${legacy_container}"
+  fi
+done
+if ! worker_compose up -d --no-deps --force-recreate --pull never worker || \
+  ! wait_for_worker; then
+  docker start new-api >/dev/null 2>&1 || true
+  echo "worker bootstrap failed; legacy Core restarted as master" >&2
+  exit 8
+fi
+docker rm new-api-web new-api >/dev/null
+
+touch "${backup_dir}/SUCCESS"
+logger -t new-api-deploy \
+  "bootstrapped blue/green deployment on blue revision ${current_revision}"
+printf 'Blue/green bootstrap completed: active=blue revision=%s\n' "${current_revision}"

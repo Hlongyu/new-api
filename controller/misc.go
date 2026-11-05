@@ -23,6 +23,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func Health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 func TestStatus(c *gin.Context) {
 	err := model.PingDB()
 	if err != nil {

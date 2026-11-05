@@ -1,2 +1,4 @@
 Defaults:new-api-deploy secure_path=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 new-api-deploy ALL=(root) NOPASSWD: /usr/local/sbin/new-api-deploy
+new-api-deploy ALL=(root) NOPASSWD: /usr/local/sbin/new-api-switch
+new-api-deploy ALL=(root) NOPASSWD: /usr/local/sbin/new-api-blue-green-bootstrap
