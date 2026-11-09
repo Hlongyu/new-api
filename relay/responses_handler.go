@@ -111,12 +111,20 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 	adaptor.Init(info)
 	var requestBody io.Reader
+	var wsBody []byte
 	if passThrough {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.ReaderOnly(storage)
+		if wsTurn != nil {
+			wsBody, err = storage.Bytes()
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+			}
+		} else {
+			requestBody = common.ReaderOnly(storage)
+		}
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -143,18 +151,25 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		}
 
 		logger.LogDebug(c, "requestBody: %s", jsonData)
-		body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		if wsTurn != nil {
+			wsBody = jsonData
+		} else {
+			body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+			if err != nil {
+				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+			}
+			defer closer.Close()
+			info.UpstreamRequestBodySize = size
+			requestBody = body
 		}
-		defer closer.Close()
-		jsonData = nil
-		info.UpstreamRequestBodySize = size
-		requestBody = body
 	}
 
 	if wsTurn != nil {
-		if err := channel.DoResponsesWebSocketRequest(adaptor, c, info, requestBody); err != nil {
+		err := channel.DoResponsesWebSocketRequest(adaptor, c, info, wsBody)
+		// The sent frame is not needed while waiting for a potentially long
+		// response. Keep the original body/DTO for billing and validation only.
+		wsBody = nil
+		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeDoRequestFailed, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 		}
 		usage, apiErr := openai.OaiResponsesWebSocketHandler(c, info)

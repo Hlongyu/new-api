@@ -260,6 +260,75 @@ func TestResponsesWebSocketDisconnectIsNotReplayed(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestResponsesWebSocketRequestFields(t *testing.T) {
+	for _, passthrough := range []bool{false, true} {
+		name := "converted"
+		if passthrough {
+			name = "passthrough"
+		}
+		t.Run(name, func(t *testing.T) {
+			requests := make(chan map[string]json.RawMessage, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ws, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+				if !assert.NoError(t, err) {
+					return
+				}
+				defer ws.Close()
+				_, data, err := ws.ReadMessage()
+				if !assert.NoError(t, err) {
+					return
+				}
+				var request map[string]json.RawMessage
+				if !assert.NoError(t, common.Unmarshal(data, &request)) {
+					return
+				}
+				requests <- request
+				_ = ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.completed","response":{"id":"resp_fields","usage":{"input_tokens":1,"output_tokens":1}}}`))
+				_, _, _ = ws.ReadMessage()
+			}))
+			t.Cleanup(upstream.Close)
+			f := newResponsesWSFixture(t, upstream.URL)
+			setting, err := common.Marshal(gin.H{"pass_through_body_enabled": passthrough})
+			require.NoError(t, err)
+			require.NoError(t, f.db.Model(&model.Channel{}).Where("id = ?", 1).Updates(map[string]any{
+				"setting": string(setting), "settings": `{"disable_store":true}`,
+				"model_mapping":  `{"ws-test":"upstream-model"}`,
+				"param_override": `{"temperature":0,"background":true,"stream_options":{"include_usage":true}}`,
+			}).Error)
+			client := f.connect(t)
+			input := `[{"role":"user","content":[{"type":"input_text","text":"hello"},{"type":"input_image","image_url":"data:image/png;base64,AAAA"}]}]`
+			payload := `{"type":"response.create","model":"forbidden","model":"ws-test","input":` + input + `,"max_output_tokens":18446744073709551615,"max_output_tokens":0,"store":false,"temperature":0.5,"service_tier":"priority","extension":{"n":9007199254740993},"generate":false,"stream_id":"流-1","background":false}`
+			require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(payload)))
+			require.JSONEq(t, `"response.completed"`, string(readResponsesWSEvent(t, client)["type"]))
+			f.waitTurn(t)
+			request := <-requests
+			assert.JSONEq(t, input, string(request["input"]))
+			assert.JSONEq(t, `0`, string(request["max_output_tokens"]))
+			assert.JSONEq(t, `false`, string(request["generate"]))
+			assert.JSONEq(t, `"流-1"`, string(request["stream_id"]))
+			for _, field := range []string{"stream", "stream_options", "background"} {
+				assert.NotContains(t, request, field)
+			}
+			if passthrough {
+				assert.JSONEq(t, `"ws-test"`, string(request["model"]))
+				assert.JSONEq(t, `false`, string(request["store"]))
+				assert.JSONEq(t, `0.5`, string(request["temperature"]))
+				assert.JSONEq(t, `"priority"`, string(request["service_tier"]))
+				assert.Equal(t, `{"n":9007199254740993}`, string(request["extension"]))
+			} else {
+				assert.JSONEq(t, `"upstream-model"`, string(request["model"]))
+				assert.JSONEq(t, `0`, string(request["temperature"]))
+				assert.NotContains(t, request, "store")
+				assert.NotContains(t, request, "service_tier")
+			}
+			// The last duplicate must also govern rejection, even in passthrough.
+			require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-test","input":[],"max_output_tokens":0,"max_output_tokens":18446744073709551615}`)))
+			assert.JSONEq(t, `400`, string(readResponsesWSEvent(t, client)["status"]))
+			f.waitTurn(t)
+		})
+	}
+}
+
 func TestResponsesWebSocketRechecksPinnedChannel(t *testing.T) {
 	for _, test := range []struct {
 		name   string

@@ -32,6 +32,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       ERROR_LOG_ENABLED: ${ERROR_LOG_ENABLED:-true}
       BATCH_UPDATE_ENABLED: ${BATCH_UPDATE_ENABLED:-true}
+      GOMEMLIMIT: ${CORE_GOMEMLIMIT:-off}
       NODE_TYPE: slave
       NODE_NAME: ${NODE_NAME:-new-api-node-1}-${DEPLOY_COLOR}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}

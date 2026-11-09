@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -22,7 +21,7 @@ import (
 // DoResponsesWebSocketRequest sends exactly once on the connection bound to
 // this downstream session. A changed endpoint, key or transport requires a new
 // session; silently reconnecting would lose store=false continuation state.
-func DoResponsesWebSocketRequest(a Adaptor, c *gin.Context, info *relaycommon.RelayInfo, body io.Reader) error {
+func DoResponsesWebSocketRequest(a Adaptor, c *gin.Context, info *relaycommon.RelayInfo, body []byte) error {
 	turn := relaycommon.GetResponsesWebSocketTurn(c.Request)
 	session := turn.Session
 	// Personal channels remain disabled until their protected dial-time SSRF
@@ -77,14 +76,10 @@ func DoResponsesWebSocketRequest(a Adaptor, c *gin.Context, info *relaycommon.Re
 		session.Broken = true
 		return errors.New("WebSocket channel configuration changed; reconnect to continue")
 	}
-	var fields map[string]json.RawMessage
-	if err := common.DecodeJson(body, &fields); err != nil {
-		return err
+	fields := map[string]json.RawMessage{
+		"type":   json.RawMessage(`"response.create"`),
+		"stream": nil, "stream_options": nil, "background": nil,
 	}
-	fields["type"] = json.RawMessage(`"response.create"`)
-	delete(fields, "stream")
-	delete(fields, "stream_options")
-	delete(fields, "background")
 	if turn.Generate != nil {
 		fields["generate"], err = common.Marshal(*turn.Generate)
 		if err != nil {
@@ -96,10 +91,6 @@ func DoResponsesWebSocketRequest(a Adaptor, c *gin.Context, info *relaycommon.Re
 		if err != nil {
 			return err
 		}
-	}
-	data, err := common.Marshal(fields)
-	if err != nil {
-		return err
 	}
 	if err := c.Request.Context().Err(); err != nil {
 		return err
@@ -139,8 +130,16 @@ func DoResponsesWebSocketRequest(a Adaptor, c *gin.Context, info *relaycommon.Re
 		session.Broken = true
 		return errors.New("upstream Responses WebSocket closed; request was not replayed")
 	}
-	if err := session.Upstream.WriteMessage(websocket.TextMessage, data); err != nil {
+	writer, err := session.Upstream.NextWriter(websocket.TextMessage)
+	if err == nil {
+		err = common.WriteJSONObject(writer, body, fields)
+		if err == nil {
+			err = writer.Close()
+		}
+	}
+	if err != nil {
 		session.Broken = true
+		_ = session.Upstream.Close()
 		return errors.New("upstream Responses WebSocket send failed; request was not replayed")
 	}
 	return nil

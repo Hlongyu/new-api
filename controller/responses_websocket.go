@@ -128,16 +128,17 @@ func ResponsesWebSocket(router http.Handler) gin.HandlerFunc {
 			}
 			turn.Generate, turn.StreamID = envelope.Generate, envelope.StreamID
 			// Preserve request fields for passthrough and expression pricing.
-			var fields map[string]json.RawMessage
-			if common.Unmarshal(msg.data, &fields) != nil {
+			var body bytes.Buffer
+			body.Grow(len(msg.data))
+			err := common.WriteJSONObject(&body, msg.data, map[string]json.RawMessage{
+				"type": nil, "generate": nil, "stream_id": nil, "background": nil,
+				"stream": json.RawMessage("true"),
+			})
+			msg.data = nil
+			if err != nil {
 				return
 			}
-			delete(fields, "type")
-			delete(fields, "generate")
-			delete(fields, "stream_id")
-			delete(fields, "background")
-			fields["stream"] = json.RawMessage("true")
-			body, err := common.Marshal(fields)
+			storage, err := common.CreateBodyStorage(body.Bytes())
 			if err != nil {
 				return
 			}
@@ -145,8 +146,8 @@ func ResponsesWebSocket(router http.Handler) gin.HandlerFunc {
 			request.Method = http.MethodPost
 			request.URL.Path, request.URL.RawPath, request.URL.RawQuery = "/v1/responses", "", ""
 			request.RequestURI = "/v1/responses"
-			request.Body = io.NopCloser(bytes.NewReader(body))
-			request.ContentLength = int64(len(body))
+			request.Body = storage
+			request.ContentLength = storage.Size()
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Del("Content-Encoding")
 			request.Header.Del("Content-Length")
@@ -155,6 +156,8 @@ func ResponsesWebSocket(router http.Handler) gin.HandlerFunc {
 			}
 			writer := &responsesWebSocketHTTPWriter{header: make(http.Header), status: http.StatusOK}
 			router.ServeHTTP(writer, request)
+			// Auth may reject the turn before body-storage middleware adopts it.
+			_ = storage.Close()
 			if writer.status >= http.StatusBadRequest {
 				var response struct {
 					Error json.RawMessage `json:"error"`

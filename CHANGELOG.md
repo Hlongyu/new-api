@@ -1,5 +1,18 @@
 # Changelog
 
+## [custom-v1.0.34] - 2026-11-09
+
+### Fixed
+
+- Reduce native Responses WebSocket memory amplification by rewriting only top-level transport fields, reusing the internal request body storage, and streaming the upstream frame without another full JSON decode/marshal. Release sent-frame buffers before waiting for generation and clear closed memory-storage references.
+- Preserve passthrough extensions, exact JSON numbers and explicit zero/false values, last-duplicate-field validation, model mapping, field filtering and parameter overrides. Keep per-turn authentication, billing, continuation and Codex interruption behavior unchanged.
+
+### Operations
+
+- Add optional `CORE_GOMEMLIMIT` configuration for blue/green traffic instances. It defaults to `off`; operators can set a Go runtime soft memory budget appropriate to the host. This is not a hard RSS limit and applies when an instance is recreated.
+- In the same local 8 MiB request diagnostic, cumulative allocations including the test client fell from approximately 223 MiB to 142 MiB, and request memory retained during generation fell from approximately 24 MiB to 16 MiB after GC. These measurements do not predict total production RSS under concurrent traffic.
+- No database migration is required.
+
 ## [custom-v1.0.33] - 2026-11-05
 
 ### Fixed

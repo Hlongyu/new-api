@@ -164,6 +164,14 @@ The public TLS sites, the private Origin site, and restricted WireGuard API
 sites send application traffic to `new_api_active`. All four application ports
 remain loopback-only.
 
+`CORE_GOMEMLIMIT` in `production.env` optionally sets the Go runtime's soft
+memory budget for each traffic-serving Core. The default `off` preserves Go's
+normal GC behavior; for example, `768MiB` can leave room for other services on a
+shared 4 GiB host. Size it for the workload and host capacity. It is not a hard
+RSS/container limit: live requests and non-Go memory can exceed it. Apply it to
+the inactive color before switching; existing connections keep their current
+process until they drain.
+
 The `new-api` and `web` services in `compose.yaml` are retained under the
 `legacy` profile only for transition and recovery. A normal persistent-service
 `docker compose up` cannot accidentally start a second master application.

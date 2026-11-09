@@ -62,6 +62,18 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 		maxMB = 128 // 默认 128MB
 	}
 	maxBytes := int64(maxMB) << 20
+	// Internal transports may already own a bounded, reusable body. Adopt it
+	// instead of reading the entire request into a second allocation.
+	if storage, ok := c.Request.Body.(BodyStorage); ok {
+		if storage.Size() > maxBytes {
+			return nil, ErrRequestBodyTooLarge
+		}
+		if _, err := storage.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		c.Set(KeyBodyStorage, storage)
+		return storage, nil
+	}
 
 	contentLength := c.Request.ContentLength
 
