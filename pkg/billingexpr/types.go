@@ -5,11 +5,16 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/tidwall/gjson"
 )
 
 type RequestInput struct {
 	Headers map[string]string
 	Body    []byte
+	// Immutable query results, captured from the original body for this exact
+	// expression. Raw JSON results are decoded afresh by Value() on each call.
+	paramValues map[string]gjson.Result
+	exprHash    string
 }
 
 // TokenParams holds all token dimensions passed into an Expr evaluation.

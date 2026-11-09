@@ -13,8 +13,41 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestTieredBillingSnapshotSurvivesBodyReleaseAndTokenTierChange(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error { saved[key] = value; return nil }))
+	t.Cleanup(func() { require.NoError(t, config.GlobalConfig.LoadFromDB(saved)) })
+	expression := `p < 100 ? p : p * (param("service_tier") == "priority" ? 2 : 1)`
+	expressions, err := common.Marshal(map[string]string{"snapshot-model": expression})
+	require.NoError(t, err)
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"snapshot-model":"tiered_expr"}`,
+		"billing_setting.billing_expr": string(expressions),
+	}))
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx.Set("group", "default")
+	body := []byte(`{"service_tier":"priority","input":"client conversation"}`)
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "snapshot-model", UserGroup: "default", UsingGroup: "default",
+		BillingRequestInput: &billingexpr.RequestInput{Body: body},
+	}
+	_, err = ModelPriceHelper(ctx, info, 10, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	require.NotNil(t, info.BillingRequestInput)
+	assert.Empty(t, info.BillingRequestInput.Body)
+	clear(body)
+	// Retry/group-price handling clones RequestInput; it must retain the snapshot.
+	input, err := ResolveIncomingBillingExprRequestInput(ctx, info)
+	require.NoError(t, err)
+	settled, err := billingexpr.ComputeTieredQuotaWithRequest(info.TieredBillingSnapshot, billingexpr.TokenParams{P: 1000}, input)
+	require.NoError(t, err)
+	assert.Equal(t, 1000, settled.ActualQuotaAfterGroup)
+}
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	gin.SetMode(gin.TestMode)

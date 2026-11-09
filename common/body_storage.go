@@ -281,6 +281,25 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 		IncrementDiskCacheHits()
 		return storage, nil
 	}
+	// For chunked/decompressed requests the declared size can be absent or
+	// smaller than the decoded body. Buffer only up to the spill threshold,
+	// then copy the prefix and remaining stream to disk under the same limit.
+	if IsDiskCacheEnabled() && threshold >= 0 && threshold < maxBytes && IsDiskCacheAvailable(maxBytes) {
+		prefix, err := io.ReadAll(io.LimitReader(reader, threshold))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(prefix)) < threshold {
+			IncrementMemoryCacheHits()
+			return newMemoryStorage(prefix), nil
+		}
+		storage, err := newDiskStorageFromReader(io.MultiReader(bytes.NewReader(prefix), reader), maxBytes, GetDiskCachePath())
+		if err != nil {
+			return nil, err
+		}
+		IncrementDiskCacheHits()
+		return storage, nil
+	}
 
 	// 使用内存读取
 	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))

@@ -298,6 +298,10 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
+	requestInput, err = billingexpr.CompactRequestInput(exprStr, requestInput)
+	if err != nil {
+		return hosttypes.PriceData{}, err
+	}
 
 	rawCost, trace, err := billingexpr.RunExprWithRequest(exprStr, billingexpr.TokenParams{
 		P:   float64(promptTokens),

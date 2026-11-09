@@ -1,5 +1,18 @@
 # Changelog
 
+## [custom-v1.0.35] - 2026-11-09
+
+### Fixed
+
+- Release outbound JSON storage as soon as the transport consumes its last byte, including Content-Length-limited sends. Keep unfinished uploads readable when an upstream responds early, and preserve the original incoming body for retries.
+- Compact tiered-billing request snapshots to the literal `param()` paths used anywhere in the frozen expression. Preserve original client values, zero/false/null and query semantics across pre-consume, retries and settlement; dynamic paths and indirect parameter access retain the full body. Reject using a compact snapshot with a different expression.
+- Spill chunked and decompressed incoming bodies to disk at the configured threshold when disk caching is enabled, without first buffering the entire upload. Preserve replay, decoded-size limits and cleanup on interrupted or oversized uploads.
+
+### Operations
+
+- Large-body disk caching remains opt-in. With it enabled, the controlled 8 MiB HTTP Responses request now retains about 8 MiB of request data during generation, down from 24 MiB with the previous in-memory pipeline and tiered billing. This measures request heap residency, not total process RSS.
+- No database migration is required. Relevant backend tests, retry/priority-billing integration checks, race checks, vet and builds passed; native WebSocket continuation and interruption behavior remain covered.
+
 ## [custom-v1.0.34] - 2026-11-09
 
 ### Fixed

@@ -27,11 +27,7 @@ func RunExpr(exprStr string, params TokenParams) (float64, TraceResult, error) {
 }
 
 func RunExprWithRequest(exprStr string, params TokenParams, request RequestInput) (float64, TraceResult, error) {
-	prog, err := CompileFromCache(exprStr)
-	if err != nil {
-		return 0, TraceResult{}, err
-	}
-	return runProgram(prog, params, request)
+	return RunExprByHashWithRequest(exprStr, ExprHashString(exprStr), params, request)
 }
 
 // RunExprByHash is like RunExpr but accepts a pre-computed hash for the cache
@@ -42,6 +38,9 @@ func RunExprByHash(exprStr, hash string, params TokenParams) (float64, TraceResu
 }
 
 func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request RequestInput) (float64, TraceResult, error) {
+	if request.paramValues != nil && request.exprHash != hash {
+		return 0, TraceResult{}, fmt.Errorf("request snapshot belongs to a different billing expression")
+	}
 	prog, err := CompileFromCacheByHash(exprStr, hash)
 	if err != nil {
 		return 0, TraceResult{}, err
@@ -86,6 +85,9 @@ func runProgram(prog *vm.Program, params TokenParams, request RequestInput) (flo
 		},
 		"param": func(path string) interface{} {
 			path = strings.TrimSpace(path)
+			if request.paramValues != nil {
+				return request.paramValues[path].Value()
+			}
 			if path == "" || len(request.Body) == 0 {
 				return nil
 			}

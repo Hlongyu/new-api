@@ -172,6 +172,15 @@ RSS/container limit: live requests and non-Go memory can exceed it. Apply it to
 the inactive color before switching; existing connections keep their current
 process until they drain.
 
+For large request bodies, enable the existing `performance_setting.disk_cache_enabled`
+option and choose `performance_setting.disk_cache_threshold_mb` (for example, 4)
+and `performance_setting.disk_cache_max_size_mb` for the server. Keep the cache
+directory on disk, not a memory-backed tmpfs. Incoming bodies remain replayable
+until request completion; fully consumed outbound bodies are released before
+generation finishes. Static billing parameter snapshots retain only their
+queried fields, while dynamic parameter expressions still require the full
+body. The Go memory budget alone cannot replace this reduction in live data.
+
 The `new-api` and `web` services in `compose.yaml` are retained under the
 `legacy` profile only for transition and recovery. A normal persistent-service
 `docker compose up` cannot accidentally start a second master application.

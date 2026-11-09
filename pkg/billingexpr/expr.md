@@ -156,7 +156,7 @@ On save, the expression is validated:
 
 When a request arrives and the model uses `tiered_expr` billing:
 1. Loads expression from `billing_setting.GetBillingExpr()`
-2. Builds `RequestInput` (headers + body) for `param()` / `header()` functions
+2. Builds `RequestInput` for `param()` / `header()` functions. Literal `param()` paths in every expression branch are captured as immutable query results; the full body can then be released. Dynamic paths, indirect function access and `$env` access retain the full body. A compact snapshot belongs to the exact captured expression, so settlement cannot silently evaluate new rules against incomplete request data.
 3. Runs expression with estimated tokens: `RunExprWithRequest(expr, {P, C}, requestInput)`
 4. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
 5. Creates `BillingSnapshot` and stores it on `RelayInfo`. Expression and request state stay frozen for settlement. An auto-group retry refreshes group-dependent fields from the selected group before the next upstream attempt. If a free initial group skipped pre-consume and the retry selects a paid group, the billing session is created before that attempt. If an existing session moves to a more expensive group, its reservation is raised to that group's estimate before sending; cheaper groups are refunded only after actual usage is settled.
