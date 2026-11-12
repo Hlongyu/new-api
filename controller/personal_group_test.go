@@ -2,12 +2,14 @@ package controller
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +49,28 @@ func TestPersonalGroupControllerUsesAuthenticatedOwnerAndPublishesSelectableGrou
 	require.NoError(t, db.First(&live).Error)
 	assert.Equal(t, created.Data.Name, live.Group)
 	assert.Equal(t, 11, live.OwnerUserID)
+	for _, test := range []struct {
+		owner   int
+		body    map[string]any
+		allowed bool
+	}{
+		{11, map[string]any{}, false},
+		{22, map[string]any{"enabled": false, "owner_user_id": 11}, false},
+		{11, map[string]any{"enabled": false, "owner_user_id": 22}, true},
+		{11, map[string]any{"enabled": true}, true},
+	} {
+		ctx, response = newAuthenticatedContext(t, http.MethodPut, "/api/personal/channels/status", test.body, test.owner)
+		ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(saved.Data.PersonalChannelID)}}
+		SetPersonalChannelEnabled(ctx)
+		var result struct {
+			Success bool `json:"success"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+		assert.Equal(t, test.allowed, result.Success)
+		if test.allowed {
+			assert.Equal(t, test.body["enabled"], service.IsUserSelectableGroup("default", created.Data.Name))
+		}
+	}
 	ctx, response = newAuthenticatedContext(t, http.MethodGet, "/api/personal/channels", nil, 22)
 	ListPersonalChannels(ctx)
 	var other struct {

@@ -45,12 +45,15 @@ export function ReviewForm(props: {
   const { t } = useTranslation()
   const client = useQueryClient()
   const [reason, setReason] = useState('')
+  const isDeletion = props.channel.revision.status === 'delete_pending'
   const mutation = useMutation({
     mutationFn: (approve: boolean) =>
       reviewChannel({ channel: props.channel, approve, reason }),
     onSuccess: async () => {
-      await client.invalidateQueries({ queryKey: ['personal-channel-reviews'] })
-      await client.invalidateQueries({ queryKey: ['personal-channels'] })
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['personal-channel-reviews'] }),
+        client.invalidateQueries({ queryKey: ['personal-channels'] }),
+      ])
       toast.success(t('Review completed'))
       props.onSaved()
     },
@@ -72,6 +75,13 @@ export function ReviewForm(props: {
         {props.channel.owner_user_id} · {t('Revision')}:{' '}
         {props.channel.revision.id}
       </p>
+      {isDeletion && (
+        <p role='alert' className='text-destructive text-sm'>
+          {t(
+            'Approving this request deletes the live channel. Configuration, review history and usage logs are retained.'
+          )}
+        </p>
+      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -81,17 +91,21 @@ export function ReviewForm(props: {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {fields.map(([key, label]) => (
-            <TableRow key={key}>
-              <TableCell>{label}</TableCell>
-              <TableCell className='max-w-64 break-all whitespace-pre-wrap'>
-                {String(props.channel.published_config?.[key] ?? '—')}
-              </TableCell>
-              <TableCell className='max-w-64 break-all whitespace-pre-wrap'>
-                {String(props.channel.config[key])}
-              </TableCell>
-            </TableRow>
-          ))}
+          {fields
+            .filter(
+              ([key]) => key !== 'enabled' || !props.channel.published_config
+            )
+            .map(([key, label]) => (
+              <TableRow key={key}>
+                <TableCell>{label}</TableCell>
+                <TableCell className='max-w-64 break-all whitespace-pre-wrap'>
+                  {String(props.channel.published_config?.[key] ?? '—')}
+                </TableCell>
+                <TableCell className='max-w-64 break-all whitespace-pre-wrap'>
+                  {String(props.channel.config[key])}
+                </TableCell>
+              </TableRow>
+            ))}
         </TableBody>
       </Table>
       <p className='text-sm'>
@@ -123,10 +137,11 @@ export function ReviewForm(props: {
           {t('Reject')}
         </Button>
         <Button
+          variant={isDeletion ? 'destructive' : 'default'}
           disabled={!props.canReview || mutation.isPending}
           onClick={() => mutation.mutate(true)}
         >
-          {t('Approve and Publish')}
+          {isDeletion ? t('Approve deletion') : t('Approve and Publish')}
         </Button>
       </div>
     </div>

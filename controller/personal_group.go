@@ -147,6 +147,50 @@ func ReviewPersonalChannel(c *gin.Context) {
 	common.ApiSuccess(c, nil)
 }
 
+func SetPersonalChannelEnabled(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	var request struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil || request.Enabled == nil {
+		common.ApiError(c, errors.New("An enabled status is required"))
+		return
+	}
+	if err := model.SetPersonalChannelEnabled(c.GetInt("id"), id, *request.Enabled); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	recordManageAudit(c, "personal_channel.status", map[string]any{"personal_channel_id": id, "enabled": *request.Enabled})
+	common.ApiSuccess(c, nil)
+}
+
+func RequestPersonalChannelDeletion(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		c.Status(http.StatusBadRequest)
+		return
+	}
+	var request struct {
+		ExpectedRevisionID int `json:"expected_revision_id"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil || request.ExpectedRevisionID <= 0 {
+		common.ApiError(c, errors.New("A current revision is required"))
+		return
+	}
+	revision, err := model.RequestPersonalChannelDeletion(c.GetInt("id"), id, request.ExpectedRevisionID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "personal_channel.request_deletion", map[string]any{"personal_channel_id": id, "revision_id": revision.Id})
+	common.ApiSuccess(c, revision)
+}
+
 func FetchPersonalChannelModels(c *gin.Context) {
 	var request struct {
 		ChannelID int    `json:"channel_id"`

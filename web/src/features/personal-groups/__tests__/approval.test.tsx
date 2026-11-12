@@ -58,15 +58,19 @@ const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
 const { createInstance } = await import('i18next')
 const { I18nextProvider } = await import('react-i18next')
-const { QueryClient, QueryClientProvider } =
+const { QueryClient, QueryClientProvider, notifyManager, defaultScheduler } =
   await import('@tanstack/react-query')
+notifyManager.setScheduler(queueMicrotask)
 const { api } = await import('@/lib/api')
 const { ReviewForm } = await import('../components/review-form')
 const { ChannelForm } = await import('../components/channel-form')
 const { GroupForm } = await import('../components/group-form')
 const i18n = createInstance()
 await i18n.init({ lng: 'en', resources: { en: { translation: {} } } })
-after(() => domWindow.close())
+after(() => {
+  notifyManager.setScheduler(defaultScheduler)
+  domWindow.close()
+})
 
 const channel: PersonalChannel = {
   id: 4,
@@ -113,6 +117,60 @@ function mountForm() {
   })
   return { container, root, client }
 }
+
+test('deletion review explicitly approves deletion of the current revision', async () => {
+  const { container, root, client } = mountForm()
+  const adapter = api.defaults.adapter
+  const posts: unknown[] = []
+  api.defaults.adapter = async (config) => {
+    posts.push({ url: config.url, data: JSON.parse(config.data as string) })
+    return {
+      config,
+      data: { success: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+    }
+  }
+  try {
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <I18nextProvider i18n={i18n}>
+            <ReviewForm
+              channel={{
+                ...channel,
+                revision: { ...channel.revision, status: 'delete_pending' },
+              }}
+              canReview
+              onSaved={() => {}}
+            />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+    )
+    const approve = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Approve deletion'
+    )
+    assert.ok(approve)
+    assert.match(
+      container.textContent ?? '',
+      /Configuration, review history and usage logs are retained/
+    )
+    await act(async () => approve.click())
+    assert.deepEqual(posts, [
+      {
+        url: '/api/personal-channel-reviews/4',
+        data: { revision_id: 12, approve: true, reason: '' },
+      },
+    ])
+  } finally {
+    api.defaults.adapter = adapter
+    await act(async () => root.unmount())
+    client.clear()
+    container.remove()
+  }
+})
 
 test('review displays published and submitted values and submits only the reviewed revision', async () => {
   const { container, root, client } = mountForm()

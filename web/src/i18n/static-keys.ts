@@ -19,6 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Personal channel lifecycle API errors
+  'Personal channels must be deleted through administrator review',
+  'Only published personal channels can be enabled or disabled',
+  'Published personal channel is unavailable',
+  'Channel deletion is already pending review',
+  'An enabled status is required',
+  'A current revision is required',
   // User request limit validation
   'Group name is required',
   'Duplicate group name',

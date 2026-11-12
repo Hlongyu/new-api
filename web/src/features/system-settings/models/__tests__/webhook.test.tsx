@@ -28,8 +28,13 @@ for (const key of [
   'navigator',
   'HTMLElement',
   'HTMLInputElement',
+  'HTMLButtonElement',
+  'MouseEvent',
+  'PointerEvent',
+  'ResizeObserver',
   'SVGElement',
   'Node',
+  'NodeFilter',
   'Element',
   'Event',
   'CustomEvent',
@@ -50,8 +55,9 @@ Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
 })
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
-const { QueryClient, QueryClientProvider } =
+const { QueryClient, QueryClientProvider, notifyManager, defaultScheduler } =
   await import('@tanstack/react-query')
+notifyManager.setScheduler(queueMicrotask)
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { api } = await import('@/lib/api')
@@ -61,7 +67,10 @@ const i18n = createInstance()
 await i18n
   .use(initReactI18next)
   .init({ lng: 'en', resources: { en: { translation: {} } } })
-after(() => dom.close())
+after(() => {
+  notifyManager.setScheduler(defaultScheduler)
+  dom.close()
+})
 
 test('enabled WeCom webhook requires groups but saves the robot URL without a signing secret', async () => {
   const adapter = api.defaults.adapter
@@ -99,6 +108,7 @@ test('enabled WeCom webhook requires groups but saves the robot URL without a si
     has_secret: false,
   })
   client.setQueryData([...webhookQueryKey, 'deliveries', 1], [])
+  client.setQueryData([...webhookQueryKey, 'groups'], ['vip', 'custom-owner'])
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
@@ -124,22 +134,36 @@ test('enabled WeCom webhook requires groups but saves the robot URL without a si
       )
     })
     assert.ok(container.textContent?.includes('Select at least one group.'))
+    assert.equal(
+      container
+        .querySelector('[role="combobox"]')
+        ?.getAttribute('aria-invalid'),
+      'true'
+    )
     assert.ok(
       !container.textContent?.includes(
         'Signing secret must contain at least 32 characters.'
       )
     )
     assert.equal(writes.length, 0)
-    for (const [text, value] of Object.entries({
-      'Watched groups (comma-separated)': 'vip, svip, vip',
-    })) {
-      const label = [...container.querySelectorAll('label')].find(
-        (item) => item.textContent === text
-      )
-      assert.ok(label)
-      const input = container.querySelector(`[id="${label.htmlFor}"]`)
-      assert.ok(input)
+    const label = [...container.querySelectorAll('label')].find(
+      (item) => item.textContent === 'Watched groups'
+    )
+    assert.ok(label)
+    const input = container.querySelector<HTMLInputElement>(
+      `[id="${label.htmlFor}"]`
+    )
+    assert.ok(input)
+    assert.equal(input.getAttribute('role'), 'combobox')
+    for (const value of ['vip', 'custom-owner']) {
       await act(async () => {
+        input.focus()
+        input.dispatchEvent(
+          new dom.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+          }) as unknown as Event
+        )
         Object.getOwnPropertyDescriptor(
           dom.HTMLInputElement.prototype,
           'value'
@@ -148,6 +172,14 @@ test('enabled WeCom webhook requires groups but saves the robot URL without a si
           new dom.Event('input', { bubbles: true }) as unknown as Event
         )
       })
+      const option = [
+        ...document.querySelectorAll<HTMLElement>('[role="option"]'),
+      ].find((item) => item.textContent?.trim() === value)
+      assert.ok(
+        option,
+        `group option ${value} is available: ${document.body.textContent}`
+      )
+      await act(async () => option.click())
     }
     await act(async () => {
       form.dispatchEvent(
@@ -162,7 +194,7 @@ test('enabled WeCom webhook requires groups but saves the robot URL without a si
       writes[0].url,
       'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key'
     )
-    assert.deepEqual(writes[0].groups, ['vip', 'svip'])
+    assert.deepEqual(writes[0].groups, ['vip', 'custom-owner'])
     assert.equal(writes[0].secret, '')
     assert.equal(
       container.querySelector<HTMLInputElement>('input[type=password]')?.value,
@@ -207,6 +239,7 @@ test('only failed deliveries offer manual retry and stored secrets stay hidden',
     has_secret: true,
   })
   client.setQueryData([...webhookQueryKey, 'deliveries', 1], records)
+  client.setQueryData([...webhookQueryKey, 'groups'], [])
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
@@ -231,6 +264,98 @@ test('only failed deliveries offer manual retry and stored secrets stay hidden',
     assert.equal(
       container.querySelector<HTMLInputElement>('input[type=password]')?.value,
       ''
+    )
+  } finally {
+    await act(async () => root.unmount())
+    client.clear()
+    container.remove()
+    api.defaults.adapter = adapter
+  }
+})
+
+test('group loading failure preserves saved personal groups and offers retry', async () => {
+  const adapter = api.defaults.adapter
+  const writes: unknown[] = []
+  let groupsAvailable = false
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'put') {
+      writes.push(JSON.parse(config.data as string).groups)
+    }
+    return {
+      config,
+      data:
+        config.url === '/api/group/'
+          ? {
+              success: groupsAvailable,
+              message: 'Groups unavailable',
+              data: ['custom-saved'],
+            }
+          : {
+              success: true,
+              data: {
+                enabled: true,
+                url: 'https://example.com/hook',
+                groups: ['custom-saved'],
+                has_secret: true,
+              },
+            },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+    }
+  }
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+      mutations: { retry: false },
+    },
+  })
+  client.setQueryData([...webhookQueryKey, 'config'], {
+    enabled: true,
+    url: 'https://example.com/hook',
+    groups: ['custom-saved'],
+    has_secret: true,
+  })
+  client.setQueryData([...webhookQueryKey, 'deliveries', 1], [])
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    await act(async () =>
+      root.render(
+        <QueryClientProvider client={client}>
+          <I18nextProvider i18n={i18n}>
+            <GroupRatioWebhook />
+          </I18nextProvider>
+        </QueryClientProvider>
+      )
+    )
+    assert.match(container.textContent ?? '', /Failed to load groups/)
+    assert.match(container.textContent ?? '', /custom-saved/)
+    assert.equal(
+      container.querySelector<HTMLInputElement>('[role="combobox"]')?.disabled,
+      true
+    )
+    const form = container.querySelector('form')
+    assert.ok(form)
+    await act(async () => {
+      form.dispatchEvent(
+        new dom.Event('submit', {
+          bubbles: true,
+          cancelable: true,
+        }) as unknown as Event
+      )
+    })
+    assert.deepEqual(writes, [['custom-saved']])
+    groupsAvailable = true
+    const retry = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Retry'
+    )
+    assert.ok(retry)
+    await act(async () => retry.click())
+    assert.equal(
+      container.querySelector<HTMLInputElement>('[role="combobox"]')?.disabled,
+      false
     )
   } finally {
     await act(async () => root.unmount())

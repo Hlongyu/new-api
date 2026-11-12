@@ -90,6 +90,27 @@ export async function submitChannel(
   return unwrap(response.data)
 }
 
+export async function setPersonalChannelEnabled(input: {
+  channel: PersonalChannel
+  enabled: boolean
+}): Promise<unknown> {
+  const response = await api.put<Result<unknown>>(
+    `/api/personal/channels/${input.channel.id}/status`,
+    { enabled: input.enabled }
+  )
+  return unwrap(response.data)
+}
+
+export async function requestPersonalChannelDeletion(
+  channel: PersonalChannel
+): Promise<unknown> {
+  const response = await api.post<Result<unknown>>(
+    `/api/personal/channels/${channel.id}/delete`,
+    { expected_revision_id: channel.revision.id }
+  )
+  return unwrap(response.data)
+}
+
 export async function reviewChannel(input: {
   channel: PersonalChannel
   approve: boolean

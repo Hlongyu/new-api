@@ -42,6 +42,12 @@ export async function getWebhookConfig() {
   if (!data.success) throw new Error(data.message)
   return data.data
 }
+
+export async function getWebhookGroups(): Promise<string[]> {
+  const { data } = await api.get<Response<string[]>>('/api/group/')
+  if (!data.success) throw new Error(data.message)
+  return data.data
+}
 export async function saveWebhookConfig(
   config: Omit<WebhookConfig, 'has_secret'> & { secret: string }
 ) {

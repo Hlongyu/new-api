@@ -21,6 +21,8 @@ func TestPersonalGroupEndpointsRequireAuthentication(t *testing.T) {
 		{http.MethodPost, "/api/personal/channels"},
 		{http.MethodPost, "/api/personal/channels/models"},
 		{http.MethodPost, "/api/personal/channels/1/submit"},
+		{http.MethodPut, "/api/personal/channels/1/status"},
+		{http.MethodPost, "/api/personal/channels/1/delete"},
 		{http.MethodGet, "/api/personal-channel-reviews"},
 		{http.MethodPost, "/api/personal-channel-reviews/1"},
 	} {

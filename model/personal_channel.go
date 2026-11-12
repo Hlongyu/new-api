@@ -13,12 +13,17 @@ import (
 )
 
 const (
-	PersonalRevisionDraft      = "draft"
-	PersonalRevisionPending    = "pending"
-	PersonalRevisionApproved   = "approved"
-	PersonalRevisionRejected   = "rejected"
-	PersonalRevisionSuperseded = "superseded"
+	PersonalRevisionDraft          = "draft"
+	PersonalRevisionPending        = "pending"
+	PersonalRevisionApproved       = "approved"
+	PersonalRevisionRejected       = "rejected"
+	PersonalRevisionSuperseded     = "superseded"
+	PersonalRevisionDeletePending  = "delete_pending"
+	PersonalRevisionDeleteRejected = "delete_rejected"
+	PersonalRevisionDeleted        = "deleted"
 )
+
+var ErrPersonalChannelDeletionRequiresReview = errors.New("Personal channels must be deleted through administrator review")
 
 // Only approved revisions are materialized in channels/abilities. Pending
 // credentials and models can never be selected by the relay or cache rebuilds.
@@ -29,6 +34,7 @@ type PersonalChannel struct {
 	PublishedChannelID int   `json:"published_channel_id" gorm:"index"`
 	LatestRevisionID   int   `json:"latest_revision_id"`
 	CreatedAt          int64 `json:"created_at"`
+	DeletedAt          int64 `json:"deleted_at" gorm:"index;not null;default:0"`
 }
 
 type PersonalChannelRevision struct {
@@ -122,7 +128,7 @@ func SavePersonalChannelDraft(ownerID, groupID, channelID, expectedRevisionID in
 		}
 		channel := PersonalChannel{OwnerUserID: ownerID, GroupID: groupID, CreatedAt: common.GetTimestamp()}
 		if channelID != 0 {
-			if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND group_id = ?", channelID, ownerID, groupID).First(&channel).Error; err != nil {
+			if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND group_id = ? AND deleted_at = 0", channelID, ownerID, groupID).First(&channel).Error; err != nil {
 				return err
 			}
 			if channel.LatestRevisionID != expectedRevisionID {
@@ -153,7 +159,7 @@ func SavePersonalChannelDraft(ownerID, groupID, channelID, expectedRevisionID in
 			return err
 		}
 		revision = PersonalChannelRevision{PersonalChannelID: channel.Id, Payload: string(payload), Status: PersonalRevisionDraft, CreatedAt: common.GetTimestamp()}
-		if err := tx.Model(&PersonalChannelRevision{}).Where("personal_channel_id = ? AND status IN ?", channel.Id, []string{PersonalRevisionDraft, PersonalRevisionPending}).Update("status", PersonalRevisionSuperseded).Error; err != nil {
+		if err := tx.Model(&PersonalChannelRevision{}).Where("personal_channel_id = ? AND status IN ?", channel.Id, []string{PersonalRevisionDraft, PersonalRevisionPending, PersonalRevisionDeletePending}).Update("status", PersonalRevisionSuperseded).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&revision).Error; err != nil {
@@ -174,7 +180,7 @@ func SavePersonalChannelDraft(ownerID, groupID, channelID, expectedRevisionID in
 func SubmitPersonalChannel(ownerID, channelID, revisionID int) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var channel PersonalChannel
-		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND latest_revision_id = ?", channelID, ownerID, revisionID).First(&channel).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND latest_revision_id = ? AND deleted_at = 0", channelID, ownerID, revisionID).First(&channel).Error; err != nil {
 			return err
 		}
 		result := tx.Model(&PersonalChannelRevision{}).Where("id = ? AND personal_channel_id = ? AND status = ?", revisionID, channelID, PersonalRevisionDraft).Update("status", PersonalRevisionPending)
@@ -188,6 +194,60 @@ func SubmitPersonalChannel(ownerID, channelID, revisionID int) error {
 	})
 }
 
+// Status changes affect only the approved live channel, never draft credentials.
+func SetPersonalChannelEnabled(ownerID, channelID int, enabled bool) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var channel PersonalChannel
+		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND deleted_at = 0", channelID, ownerID).First(&channel).Error; err != nil {
+			return err
+		}
+		if channel.PublishedChannelID == 0 {
+			return errors.New("Only published personal channels can be enabled or disabled")
+		}
+		var published Channel
+		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ?", channel.PublishedChannelID, ownerID).First(&published).Error; err != nil {
+			return errors.New("Published personal channel is unavailable")
+		}
+		status := common.ChannelStatusManuallyDisabled
+		if enabled {
+			status = common.ChannelStatusEnabled
+		}
+		if err := tx.Model(&published).Update("status", status).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Ability{}).Where("channel_id = ?", published.Id).Update("enabled", enabled).Error
+	})
+}
+
+func RequestPersonalChannelDeletion(ownerID, channelID, expectedRevisionID int) (*PersonalChannelRevision, error) {
+	var revision PersonalChannelRevision
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var channel PersonalChannel
+		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND deleted_at = 0", channelID, ownerID).First(&channel).Error; err != nil {
+			return err
+		}
+		if channel.LatestRevisionID != expectedRevisionID {
+			return errors.New("Channel changed; reload before saving")
+		}
+		var previous PersonalChannelRevision
+		if err := tx.First(&previous, channel.LatestRevisionID).Error; err != nil {
+			return err
+		}
+		if previous.Status == PersonalRevisionDeletePending {
+			return errors.New("Channel deletion is already pending review")
+		}
+		revision = PersonalChannelRevision{PersonalChannelID: channel.Id, Payload: previous.Payload, Status: PersonalRevisionDeletePending, CreatedAt: common.GetTimestamp()}
+		if err := tx.Model(&PersonalChannelRevision{}).Where("personal_channel_id = ? AND status IN ?", channel.Id, []string{PersonalRevisionDraft, PersonalRevisionPending}).Update("status", PersonalRevisionSuperseded).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&revision).Error; err != nil {
+			return err
+		}
+		return tx.Model(&channel).Update("latest_revision_id", revision.Id).Error
+	})
+	return &revision, err
+}
+
 func ReviewPersonalChannel(reviewerID, channelID, revisionID int, approve bool, reason string) error {
 	reason = strings.TrimSpace(reason)
 	if len(reason) > 1000 || (!approve && reason == "") {
@@ -195,15 +255,39 @@ func ReviewPersonalChannel(reviewerID, channelID, revisionID int, approve bool, 
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var channel PersonalChannel
-		if err := lockForUpdate(tx).Where("id = ? AND latest_revision_id = ?", channelID, revisionID).First(&channel).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ? AND latest_revision_id = ? AND deleted_at = 0", channelID, revisionID).First(&channel).Error; err != nil {
 			return errors.New("This revision is no longer current")
 		}
 		var revision PersonalChannelRevision
-		if err := tx.Where("id = ? AND personal_channel_id = ? AND status = ?", revisionID, channelID, PersonalRevisionPending).First(&revision).Error; err != nil {
+		if err := tx.Where("id = ? AND personal_channel_id = ? AND status IN ?", revisionID, channelID, []string{PersonalRevisionPending, PersonalRevisionDeletePending}).First(&revision).Error; err != nil {
 			return errors.New("This revision is not pending review")
 		}
 		status := PersonalRevisionRejected
-		if approve {
+		if revision.Status == PersonalRevisionDeletePending {
+			status = PersonalRevisionDeleteRejected
+			if approve {
+				if channel.PublishedChannelID != 0 {
+					var published Channel
+					err := lockForUpdate(tx).First(&published, channel.PublishedChannelID).Error
+					if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+						return err
+					}
+					if err == nil && published.OwnerUserID != channel.OwnerUserID {
+						return errors.New("Published personal channel is unavailable")
+					}
+					if err := tx.Delete(&Channel{}, channel.PublishedChannelID).Error; err != nil {
+						return err
+					}
+					if err := tx.Where("channel_id = ?", channel.PublishedChannelID).Delete(&Ability{}).Error; err != nil {
+						return err
+					}
+				}
+				if err := tx.Model(&channel).Update("deleted_at", common.GetTimestamp()).Error; err != nil {
+					return err
+				}
+				status = PersonalRevisionDeleted
+			}
+		} else if approve {
 			var group PersonalGroup
 			if err := tx.Where("id = ? AND owner_user_id = ? AND archived_at = 0", channel.GroupID, channel.OwnerUserID).First(&group).Error; err != nil {
 				return err
@@ -225,12 +309,12 @@ func ReviewPersonalChannel(reviewerID, channelID, revisionID int, approve bool, 
 			published.Name, published.Type, published.Key = config.Name, config.Type, config.Key
 			published.BaseURL, published.Models, published.Group = &config.BaseURL, config.Models, group.Name
 			published.ModelMapping, published.Priority, published.Weight = &config.ModelMapping, &config.Priority, &config.Weight
-			published.Status = common.ChannelStatusManuallyDisabled
-			if config.Enabled {
-				published.Status = common.ChannelStatusEnabled
-			}
 			if published.Id == 0 {
 				published.CreatedTime = common.GetTimestamp()
+				published.Status = common.ChannelStatusManuallyDisabled
+				if config.Enabled {
+					published.Status = common.ChannelStatusEnabled
+				}
 			}
 			if err := tx.Save(&published).Error; err != nil {
 				return err
@@ -243,7 +327,7 @@ func ReviewPersonalChannel(reviewerID, channelID, revisionID int, approve bool, 
 			}
 			status = PersonalRevisionApproved
 		}
-		result := tx.Model(&PersonalChannelRevision{}).Where("id = ? AND status = ?", revisionID, PersonalRevisionPending).Updates(map[string]any{"status": status, "reviewer_id": reviewerID, "reviewed_at": common.GetTimestamp(), "reason": reason})
+		result := tx.Model(&PersonalChannelRevision{}).Where("id = ? AND status = ?", revisionID, revision.Status).Updates(map[string]any{"status": status, "reviewer_id": reviewerID, "reviewed_at": common.GetTimestamp(), "reason": reason})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -265,9 +349,9 @@ type PersonalChannelView struct {
 }
 
 func ListPersonalChannels(ownerID int, review bool, offset, limit int) ([]PersonalChannelView, int64, error) {
-	query := DB.Model(&PersonalChannel{})
+	query := DB.Model(&PersonalChannel{}).Where("deleted_at = 0")
 	if review {
-		query = query.Where("latest_revision_id IN (?)", DB.Model(&PersonalChannelRevision{}).Select("id").Where("status = ?", PersonalRevisionPending))
+		query = query.Where("latest_revision_id IN (?)", DB.Model(&PersonalChannelRevision{}).Select("id").Where("status IN ?", []string{PersonalRevisionPending, PersonalRevisionDeletePending}))
 	} else {
 		query = query.Where("owner_user_id = ?", ownerID)
 	}
@@ -321,7 +405,7 @@ func ResolvePersonalModelCredentials(ownerID, channelID int, config *PersonalCha
 		return nil
 	}
 	var channel PersonalChannel
-	if err := DB.Where("id = ? AND owner_user_id = ?", channelID, ownerID).First(&channel).Error; err != nil {
+	if err := DB.Where("id = ? AND owner_user_id = ? AND deleted_at = 0", channelID, ownerID).First(&channel).Error; err != nil {
 		return errors.New("Personal channel not found")
 	}
 	if strings.TrimSpace(config.Key) != "" {

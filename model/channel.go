@@ -464,6 +464,17 @@ func BatchDeleteChannels(ids []int) (int64, error) {
 	}
 	var deletedCount int64
 	for _, chunk := range lo.Chunk(ids, 200) {
+		var channels []Channel
+		if err := lockForUpdate(tx).Select("id", "owner_user_id").Where("id IN ?", chunk).Find(&channels).Error; err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+		for _, channel := range channels {
+			if channel.OwnerUserID > 0 {
+				tx.Rollback()
+				return 0, ErrPersonalChannelDeletionRequiresReview
+			}
+		}
 		result := tx.Where("id in (?)", chunk).Delete(&Channel{})
 		if result.Error != nil {
 			tx.Rollback()
@@ -600,12 +611,10 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
-	if err != nil {
-		return err
+	if channel.Id == 0 {
+		return gorm.ErrMissingWhereClause
 	}
-	err = channel.DeleteAbilities()
+	_, err := BatchDeleteChannels([]int{channel.Id})
 	return err
 }
 
@@ -875,12 +884,12 @@ func updateChannelUsedQuota(id int, quota int) {
 }
 
 func DeleteChannelByStatus(status int64) (int64, error) {
-	result := DB.Where("status = ?", status).Delete(&Channel{})
+	result := DB.Where("(owner_user_id IS NULL OR owner_user_id = 0) AND status = ?", status).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
 func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
+	result := DB.Where("(owner_user_id IS NULL OR owner_user_id = 0) AND status IN ?", []int{common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled}).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 

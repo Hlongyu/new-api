@@ -229,22 +229,29 @@ export function ChannelForm(props: {
             />
           </Field>
         </div>
-        <Field orientation='horizontal'>
-          <Controller
-            control={form.control}
-            name='enabled'
-            render={({ field }) => (
-              <Switch
-                id='personal-channel-enabled'
-                checked={field.value}
-                onCheckedChange={field.onChange}
-              />
-            )}
-          />
-          <FieldLabel htmlFor='personal-channel-enabled'>
-            {t('Enabled after approval')}
-          </FieldLabel>
-        </Field>
+        {!props.channel?.published_config && (
+          <Field orientation='horizontal'>
+            <Controller
+              control={form.control}
+              name='enabled'
+              render={({ field }) => (
+                <Switch
+                  id='personal-channel-enabled'
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              )}
+            />
+            <FieldLabel htmlFor='personal-channel-enabled'>
+              {t('Enabled after approval')}
+            </FieldLabel>
+          </Field>
+        )}
+        {props.channel?.revision.status === 'delete_pending' && (
+          <p className='text-muted-foreground text-sm'>
+            {t('Saving a new draft cancels the pending deletion request.')}
+          </p>
+        )}
         {Object.keys(form.formState.errors).length > 0 && (
           <p role='alert'>{t('Please check the highlighted fields.')}</p>
         )}

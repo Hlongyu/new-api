@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 
+import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -49,6 +50,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import {
   getWebhookConfig,
+  getWebhookGroups,
   getWebhookDeliveries,
   retryWebhookDelivery,
   saveWebhookConfig,
@@ -61,6 +63,10 @@ export function GroupRatioWebhook() {
   const config = useQuery({
     queryKey: [...webhookQueryKey, 'config'],
     queryFn: getWebhookConfig,
+  })
+  const groups = useQuery({
+    queryKey: [...webhookQueryKey, 'groups'],
+    queryFn: getWebhookGroups,
   })
   return (
     <Card>
@@ -79,21 +85,35 @@ export function GroupRatioWebhook() {
             {t('Retry')}
           </Button>
         )}
-        {config.data && <WebhookForm config={config.data} />}
+        {config.data && (
+          <WebhookForm
+            config={config.data}
+            groups={groups.data ?? []}
+            groupsPending={groups.isPending}
+            groupsError={groups.isError}
+            retryGroups={() => void groups.refetch()}
+          />
+        )}
         <WebhookDeliveries />
       </CardContent>
     </Card>
   )
 }
 
-function WebhookForm(props: { config: WebhookConfig }) {
+function WebhookForm(props: {
+  config: WebhookConfig
+  groups: string[]
+  groupsPending: boolean
+  groupsError: boolean
+  retryGroups: () => void
+}) {
   const { t } = useTranslation()
   const client = useQueryClient()
   const schema = z
     .object({
       enabled: z.boolean(),
       url: z.string().max(2048),
-      groups: z.string(),
+      groups: z.array(z.string().min(1)),
       secret: z.string().max(512),
     })
     .superRefine((value, ctx) => {
@@ -117,10 +137,7 @@ function WebhookForm(props: { config: WebhookConfig }) {
           })
         }
       }
-      if (
-        value.enabled &&
-        !value.groups.split(',').some((group) => group.trim())
-      ) {
+      if (value.enabled && value.groups.length === 0) {
         ctx.addIssue({
           code: 'custom',
           path: ['groups'],
@@ -140,7 +157,7 @@ function WebhookForm(props: { config: WebhookConfig }) {
     defaultValues: {
       enabled: props.config.enabled,
       url: props.config.url,
-      groups: props.config.groups.join(', '),
+      groups: props.config.groups,
       secret: '',
     },
   })
@@ -161,14 +178,7 @@ function WebhookForm(props: { config: WebhookConfig }) {
         onSubmit={form.handleSubmit((values) =>
           save.mutate({
             ...values,
-            groups: [
-              ...new Set(
-                values.groups
-                  .split(',')
-                  .map((group) => group.trim())
-                  .filter(Boolean)
-              ),
-            ],
+            groups: [...new Set(values.groups)],
           })
         )}
       >
@@ -212,10 +222,41 @@ function WebhookForm(props: { config: WebhookConfig }) {
               name='groups'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Watched groups (comma-separated)')}</FormLabel>
+                  <FormLabel>{t('Watched groups')}</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder='default, vip' />
+                    <MultiSelect
+                      selected={field.value}
+                      onChange={field.onChange}
+                      options={[
+                        ...new Set([...props.groups, ...props.config.groups]),
+                      ]
+                        .sort()
+                        .map((name) => ({ label: name, value: name }))}
+                      disabled={
+                        save.isPending ||
+                        props.groupsPending ||
+                        props.groupsError
+                      }
+                      placeholder={
+                        props.groupsPending
+                          ? t('Loading...')
+                          : t('Select groups')
+                      }
+                    />
                   </FormControl>
+                  {props.groupsError && (
+                    <p role='alert'>
+                      {t('Failed to load groups')}{' '}
+                      <Button
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        onClick={props.retryGroups}
+                      >
+                        {t('Retry')}
+                      </Button>
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

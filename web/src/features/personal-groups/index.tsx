@@ -47,6 +47,7 @@ import { getPersonalChannels, getPersonalGroups, submitChannel } from './api'
 import { ChannelForm } from './components/channel-form'
 import { ChannelStatus } from './components/channel-status'
 import { GroupForm } from './components/group-form'
+import { PersonalChannelActions } from './components/personal-channel-actions'
 import type { PersonalChannel, PersonalGroup } from './types'
 
 export function PersonalGroups() {
@@ -93,7 +94,7 @@ export function PersonalGroups() {
         <div className='flex flex-col gap-6'>
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Manage your group ratios. New channels and all channel changes require administrator approval.'
+              'You can enable or disable published channels immediately. New channels, configuration changes and deletions require administrator approval.'
             )}
           </p>
           {(groups.isPending || channels.isPending) && (
@@ -199,7 +200,7 @@ export function PersonalGroups() {
                         {channel.revision.reason || '—'}
                       </TableCell>
                       <TableCell>
-                        <div className='flex gap-2'>
+                        <div className='flex flex-wrap gap-2'>
                           <Button
                             variant='outline'
                             size='sm'
@@ -217,6 +218,7 @@ export function PersonalGroups() {
                               {t('Submit for Review')}
                             </Button>
                           )}
+                          <PersonalChannelActions channel={channel} />
                         </div>
                       </TableCell>
                     </TableRow>

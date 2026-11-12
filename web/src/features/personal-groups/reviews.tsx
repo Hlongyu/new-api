@@ -43,6 +43,7 @@ import { hasPermission } from '@/lib/admin-permissions'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getPersonalChannels } from './api'
+import { ChannelStatus } from './components/channel-status'
 import { ReviewForm } from './components/review-form'
 import type { PersonalChannel } from './types'
 
@@ -96,7 +97,10 @@ export function PersonalChannelReviews() {
               <TableBody>
                 {reviews.data.items.map((channel) => (
                   <TableRow key={channel.id}>
-                    <TableCell>{channel.config.name}</TableCell>
+                    <TableCell>
+                      {channel.config.name}
+                      <ChannelStatus channel={channel} />
+                    </TableCell>
                     <TableCell>{channel.group_name}</TableCell>
                     <TableCell>{channel.owner_user_id}</TableCell>
                     <TableCell>

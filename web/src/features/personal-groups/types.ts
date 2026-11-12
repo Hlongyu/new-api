@@ -44,7 +44,15 @@ export type PersonalChannel = {
   latest_revision_id: number
   revision: {
     id: number
-    status: 'draft' | 'pending' | 'approved' | 'rejected' | 'superseded'
+    status:
+      | 'draft'
+      | 'pending'
+      | 'approved'
+      | 'rejected'
+      | 'superseded'
+      | 'delete_pending'
+      | 'delete_rejected'
+      | 'deleted'
     reason: string
     reviewer_id: number
     reviewed_at: number

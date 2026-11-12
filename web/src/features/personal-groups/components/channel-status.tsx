@@ -30,6 +30,9 @@ export function ChannelStatus(props: { channel: PersonalChannel }) {
     approved: t('Approved'),
     rejected: t('Rejected'),
     superseded: t('Superseded'),
+    delete_pending: t('Pending deletion'),
+    delete_rejected: t('Deletion rejected'),
+    deleted: t('Deleted'),
   }
   return (
     <div className='flex flex-wrap gap-2'>
@@ -37,6 +40,10 @@ export function ChannelStatus(props: { channel: PersonalChannel }) {
       {props.channel.published_config?.enabled && (
         <Badge>{t('Published')}</Badge>
       )}
+      {props.channel.published_config &&
+        !props.channel.published_config.enabled && (
+          <Badge variant='secondary'>{t('Disabled')}</Badge>
+        )}
     </div>
   )
 }

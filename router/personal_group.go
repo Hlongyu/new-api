@@ -22,6 +22,8 @@ func registerPersonalGroupRoutes(apiRouter *gin.RouterGroup) {
 	writes.POST("/channels/models", controller.FetchPersonalChannelModels)
 	writes.POST("/channels", controller.SavePersonalChannelDraft)
 	writes.POST("/channels/:id/submit", controller.SubmitPersonalChannel)
+	writes.PUT("/channels/:id/status", controller.SetPersonalChannelEnabled)
+	writes.POST("/channels/:id/delete", controller.RequestPersonalChannelDeletion)
 	reviews := apiRouter.Group("/personal-channel-reviews", middleware.AdminAuth())
 	reviews.GET("", middleware.RequirePermission(authz.ChannelRead), controller.ListPersonalChannelReviews)
 	reviews.POST("/:id", middleware.SessionCookieOriginGuard(), middleware.CriticalRateLimit(), middleware.RequirePermission(authz.ChannelSensitiveWrite), controller.ReviewPersonalChannel)

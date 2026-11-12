@@ -8,12 +8,28 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestAdministratorGroupOptionsIncludePersonalGroupNames(t *testing.T) {
+	ratio_setting.SetPersonalGroupRatios(map[string]float64{"custom-owner": 1.5})
+	t.Cleanup(func() { ratio_setting.SetPersonalGroupRatios(nil) })
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	GetGroups(ctx)
+	var response struct {
+		Success bool     `json:"success"`
+		Data    []string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	assert.Contains(t, response.Data, "custom-owner")
+}
 
 func TestGroupRatioWebhookResponsesNeverExposeSigningSecrets(t *testing.T) {
 	previousDB := model.DB
