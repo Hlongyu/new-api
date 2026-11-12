@@ -81,15 +81,16 @@ func newProtectedFetchHTTPClientWithProxy(resolver ssrfResolver, dialContext fun
 		proxy = http.ProxyFromEnvironment
 	}
 
+	roundTripper := &ssrfProtectedRoundTripper{
+		resolver:      resolver,
+		dialContext:   dialContext,
+		getProtection: getProtection,
+		proxy:         proxy,
+		transports:    make(map[string]*http.Transport),
+	}
 	client := &http.Client{
-		Transport: &ssrfProtectedRoundTripper{
-			resolver:      resolver,
-			dialContext:   dialContext,
-			getProtection: getProtection,
-			proxy:         proxy,
-			transports:    make(map[string]*http.Transport),
-		},
-		CheckRedirect: checkProtectedFetchRedirect,
+		Transport:     roundTripper,
+		CheckRedirect: roundTripper.checkRedirect,
 	}
 	if common.RelayTimeout != 0 {
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
@@ -97,11 +98,35 @@ func newProtectedFetchHTTPClientWithProxy(resolver ssrfResolver, dialContext fun
 	return client
 }
 
+func (t *ssrfProtectedRoundTripper) validateURL(target string) error {
+	// Request, redirect and dial checks must all use this client's policy.
+	// Personal-channel policies are independent of resource-fetch settings.
+	protection, enabled, err := t.getProtection()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	return protection.ValidateURL(target)
+}
+
+func (t *ssrfProtectedRoundTripper) checkRedirect(req *http.Request, via []*http.Request) error {
+	urlStr := req.URL.String()
+	if err := t.validateURL(urlStr); err != nil {
+		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	return nil
+}
+
 func (t *ssrfProtectedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req == nil || req.URL == nil {
 		return nil, fmt.Errorf("invalid request")
 	}
-	if err := ValidateSSRFProtectedFetchURL(req.URL.String()); err != nil {
+	if err := t.validateURL(req.URL.String()); err != nil {
 		return nil, err
 	}
 
