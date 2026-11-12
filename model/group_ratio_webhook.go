@@ -155,8 +155,14 @@ func persistGroupRatioEvent(tx *gorm.DB, raw string) error {
 	if err := common.UnmarshalJsonStr(raw, &newRatios); err != nil {
 		return err
 	}
+	return persistGroupRatioChanges(tx, oldRatios, newRatios)
+}
+
+// Both administrator and personal ratios enqueue notifications in the same
+// transaction as the ratio change, using the database's previous value.
+func persistGroupRatioChanges(tx *gorm.DB, oldRatios, newRatios map[string]float64) error {
 	var config GroupRatioWebhook
-	err = lockForUpdate(tx).First(&config, 1).Error
+	err := lockForUpdate(tx).First(&config, 1).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && !config.Enabled) {
 		return nil
 	}

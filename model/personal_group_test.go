@@ -26,7 +26,7 @@ func setupPersonalGroupsDB(t *testing.T) {
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
 	initCol()
-	require.NoError(t, db.AutoMigrate(&PersonalGroup{}, &PersonalChannel{}, &PersonalChannelRevision{}, &Channel{}, &Ability{}, &Log{}, &PostpaidSettlement{}, &ConsumptionAttribution{}))
+	require.NoError(t, db.AutoMigrate(&PersonalGroup{}, &PersonalChannel{}, &PersonalChannelRevision{}, &Channel{}, &Ability{}, &Log{}, &PostpaidSettlement{}, &ConsumptionAttribution{}, &GroupRatioWebhook{}, &GroupRatioWebhookDelivery{}))
 	t.Cleanup(func() {
 		DB, LOG_DB = previousDB, previousLogDB
 		common.SetMainDatabaseType(previousMain)

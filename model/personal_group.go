@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"gorm.io/gorm"
 )
 
 // Personal group names and ownership are immutable, including after archival.
@@ -73,13 +74,21 @@ func UpdatePersonalGroup(ownerID, id int, description string, ratio float64) err
 	if err := ValidatePersonalGroup("custom-validation", ratio); err != nil {
 		return err
 	}
-	result := DB.Model(&PersonalGroup{}).Where("id = ? AND owner_user_id = ? AND archived_at = 0", id, ownerID).Updates(map[string]any{"description": description, "ratio": ratio})
-	if result.Error != nil {
-		return result.Error
-	}
-	// MySQL may report no changed rows when saving the same values.
-	var group PersonalGroup
-	if err := DB.Where("id = ? AND owner_user_id = ? AND archived_at = 0", id, ownerID).First(&group).Error; err != nil {
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var group PersonalGroup
+		if err := lockForUpdate(tx).Where("id = ? AND owner_user_id = ? AND archived_at = 0", id, ownerID).First(&group).Error; err != nil {
+			return err
+		}
+		oldRatio := group.Ratio
+		if err := tx.Model(&group).Updates(map[string]any{"description": description, "ratio": ratio}).Error; err != nil {
+			return err
+		}
+		if oldRatio == ratio {
+			return nil
+		}
+		return persistGroupRatioChanges(tx, map[string]float64{group.Name: oldRatio}, map[string]float64{group.Name: ratio})
+	})
+	if err != nil {
 		return err
 	}
 	RefreshPersonalGroupRatios()
